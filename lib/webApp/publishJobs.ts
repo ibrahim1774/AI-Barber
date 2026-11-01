@@ -4,6 +4,10 @@ import { enc, draftPath, leaseId, modeOf, readDraft, reliabilityOn, type Intent 
 import { sbRest, stripeCall } from './webAppServer.js';
 import { isEntitledStatus, rowFromSubscription } from './stripeCore.js';
 
+/** A failing job is retried with backoff, then parked (cancelled, with an alert in the logs) so it cannot be polled forever. */
+export const MAX_JOB_ATTEMPTS = 20;
+/** A checkout that never got a payable session, or was never paid, is abandoned after this long. */
+export const ABANDON_AFTER_MS = 3_600_000;
 export interface JobDeps {
   claim(id: string, token: string): Promise<Intent | null>;
   current(job: Intent, token: string): Promise<boolean>;
@@ -65,7 +69,8 @@ export function liveJobDeps(): JobDeps {
     },
     async paid(job) {
       // Stripe is rechecked even when the entitlement webhook or an earlier attempt said paid.
-      if (job.requires_payment && !job.stripe_session_id) return false;
+      // An unlinked checkout submission (its own session was never created or linked) is still covered by a paid
+      // hosting plan: the customer may have paid an older open session. That is checked from Stripe below.
       let subId = job.stripe_subscription_id;
       if (job.stripe_session_id) {
         const session = await stripeCall(`checkout/sessions/${enc(job.stripe_session_id)}`, null, 'GET');
@@ -110,6 +115,7 @@ export function liveJobDeps(): JobDeps {
       return runWebPublish({ siteData: job.snapshot, baseVersion: job.base_version }, deps);
     },
     async finish(job, token, status, result) {
+      // (status/result may be rewritten below when a job gives up)
       const d = await readDraft(job.user_id);
       if (!d || d.publish_lease !== token || d.latest_intent_id !== job.id || Date.parse(d.lease_until ?? '') <= Date.now()) return;
       if (status === 'live') {
@@ -121,6 +127,10 @@ export function liveJobDeps(): JobDeps {
         });
         if (!rows?.length) return;
       }
+      if (status === 'failed' && job.attempts >= MAX_JOB_ATTEMPTS) {
+        console.error('[web publish worker] giving up after', job.attempts, 'attempts:', job.id);
+        status = 'cancelled'; result = { ...(typeof result === 'object' && result ? result : {}), error: 'publish_gave_up' };
+      }
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.running&worker_token=eq.${token}`, { method: 'PATCH', body: { status, result,
         next_attempt_at: new Date(Date.now() + Math.min(900_000, 10_000 * 2 ** Math.min(job.attempts, 6))).toISOString() } });
     },
@@ -131,28 +141,52 @@ export function liveJobDeps(): JobDeps {
 }
 export function dispatchJob(id: string) { waitUntil(runJob(id).catch(e => console.error('[web publish worker]', e?.message))); }
 
-/** Reconcile payment from Stripe even when its webhook was missed; no browser redirect is needed. */
+/** Reconcile payment from Stripe even when its webhook was missed; no browser redirect is needed.
+ *  Bounded: abandoned checkouts and permanently failing jobs are closed, and real publish work is served before payment polling. */
 export async function sweepJobs() {
   if (!reliabilityOn()) return { checked: 0 };
-  const rows: Intent[] = await sbRest(`web_app_publish_intents?environment=eq.${modeOf()}&status=in.(awaiting_payment,queued,failed,running)&next_attempt_at=lte.${enc(new Date().toISOString())}&order=next_attempt_at.asc&limit=10`);
+  const env = modeOf();
+  const nowIso = new Date().toISOString();
+  const abandoned = new Date(Date.now() - ABANDON_AFTER_MS).toISOString();
+  // Housekeeping (database only): never-linked checkouts older than an hour, and jobs that exhausted their attempts.
+  await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.awaiting_payment&stripe_session_id=is.null&created_at=lt.${enc(abandoned)}`, { method: 'PATCH', body: { status: 'cancelled' } }).catch(() => {});
+  await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.failed&attempts=gte.${MAX_JOB_ATTEMPTS}`, { method: 'PATCH', body: { status: 'cancelled' } }).catch(() => {});
+  const due = `environment=eq.${env}&next_attempt_at=lte.${enc(nowIso)}`;
+  const LIMIT = 10;
+  // Work that is already paid (or free of payment) comes first, oldest due first; payment polling only uses the remaining slots.
+  const work: Intent[] = (await sbRest(`web_app_publish_intents?${due}&status=in.(queued,failed,running)&order=next_attempt_at.asc&limit=${LIMIT}`)) ?? [];
+  const polling: Intent[] = work.length >= LIMIT ? [] :
+    (await sbRest(`web_app_publish_intents?${due}&status=eq.awaiting_payment&order=created_at.asc&limit=${LIMIT - work.length}`)) ?? [];
+  const rows = [...work, ...polling];
   const started = Date.now();
-  for (const job of rows ?? []) {
+  for (const job of rows) {
     if (Date.now() - started > 210_000) break;
     try {
-    if (job.status === 'awaiting_payment' && !job.stripe_session_id) {
-      await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { next_attempt_at: new Date(Date.now() + 60_000).toISOString() } });
-      continue;
-    }
-    if (job.status === 'awaiting_payment' && job.stripe_session_id) {
-      const paid = await liveJobDeps().paid(job).catch(() => false);
-      if (!paid) {
-        await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { next_attempt_at: new Date(Date.now() + 60_000).toISOString() } });
-        continue;
+      if (job.status === 'awaiting_payment') {
+        const age = Date.now() - Date.parse(job.created_at);
+        if (job.stripe_session_id) {
+          const session = await stripeCall(`checkout/sessions/${enc(job.stripe_session_id)}`, null, 'GET').catch(() => null);
+          if (session?.status === 'expired') {
+            // An expired session can never be paid. Still check for an entitlement paid through another tab before closing it.
+            if (!(await liveJobDeps().paid(job).catch(() => false))) {
+              await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { status: 'cancelled' } });
+              continue;
+            }
+          }
+        }
+        const paid = await liveJobDeps().paid(job).catch(() => false);
+        if (!paid) {
+          if (age > ABANDON_AFTER_MS && !job.stripe_session_id) {
+            await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { status: 'cancelled' } });
+          } else {
+            await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { next_attempt_at: new Date(Date.now() + (age > 600_000 ? 300_000 : 60_000)).toISOString() } });
+          }
+          continue;
+        }
+        await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { status: 'queued' } });
       }
-      await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: { status: 'queued' } });
-    }
-    await runJob(job.id);
+      await runJob(job.id);
     } catch (e: any) { console.error('[web publish sweep]', e?.message); }
   }
-  return { checked: rows?.length ?? 0 };
+  return { checked: rows.length };
 }

@@ -1,6 +1,11 @@
 import { accountRow, digest, draftPath, modeOf, readDraft, reliabilityOn } from '../../lib/webApp/reliability.js';
+import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { MAX_BODY_BYTES, hasDataUrl, validSiteData } from '../../lib/ios/siteShape.js';
+
+/** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
+export const DRAFT_WRITES_PER_MINUTE = 120;
+const writeStore = memoryStore();
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
@@ -10,6 +15,10 @@ export default async function handler(req: any, res: any) {
     const user = await callerFrom(req.headers.authorization);
     if (!user) return res.status(401).json({ error: 'unauthorized' });
     res.setHeader('Cache-Control', 'no-store');
+    if (req.method === 'PUT' && !(await writeStore.hit(`draft-put:${user.id}`, DRAFT_WRITES_PER_MINUTE, 60_000, Date.now()))) {
+      res.setHeader('Retry-After', '60');
+      return res.status(429).json({ error: 'rate_limited' });
+    }
     const previous = await readDraft(user.id);
     if (req.method === 'GET') return res.status(200).json({ draft: previous ? accountRow(previous) : null });
     const { id, site_data, expectedRevision } = req.body ?? {};

@@ -32,20 +32,54 @@ export function accountRow(d: Draft) {
   return { id: d.draft_id, site_data: d.site_data, updated_at: d.updated_at, deployed_url: d.deployed_url, revision: d.revision, webBinding: d.published_binding ?? null };
 }
 
-/** This is an immutable snapshot. Browser redirects never supply its contents to the worker. */
-export async function prepareIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any): Promise<Intent> {
+const publishLike = (purpose: string) => purpose === 'publish' || purpose === 'checkout:publish';
+export interface IntentPlan { uid: string; draft: Draft; snapshot: any; id: string; purpose: string; baseVersion: number | null }
+
+/** Validates the saved revision and computes the deterministic intent id. Writes nothing, so a caller can create its Stripe session first. */
+export async function planIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any): Promise<IntentPlan> {
   const d = await readDraft(uid);
-  if (!d || d.draft_id !== draftId || d.revision !== revision || (d.suspended && !(d.suspension_reason === 'offline' && purpose === 'publish'))) throw Object.assign(new Error('draft_changed'), { status: 409 });
-  // Only derived links/team may differ from the acknowledged editor draft. All text/images come from that revision.
+  if (!d || d.draft_id !== draftId || d.revision !== revision || (d.suspended && !(d.suspension_reason === 'offline' && publishLike(purpose)))) throw Object.assign(new Error('draft_changed'), { status: 409 });
+  // Only derived links/team may differ from the acknowledged editor draft. Text and images come from that revision
+  // (publish.ts also passes the browser's staff list, bookingUrl and shopUrl; all of it is validated below).
   const snapshot = publication ? { ...d.site_data, bookingUrl: publication.bookingUrl, shopUrl: publication.shopUrl, staff: publication.staff ?? d.site_data.staff } : d.site_data;
   try { validateWebSnapshot(snapshot); } catch { throw Object.assign(new Error('invalid_snapshot'), { status: 400 }); }
   const id = digest([uid, d.environment, d.draft_id, d.revision, purpose, baseVersion, digest(snapshot)]);
+  return { uid, draft: d, snapshot, id, purpose, baseVersion };
+}
+/** Stores the submission. An explicit publish of content whose earlier submission is `live` runs again (the id is deterministic). */
+export async function submitIntent(plan: IntentPlan): Promise<Intent> {
+  const { uid, draft: d, snapshot, id, purpose, baseVersion } = plan;
+  let demoted = false;
+  if (publishLike(purpose)) {
+    // The RPC only revives cancelled/superseded rows. A `live` row for the same content is history: re-queue it as a fresh submission.
+    const old = await sbRest(`web_app_publish_intents?id=eq.${enc(id)}&user_id=eq.${enc(uid)}&environment=eq.${d.environment}&status=eq.live`, {
+      method: 'PATCH', body: { status: 'superseded', stripe_session_id: null, stripe_subscription_id: null, result: null, attempts: 0, worker_token: null }, prefer: 'return=representation',
+    });
+    demoted = !!old?.length;
+    // A site taken offline stays suspended until the user explicitly publishes again; the RPC only lifts that for unpaid publish submissions.
+    if (purpose === 'checkout:publish' && d.suspended && d.suspension_reason === 'offline') {
+      await sbRest(`${draftPath(uid, d.environment as "live" | "test")}&suspension_reason=eq.offline`, { method: 'PATCH', body: { suspended: false, suspension_reason: null } });
+    }
+  }
   const rows = await sbRest('rpc/submit_web_app_intent', { method: 'POST', body: {
     p_user: uid, p_environment: d.environment, p_draft: d.draft_id, p_revision: d.revision,
     p_id: id, p_snapshot: snapshot, p_status: purpose.startsWith('checkout') ? 'awaiting_payment' : 'queued', p_base_version: baseVersion,
   } });
-  if (!rows?.length) throw Object.assign(new Error('draft_changed_or_publish_running'), { status: 503 });
+  if (!rows?.length) {
+    if (demoted) await sbRest(`web_app_publish_intents?id=eq.${enc(id)}&status=eq.superseded`, { method: 'PATCH', body: { status: 'live' } }).catch(() => {});
+    throw Object.assign(new Error('draft_changed_or_publish_running'), { status: 503 });
+  }
   return rows[0];
+}
+/** This is an immutable snapshot. Browser redirects never supply its contents to the worker. */
+export async function prepareIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any): Promise<Intent> {
+  return submitIntent(await planIntent(uid, draftId, revision, purpose, baseVersion, publication));
+}
+/** After the site has really been taken offline: the draft no longer reports a deployment, and finished submissions can run again. */
+export async function markSiteOffline(uid: string) {
+  if (!reliabilityOn()) return;
+  await sbRest(draftPath(uid), { method: 'PATCH', body: { deployed_url: null, published_binding: null } });
+  await sbRest(`web_app_publish_intents?user_id=eq.${enc(uid)}&environment=eq.${modeOf()}&status=eq.live`, { method: 'PATCH', body: { status: 'superseded' } });
 }
 export async function suspendWork(uid: string, reason: 'offline' | 'deleting' = 'offline') {
   if (!reliabilityOn()) return;

@@ -1,4 +1,4 @@
-import { suspendWork } from './reliability.js';
+import { markSiteOffline, suspendWork } from './reliability.js';
 // Account deletion for web-app (Stripe) accounts. Builds on the iOS delete flow (lib/ios/deleteAccount.ts, unchanged):
 // the same ordering (close the shop -> take every site down -> purge -> delete rows and the user), with
 //   - the account's web subscriptions CANCELED right after the shop is closed (no billing for a deleted account),
@@ -92,6 +92,7 @@ export async function removeWebSitesOf(userId: string): Promise<number> {
   const sites = (await deps.listSites(userId)).filter(isWebSite);
   for (const s of sites) await deps.takeDown(s);
   for (const s of sites) await deps.purge(s);
+  await markSiteOffline(userId);
   return sites.length;
 }
 

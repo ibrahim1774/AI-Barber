@@ -1,5 +1,4 @@
-import { validateWebSnapshot } from '../../lib/webApp/publishFlow.js';
-import { prepareIntent, reliabilityOn, enc, readDraft, digest } from '../../lib/webApp/reliability.js';
+import { planIntent, submitIntent, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
 // 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
 // Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers etc.) must be applied BEFORE turning on ANY web-app
@@ -37,13 +36,12 @@ export default async function handler(req: any, res: any) {
       const own = await sbRest(`site_owners?slug=eq.${encodeURIComponent(siteSlug)}&user_id=eq.${uid}&select=slug&limit=1`);
       if (own?.length) slug = siteSlug;
     }
-    // Confirm a server-owned saved revision before creating anything payable.
-    // Invalid/unsaved contents fail before Stripe customer/session creation.
-    let intent: Awaited<ReturnType<typeof prepareIntent>> | null = null;
-    if (reliabilityOn()) {
-      const d = await readDraft(caller.id);
-      if (!d || d.draft_id !== draftId || d.revision !== revision) return res.status(409).json({ error: 'draft_changed' });
-      try { validateWebSnapshot(d.site_data); } catch { return res.status(400).json({ error: 'invalid_draft' }); }
+    // Only a publish-with-checkout needs a saved server draft; plain upgrades and domain purchases never do.
+    // Nothing is written here: the submission is stored only after its Stripe session exists (see submitIntent below).
+    let plan: IntentPlan | null = null;
+    if (reliabilityOn() && publish === true) {
+      if (typeof draftId !== 'string' || !Number.isSafeInteger(revision)) return res.status(400).json({ error: 'client_outdated' }); // a cached pre-draft client
+      plan = await planIntent(caller.id, draftId, revision, 'checkout:publish'); // 409 draft_changed | 400 invalid_snapshot, mapped below
     }
     // One Stripe customer per user and mode, known BEFORE any webhook lands.
     const customer = await customerFor(caller.id, mode, caller.email, uid, rows);
@@ -57,8 +55,7 @@ export default async function handler(req: any, res: any) {
     if (ours.some((x) => x.status === 'incomplete' && Number(x.created) > stale)) return res.status(409).json({ error: 'payment_processing' });
 
     // Existing Stripe billing is checked before superseding any recoverable publish submission.
-    if (reliabilityOn() && publish === true) intent = await prepareIntent(caller.id, draftId, revision, 'checkout:publish');
-    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, ...(intent ? { intent_id: intent.id } : {}) };
+    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, ...(plan ? { intent_id: plan.id } : {}) };
     const nowMs = Date.now();
     const window = Math.floor(nowMs / 600_000);
     // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (32-42 min ahead; Stripe's minimum is 30).
@@ -73,7 +70,7 @@ export default async function handler(req: any, res: any) {
       expires_at: String((window + 1) * 600 + 1800 + 120),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
     };
-    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${reliabilityOn() ? ':' + digest([draftId, revision, publish === true]).slice(0,24) : ''}`;
+    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${plan ? ':' + digest([draftId, revision, true]).slice(0,24) : ''}`;
     // Stripe replays the FIRST response for a repeated key, so that response can be stale: always read the session's real status.
     const createOrReplay = async (k: string) => {
       const made = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: k });
@@ -90,15 +87,11 @@ export default async function handler(req: any, res: any) {
     }
     // Paid already, or no payable URL: never hand out a second payable page.
     if (session?.status !== 'open' || !session?.url) return res.status(409).json({ error: 'payment_processing' });
-    // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
-    try {
-      const open = await stripeCall(`checkout/sessions?customer=${encodeURIComponent(customer)}&status=open&limit=10`, null, 'GET');
-      for (const o of open?.data ?? []) {
-        if (o?.id === session.id || o?.metadata?.app !== WEB_APP_TAG) continue;
-        await stripeCall(`checkout/sessions/${encodeURIComponent(o.id)}/expire`, {}, 'POST').catch((e: any) => console.error('[web-app checkout] expire failed:', e?.message || e));
-      }
-    } catch (e: any) { console.error('[web-app checkout] open-session cleanup failed:', e?.message || e); }
-    if (intent) {
+    if (plan) {
+      // Only now are earlier unpaid submissions superseded: a failed session create above leaves them, and their open sessions, valid.
+      let intent: Awaited<ReturnType<typeof submitIntent>>;
+      try { intent = await submitIntent(plan); }
+      catch (e) { await stripeCall(`checkout/sessions/${enc(session.id)}/expire`, {}, 'POST').catch(() => {}); throw e; }
       // Never expose the payable URL unless its immutable publish submission is recoverable without this tab.
       const linked = await sbRest(`web_app_publish_intents?id=eq.${enc(intent.id)}&status=in.(awaiting_payment,queued,failed)`, {
         method: 'PATCH', body: { stripe_session_id: session.id }, prefer: 'return=representation',
@@ -108,6 +101,14 @@ export default async function handler(req: any, res: any) {
         return res.status(409).json({ error: 'draft_changed' });
       }
     }
+    // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
+    try {
+      const open = await stripeCall(`checkout/sessions?customer=${encodeURIComponent(customer)}&status=open&limit=10`, null, 'GET');
+      for (const o of open?.data ?? []) {
+        if (o?.id === session.id || o?.metadata?.app !== WEB_APP_TAG) continue;
+        await stripeCall(`checkout/sessions/${encodeURIComponent(o.id)}/expire`, {}, 'POST').catch((e: any) => console.error('[web-app checkout] expire failed:', e?.message || e));
+      }
+    } catch (e: any) { console.error('[web-app checkout] open-session cleanup failed:', e?.message || e); }
     return res.status(200).json({ url: session.url });
   } catch (e: any) {
     console.error('[web-app checkout]', e.message);

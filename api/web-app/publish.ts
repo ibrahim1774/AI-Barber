@@ -35,7 +35,9 @@ export default async function handler(req: any, res: any) {
       await runJob(job.id);
       const finished = (await sbRest(`web_app_publish_intents?id=eq.${job.id}&select=status,result&limit=1`))?.[0];
       if (finished?.status === 'live') return res.status(200).json(finished.result.body);
-      if (finished?.result?.status === 409) return res.status(409).json(finished.result.body);
+      // A refusal the user can act on (400 logo-folder / render refusal, 403, 409) is passed through as it is.
+      const refused = Number(finished?.result?.status);
+      if (refused >= 400 && refused < 500) return res.status(refused).json(finished.result.body);
       dispatchJob(job.id);
       return res.status(503).json({ error: 'publish_retry_required', intentId: job.id });
     }

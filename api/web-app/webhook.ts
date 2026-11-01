@@ -54,6 +54,17 @@ export default async function handler(req: any, res: any) {
         method: 'PATCH', body: { stripe_subscription_id: sub.id, status: 'queued' }, prefer: 'return=representation',
       });
       if (jobs?.length) dispatchJob(jobs[0].id);
+      else {
+        // The paid session's own submission was superseded by a newer one (e.g. a newer checkout failed): the newest
+        // submission is the one that publishes. Its payment is rechecked against Stripe before anything deploys.
+        const d = (await sbRest(`web_app_drafts?user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&select=latest_intent_id&limit=1`))?.[0];
+        if (d?.latest_intent_id && d.latest_intent_id !== sub.metadata.intent_id) {
+          const latest = await sbRest(`web_app_publish_intents?id=eq.${enc(d.latest_intent_id)}&user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&status=in.(awaiting_payment,failed)`, {
+            method: 'PATCH', body: { stripe_subscription_id: sub.id, status: 'queued' }, prefer: 'return=representation',
+          });
+          if (latest?.length) dispatchJob(latest[0].id);
+        }
+      }
     }
     if (row.status === 'active' || row.status === 'trialing') await resetDunning(row.stripe_subscription_id);
     // Welcome email: once per subscription. The claim (welcome_sent_at is null -> now) is atomic, so two
