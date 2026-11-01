@@ -561,6 +561,8 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
     async webReturnBase(userId) {
       if (process.env.WEB_APP_ENTITLEMENTS !== '1') return null;
       // A shop with an iOS link keeps the iOS return page; only web-subscription owners go back to the web app.
+      const { data: shop } = await db.from('ab_shops').select('ios_otid').eq('owner_id', userId).maybeSingle();
+      if (shop?.ios_otid) return null; // linked to an iOS purchase: always the iOS return page
       const { data } = await db.from('web_app_entitlements').select('stripe_subscription_id').eq('user_id', userId).limit(1);
       return data?.length ? (process.env.WEB_APP_ORIGIN || 'https://www.aibarber.org') : null;
     },
