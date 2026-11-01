@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { Settings } from 'luxon';
 import { freeSlots, freeSlotsAny, type AvailabilityRow, type SlotInput } from '../../lib/bookings/slots.js';
 
 const NY = 'America/New_York';
@@ -184,6 +185,21 @@ describe('freeSlots', () => {
       // 0:00-1:30 EDT (UTC-4) -> 04:00..05:30Z; 2:00-3:30 EST (UTC-5) -> 07:00..08:30Z. No 06:00Z / 06:30Z.
       expect(out).toEqual(['04:00', '04:30', '05:00', '05:30', '07:00', '07:30', '08:00', '08:30'].map((t) => `2026-11-01T${t}:00.000Z`));
       expect(new Set(out).size).toBe(out.length);
+    });
+
+    it('resolves the repeated hour identically while the server is in summer or winter', () => {
+      const originalNow = Settings.now;
+      try {
+        for (const today of ['2026-07-01T12:00:00Z', '2026-12-01T12:00:00Z']) {
+          Settings.now = () => Date.parse(today);
+          Settings.resetCaches();
+          expect(freeSlots(base({ date: '2026-11-01', now: '2026-10-25T12:00:00Z', availability: [{ weekday: 6, start_min: h(1), end_min: h(2) }] })))
+            .toEqual(['2026-11-01T05:00:00.000Z', '2026-11-01T05:30:00.000Z']);
+        }
+      } finally {
+        Settings.now = originalNow;
+        Settings.resetCaches();
+      }
     });
 
     it('fall back: fit is measured in real time (1:30 EDT + 60 min = 1:30 EST, before a 2:00 close)', () => {
