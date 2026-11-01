@@ -166,7 +166,7 @@ export async function signIn(email: string, password: string): Promise<void> {
  */
 let switchGen = 0;
 
-async function afterSession(id: string | null | undefined): Promise<void> {
+export async function afterSession(id: string | null | undefined): Promise<void> {
   userId = id ?? userId;
   if (id) {
     const gen = ++switchGen;
@@ -294,12 +294,13 @@ export function friendlyCodeError(e: unknown): string {
  * Succeeds the same way whether or not the account exists. The email is
  * never sent to analytics.
  */
-export async function requestPasswordReset(email: string): Promise<void> {
+export async function requestPasswordReset(email: string, redirectTo?: string): Promise<void> {
   const address = email.trim();
   if (!isValidEmail(address)) throw new Error(RESET_BAD_EMAIL);
   let res: { error: unknown };
   try {
-    res = await supabase.auth.resetPasswordForEmail(address);
+    // `redirectTo` is only ever given by the browser (the link in the email returns to that page); the phone calls it without.
+    res = redirectTo ? await supabase.auth.resetPasswordForEmail(address, { redirectTo }) : await supabase.auth.resetPasswordForEmail(address);
   } catch (e) {
     throw new Error(friendlyResetError(e));
   }

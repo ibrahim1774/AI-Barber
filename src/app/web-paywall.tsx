@@ -6,7 +6,7 @@ import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
 import { flushWebAutosave } from '@/lib/webAutosave';
-import { setResume } from '@/lib/webResume';
+import { clearResume, setResume } from '@/lib/webResume';
 import { appStoreNotice, isStripeUrl, checkoutFailure, CHECKOUT_RETRY_MESSAGE, PROCESSING_MESSAGE } from '@/lib/webBilling';
 
 // The web app's plan screen (the iOS app shows Superwall's paywall here). Same plans and prices as iOS;
@@ -32,7 +32,11 @@ export default function WebPaywallRoute() {
 function WebPaywall() {
   const insets = useSafeAreaInsets();
   // Closing the screen (Not now / back) tells the publish flow the paywall was declined.
-  useEffect(() => () => { (require('expo-superwall') as { __dismissWebPaywall?: () => void }).__dismissWebPaywall?.(); }, []);
+  useEffect(() => () => {
+    (require('expo-superwall') as { __dismissWebPaywall?: () => void }).__dismissWebPaywall?.();
+    // The placement belongs to this opening only: a later direct visit must not inherit it.
+    try { delete (window as unknown as { __webPaywall?: unknown }).__webPaywall; } catch { /* ignore */ }
+  }, []);
   // Opened from a locked Bookings or Store tab: start on that plan.
   const [tier, setTier] = useState<Tier>(() => {
     const placement = (typeof window !== 'undefined' ? (window as unknown as { __webPaywall?: { placement?: string } }).__webPaywall?.placement : '') ?? '';
@@ -105,7 +109,10 @@ function WebPaywall() {
       await flushWebAutosave();
       // Only the Publish paywall resumes a publish on return; an upgrade or domain checkout just says the payment arrived.
       const placement = (window as unknown as { __webPaywall?: { placement?: string } }).__webPaywall?.placement;
+      // Any other placement drops a leftover publish flag (the owner left an earlier Stripe page with Back), so an
+      // upgrade payment can never be used up by a stale publish.
       if (placement === 'publish') setResume(tier, data.session?.user?.id ?? '');
+      else clearResume();
       window.location.assign(body.url);
     } catch {
       setError(CHECKOUT_RETRY_MESSAGE);

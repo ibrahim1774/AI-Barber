@@ -15,7 +15,7 @@ import { CODE_MAX, cooldownLeft, sanitizeCode, takePrefillEmail } from '@/lib/re
  * so no session token ever travels in a URL. The confirmation is the same
  * whether or not the account exists; Resend waits 60 s between emails.
  */
-const WEB_CODE_HINT = 'Use the 6-digit code from the email. Ignore the link in it.';
+const WEB_CODE_HINT = 'Enter the code from the email, or tap the link in it.';
 const WEB_WRONG_CODE = 'That code is wrong or has expired. Tap Send a new code below, then use the newest email.';
 
 export default function ForgotPassword() {
@@ -70,7 +70,8 @@ export default function ForgotPassword() {
 
   const send = (to: string) =>
     run(async () => {
-      await requestPasswordReset(to);
+      // Web: the email's link returns to this app's own reset page (a per-request address; no project setting changes).
+      await requestPasswordReset(to, Platform.OS === 'web' ? `${window.location.origin}/app/reset-password` : undefined);
       const at = Date.now();
       // A new code for a different address starts over.
       if (sent && sent.to !== to.trim()) markVerified(false);
@@ -121,7 +122,7 @@ export default function ForgotPassword() {
               onSubmitEditing={() => passwordInput.current?.focus()}
             />
           )}
-          {/* Web: the email also carries a link, which is not the way in here. */}
+          {/* Web: the email carries both a code and a link; either works. */}
           {Platform.OS === 'web' && !isVerified && <Text style={styles.body}>{WEB_CODE_HINT}</Text>}
           <Field
             ref={passwordInput}

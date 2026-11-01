@@ -1,8 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Page } from '@/components/Page';
+import { WebResetPassword } from '@/components/WebResetPassword';
 import { goBackOrHome } from '@/lib/nav';
 
 /**
@@ -11,6 +12,8 @@ import { goBackOrHome } from '@/lib/nav';
  * /forgot-password now.
  */
 export default function ResetPassword() {
+  // Web: the reset email's link returns here; the screen reads the recovery session from the address.
+  if (Platform.OS === 'web') return <WebResetPassword />;
   return (
     <Page title="Reset password" onBack={goBackOrHome}>
       <View style={styles.form}>

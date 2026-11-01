@@ -80,6 +80,11 @@ describe('web-paywall and the return banner (S3, S4)', () => {
   it('only the publish placement writes the resume flag', () => {
     expect(read('src/app/web-paywall.tsx')).toMatch(/placement === 'publish'\) setResume/);
   });
+  it('any other placement clears a leftover flag; the placement is dropped when the screen closes', () => {
+    const src = read('src/app/web-paywall.tsx');
+    expect(src).toMatch(/placement === 'publish'\) setResume[^\n]*\n\s*else clearResume\(\)/);
+    expect(src).toMatch(/delete \(window as unknown as \{ __webPaywall\?: unknown \}\)\.__webPaywall/);
+  });
   it('the paid-return note is cleared after its first handling', () => {
     expect(read('src/components/StripeReturn.web.tsx')).toMatch(/paidReturn = false; \/\/ handled/);
   });
@@ -102,7 +107,7 @@ describe('flushWebAutosave', () => {
 describe('forgot-password web wording', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src/app/forgot-password.tsx'), 'utf8');
   it('web-only code hint and "Send a new code", phone wording kept', () => {
-    expect(src).toContain('Use the 6-digit code from the email. Ignore the link in it.');
+    expect(src).toContain('Enter the code from the email, or tap the link in it.');
     expect(src).toMatch(/Platform\.OS === 'web' && !isVerified && <Text style=\{styles\.body\}>\{WEB_CODE_HINT\}/);
     expect(src).toContain("'Send a new code'");
     expect(src).toContain("'Resend code'");
