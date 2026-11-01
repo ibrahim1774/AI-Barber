@@ -18,20 +18,20 @@ const TIER_NAME: Record<string, string> = { website: 'Custom site', bookings: 'C
 const WHAT: Record<string, string> = { website: 'website hosting', bookings: 'website hosting + bookings', store: 'website hosting + bookings + store' };
 /** Plan names used in subjects, kept short. */
 const PLAN: Record<string, string> = { website: 'barber site hosting', bookings: 'barber booking + site plan', store: 'barber store + booking + site plan' };
-const firstOf = (n?: string | null) => (n || '').trim().split(/\s+/)[0];
+export const firstOf = (n?: string | null) => (n || '').trim().split(/\s+/)[0];
 /** "Jack, your barber site hosting payment failed" (name dropped when unknown). */
 const personal = (n: string | null | undefined, rest: (plan: string) => string, tier: string) => {
   const f = firstOf(n); const t = rest(PLAN[tier] ?? 'barber site hosting');
   return f ? `${f}, ${t}` : t.charAt(0).toUpperCase() + t.slice(1);
 };
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 export const signInLink = (origin: string) => `${origin}/app/sign-in`;
 export const resetLink = (origin: string) => `${origin}/app/forgot-password`;
 
 const AMBER = '#f4a100';
 const INK = '#0d0d0d';
 
-interface Layout {
+export interface Layout {
   subject?: string;
   preheader: string;
   headline: string;
@@ -43,7 +43,7 @@ interface Layout {
   origin: string;
 }
 
-function render(l: Layout): Mail {
+export function render(l: Layout): Mail {
   const factRows = l.facts
     .map(([k, v, h]) => `<tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">${esc(k)}</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">${h ?? esc(v)}</td></tr>`)
     .join('');

@@ -6,6 +6,7 @@ import { serviceDb, SITE_ORIGIN } from '../bookings/payments.js';
 import { orderManageUrl, orderNoLabel, shipsWithinLabel } from './payments.js';
 import { shopPageUrl } from '../customerUrls.js';
 import type { StoreNotifyEvent } from './types.js';
+import { maybeEmailOwner, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
 /**
  * Store notifications: owner pushes (Expo) and customer emails (SMTP), in the Phase 2 layout.
@@ -57,6 +58,8 @@ export interface NotifyStoreShop {
   name: string;
   slug: string | null;
   owner_id: string;
+  /** Set for an iOS shop; null/absent = a web-app shop (owner email notifications apply). */
+  ios_otid?: string | null;
   address?: string | null;
   accent?: string | null;
   manual_handles?: Record<string, unknown> | null;
@@ -79,6 +82,8 @@ export interface OrderNotifyDeps {
   loadContext(orderId: string): Promise<OrderNotifyContext | null>;
   sendEmail(msg: EmailMessage): Promise<EmailResult>;
   push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
+  /** Web-app owners only (flag on + no ios_otid): email the shop owner. Absent = never emails the owner. */
+  emailOwner?(ownerId: string, event: OwnerEvent): Promise<unknown>;
   now(): number;
 }
 
@@ -215,6 +220,12 @@ export function orderCancelledEmail(ctx: OrderNotifyContext, refundedCents: numb
 // notifyOrder
 // ---------------------------------------------------------------------------
 
+/** Additive web-app owner email; a no-op for iOS shops, flag off, or deps without emailOwner. Never throws. */
+async function emailOwner(ctx: OrderNotifyContext, deps: OrderNotifyDeps, event: OwnerEvent): Promise<void> {
+  if (!deps.emailOwner) return;
+  await maybeEmailOwner(ctx.shop, event, deps.emailOwner);
+}
+
 async function emailCustomer(ctx: OrderNotifyContext, deps: OrderNotifyDeps, build: () => EmailMessage): Promise<EmailResult> {
   if (!ctx.order.customer_email) return 'skipped';
   return deps.sendEmail(build());
@@ -240,6 +251,10 @@ export async function notifyOrder(event: StoreNotifyEvent, deps?: OrderNotifyDep
           body: `New order ${orderNo(o)}: ${customerLabel(o)}, ${dollars(o.total_cents)} · ${o.fulfilment}`,
           data,
         }));
+        jobs.push(emailOwner(ctx, d, {
+          kind: 'order_created', customerName: o.customer_name, itemCount: ctx.items.reduce((n, i) => n + i.quantity, 0),
+          totalCents: o.total_cents, fulfilment: o.fulfilment, orderLabel: orderNo(o),
+        }));
         jobs.push(emailCustomer(ctx, d, () => orderConfirmationEmail(ctx)));
         break;
       }
@@ -259,6 +274,7 @@ export async function notifyOrder(event: StoreNotifyEvent, deps?: OrderNotifyDep
           body: `${customerLabel(o)} says they paid ${dollars(o.total_cents)} by ${label(event.method)} (order ${orderNo(o)})`,
           data,
         }));
+        jobs.push(emailOwner(ctx, d, { kind: 'order_says_paid', customerName: o.customer_name, totalCents: o.total_cents, method: event.method, orderLabel: orderNo(o) }));
         break;
       default:
         return;
@@ -310,6 +326,7 @@ export function liveOrderNotifyDeps(db: SupabaseClient = serviceDb()): OrderNoti
     },
     sendEmail: (msg) => liveSendEmail(msg),
     push: (userIds, msg) => pushToUsers(userIds, msg, store),
+    emailOwner: (ownerId, event) => sendOwnerEmail(ownerId, event),
     now: () => Date.now(),
   };
 }

@@ -4,6 +4,7 @@ import { sendEmail as liveSendEmail, escapeHtml, type EmailMessage, type EmailRe
 import { pushToUsers, type PushMessage, type PushTokenStore } from './push.js';
 import { customerAppointmentIcs } from './ics.js';
 import { manageUrl, bookingPageUrl, serviceDb } from './payments.js';
+import { maybeEmailOwner, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
 /**
  * Booking notifications: owner pushes (Expo) and customer emails (SMTP).
@@ -59,6 +60,8 @@ export interface NotifyShop {
   slug: string | null;
   timezone: string;
   owner_id: string;
+  /** Set for an iOS shop; null/absent = a web-app shop (owner email notifications apply). */
+  ios_otid?: string | null;
   address?: string | null;
   phone?: string | null;
   accent?: string | null;
@@ -78,6 +81,8 @@ export interface NotifyDeps {
   loadContext(appointmentId: string): Promise<NotifyContext | null>;
   sendEmail(msg: EmailMessage): Promise<EmailResult>;
   push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
+  /** Web-app owners only (flag on + no ios_otid): email the shop owner. Absent = never emails the owner. */
+  emailOwner?(ownerId: string, event: OwnerEvent): Promise<unknown>;
   now(): number;
 }
 
@@ -241,7 +246,21 @@ export function reminderEmail(ctx: NotifyContext): EmailMessage {
 // notify
 // ---------------------------------------------------------------------------
 
+const ownerEvent = (kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled' | 'customer_says_paid', ctx: NotifyContext) => ({
+  kind,
+  customerName: ctx.appt.customer_name,
+  service: ctx.appt.service_name,
+  whenShort: shortWhen(ctx.appt.start_at, ctx.shop.timezone),
+  whenLong: longWhen(ctx.appt.start_at, ctx.shop.timezone),
+}) as OwnerEvent;
+
 const pushRecipients = (ctx: NotifyContext) => [ctx.shop.owner_id, ctx.memberUserId].filter(Boolean) as string[];
+
+/** Additive web-app owner email; a no-op for iOS shops, flag off, or deps without emailOwner. Never throws. */
+async function emailOwner(ctx: NotifyContext, deps: NotifyDeps, event: OwnerEvent): Promise<void> {
+  if (!deps.emailOwner) return;
+  await maybeEmailOwner(ctx.shop, event, deps.emailOwner);
+}
 
 async function emailCustomer(ctx: NotifyContext, deps: NotifyDeps, build: () => EmailMessage): Promise<EmailResult> {
   if (!ctx.appt.customer_email) return 'skipped';
@@ -269,6 +288,7 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
             body: `New booking: ${customerLabel(appt)}, ${appt.service_name}, ${shortWhen(appt.start_at, shop.timezone)}`,
             data,
           }));
+          jobs.push(emailOwner(ctx, d, ownerEvent('booking_created', ctx)));
         }
         jobs.push(emailCustomer(ctx, d, () => confirmationEmail(ctx, now)));
         break;
@@ -279,6 +299,7 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
             body: `Cancelled: ${customerLabel(appt)}, ${shortWhen(appt.start_at, shop.timezone)}`,
             data,
           }));
+          jobs.push(emailOwner(ctx, d, ownerEvent('booking_cancelled', ctx)));
         }
         const refunded = event.refundedCents ?? appt.amount_refunded_cents ?? 0;
         jobs.push(emailCustomer(ctx, d, () => cancellationEmail(ctx, event.by, refunded, now, event.closed === true)));
@@ -290,6 +311,7 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
             body: `Rescheduled: ${customerLabel(appt)} → ${shortWhen(appt.start_at, shop.timezone)}`,
             data,
           }));
+          jobs.push(emailOwner(ctx, d, ownerEvent('booking_rescheduled', ctx)));
         }
         jobs.push(emailCustomer(ctx, d, () => rescheduleEmail(ctx, now)));
         break;
@@ -303,6 +325,7 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
             : `${customerLabel(appt)} says they paid by ${label}`,
           data,
         }));
+        jobs.push(emailOwner(ctx, d, { ...ownerEvent('customer_says_paid', ctx), method: event.method, amountCents: cents ?? null } as OwnerEvent));
         break;
       }
       case 'reminder': {
@@ -449,6 +472,7 @@ export function liveNotifyDeps(db: SupabaseClient = serviceDb()): NotifyDeps {
     },
     sendEmail: (msg) => liveSendEmail(msg),
     push: (userIds, msg) => pushToUsers(userIds, msg, store),
+    emailOwner: (ownerId, event) => sendOwnerEmail(ownerId, event),
     now: () => Date.now(),
   };
 }
