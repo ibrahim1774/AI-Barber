@@ -60,6 +60,15 @@ export const TOURS: Record<TourId, Tour> = {
   },
 };
 
+/** Web only: the first-site Edit tour (5 steps, Skip always shown). Every target is registered by the editor's tool bar or the Change image pill. */
+export const WEB_EDIT_STEPS: TourStep[] = [
+  { target: 'edit.changeImage', tip: 'Tap Change image on any picture to swap it. Photos, below, lists them all.' },
+  { target: 'edit.text', tip: 'Text: change your phone number, shop name and any wording on your site.' },
+  { target: 'edit.sections', tip: 'Sections: add your services and prices here.' },
+  { target: 'edit.sections', tip: 'Sections also hold your opening hours and your team.' },
+  { target: 'edit.publish', tip: 'Ready? Tap Publish to put your website online. You can edit it any time.' },
+];
+
 /** Where each tour's screen lives (Settings replay and the Tutorial topics both navigate here). */
 export const TOUR_ROUTE = { edit: '/edit', bookings: '/bookings', store: '/store', getpaid: '/get-paid' } as const;
 

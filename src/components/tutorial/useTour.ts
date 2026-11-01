@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import {
-  hasTourSeen, markTourSeen, TOURS, type Tour, type TourId, type TourScreen,
+  hasTourSeen, markTourSeen, TOURS, WEB_EDIT_STEPS, type Tour, type TourId, type TourScreen,
 } from '@/components/tutorial/tours';
 
 export interface TourController {
@@ -19,9 +19,7 @@ export function useTour(
   screen: TourScreen,
   opts: { auto?: TourId | null; ready?: boolean; ignoreFlag?: boolean; onDone?(id: TourId): void } = {},
 ): TourController {
-  // Web: the coach marks never open by themselves (the overlay blocks the first tap in the browser). The phone is unchanged.
-  const { auto: wanted = null, ready = true, ignoreFlag = false, onDone } = opts;
-  const auto = Platform.OS === 'web' ? null : wanted;
+  const { auto = null, ready = true, ignoreFlag = false, onDone } = opts;
   const [active, setActive] = useState<TourId | null>(null);
   const [step, setStep] = useState(0);
   const autoStarted = useRef<TourId | null>(null);
@@ -54,7 +52,8 @@ export function useTour(
     done.current?.(id);
   }, [active]);
 
-  const tour = active ? TOURS[active] : null;
+  // Web: the Edit tour points at the controls a browser owner needs first (see WEB_EDIT_STEPS); the phone keeps its own steps.
+  const tour = active ? (Platform.OS === 'web' && active === 'edit' ? { ...TOURS.edit, steps: WEB_EDIT_STEPS } : TOURS[active]) : null;
   const next = useCallback(() => {
     if (!tour) return;
     if (step + 1 >= tour.steps.length) finish();

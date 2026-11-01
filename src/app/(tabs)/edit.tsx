@@ -70,7 +70,6 @@ import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
 import { migrateSamplePrices, mirrorServices } from '@/lib/samplePrices';
-import { WebTips } from '@/components/WebTips';
 import { StripeReturn } from '@/components/StripeReturn';
 import { requestPublish } from '@/lib/publishRequest';
 import { PublishBar } from '@/components/PublishBar';
@@ -722,12 +721,6 @@ export default function Editor() {
     },
   });
 
-  // Web: the first-site guide (coach marks) never auto-starts, so close it at once; the flow after it (reminders, prompts) goes on.
-  const webGuideReady = Platform.OS === 'web' && overlay === 'guide' && editTourReady({ overlay, hasSite: !!site, signedIn: !!session }) && !welcome;
-  useEffect(() => {
-    if (webGuideReady) onGuideClose();
-  }, [webGuideReady, onGuideClose]);
-
   // The hero's (else the first) "Change image" pill, which the Edit tour's photo step points at.
   const changeImageRef = useTutorialTarget('edit.changeImage');
 
@@ -785,21 +778,6 @@ export default function Editor() {
         {overlay == null && stockPhotoPaths(data).length > 0 && (
           <StockPhotoNudge onAddPhotos={() => setSheet('photos')} />
         )}
-        <WebTips
-          data={data}
-          draftId={site.draftId}
-          published={!!site.deployedUrl}
-          hidden={overlay != null || sheet != null || uploading || !!welcome || Platform.OS !== 'web'}
-          actions={{
-            photos: () => setSheet('photos'),
-            phone: () => openEdit('phone', false),
-            services: () => { setServicesAdd(true); setServicesFocus(null); setSheet('services'); },
-            hours: () => { setHoursFromPreview(true); setSheet('hours'); },
-            team: () => setSheet('team'),
-            pages: () => setSheet('pages'),
-            publish: handlePublish,
-          }}
-        />
         <PublishBar
           onPages={() => setSheet('pages')}
           onSections={openSections}

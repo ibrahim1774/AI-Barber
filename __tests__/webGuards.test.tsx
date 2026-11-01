@@ -12,6 +12,7 @@ import { isStripeUrl } from '@/lib/webBilling';
 import { __resetWebPlan, isWebPlanActive, markWebPlanSettled, setWebPlanActive, webPlanCheckFailed, webPlanReady } from '@/lib/webPlan';
 import { draftToPatch, draftErrors, type ServiceDraft } from '@/lib/setup/serviceDraft';
 import { useTour, type TourController } from '@/components/tutorial/useTour';
+import { TOURS, WEB_EDIT_STEPS } from '@/components/tutorial/tours';
 import { formProblems } from '@/components/sections/ServicesSheet';
 
 const asWeb = (fn: () => void) => {
@@ -157,69 +158,22 @@ describe('superwall web shim (items 4, 7)', () => {
   });
 });
 
-describe('coach marks never auto-start on web, phone unchanged', () => {
+describe('coach marks on web (replaced steps, same auto-start rule)', () => {
   let ctl: TourController;
   function Probe() { ctl = useTour('edit', { auto: 'edit', ignoreFlag: true, ready: true }); return null; }
   const mount = async () => { await act(async () => { TestRenderer.create(React.createElement(Probe)); }); };
-  it('phone: the Edit tour opens by itself', async () => { await mount(); expect(ctl.tour?.id).toBe('edit'); });
-  it('web: it does not', async () => {
+  it('phone: the Edit tour opens by itself with its own steps', async () => {
+    await mount();
+    expect(ctl.tour?.steps).toBe(TOURS.edit.steps);
+  });
+  it('web: it opens by itself with the short web steps (max 6, ends at Publish)', async () => {
     const spy = jest.replaceProperty(Platform, 'OS', 'web');
-    try { await mount(); expect(ctl.tour).toBeNull(); } finally { spy.restore(); }
-  });
-});
-
-describe('inline editor hints (web)', () => {
-  const tips = require('@/lib/webTips');
-  const data = (over: any = {}) => ({
-    shopName: 'Fade', area: 'NYC', phone: '', hero: { heading: 'h', tagline: 't', imageUrl: 'https://images.unsplash.com/x.jpg' },
-    about: { heading: 'a', description: ['d'], imageUrl: '' }, services: [{ title: 'Cut', price: '$30' }], gallery: [], ...over,
-  });
-  const none = { off: false, dismissed: new Set<string>() };
-  const ids = (d: any, base: any, published = false, s: any = none) => tips.visibleTips(d, base, published, s).map((t: any) => t.id);
-
-  it('shows the hints in order and the publish hint last', () => {
-    const d = data(); const base = tips.baselineOf(d);
-    const got = ids(d, base);
-    expect(got[0]).toBe('phone');            // sample photos only count when the data has them; phone is empty
-    expect(got[got.length - 1]).toBe('publish');
-    expect(got).toEqual(expect.arrayContaining(['services', 'hours', 'team', 'pages']));
-  });
-  it('a tip disappears once the owner did the action', () => {
-    const d = data(); const base = tips.baselineOf(d);
-    expect(ids(data({ phone: '555 111 2222' }), base)).not.toContain('phone');
-    expect(ids(data({ services: [{ title: 'Cut', price: '$30' }, { title: 'Fade', price: '$35' }] }), base)).not.toContain('services');
-    expect(ids(data({ hours: [{ day: 'Mon', open: '09:00', close: '17:00' }] }), base)).not.toContain('hours');
-    expect(ids(data({ staff: [{ name: 'Sam' }] }), base)).not.toContain('team');
-  });
-  it('publish hint: gone once published, prominent when it is the only one left', () => {
-    const d = data({ phone: '1' }); const base = tips.baselineOf(d);
-    expect(ids(d, base, true)).not.toContain('publish');
-    const dismissed = new Set(['services', 'hours', 'team', 'pages', 'photos']);
-    expect(tips.visibleTips(d, base, false, { off: false, dismissed })).toEqual([{ id: 'publish', prominent: true }]);
-    expect(tips.visibleTips(d, base, false, none).find((t: any) => t.id === 'publish').prominent).toBe(false);
-  });
-  it('Hide tips hides everything; nothing before the starting point is known', () => {
-    const d = data(); const base = tips.baselineOf(d);
-    expect(ids(d, base, false, { off: true, dismissed: new Set() })).toEqual([]);
-    expect(ids(d, null)).toEqual([]);
-  });
-  it('dismissals and the switch are remembered on the device', async () => {
-    const Storage = require('expo-sqlite/kv-store').default;
-    await Storage.removeItem('webtips:off:v1'); await Storage.removeItem('webtips:dismissed:v1');
-    tips.__resetTips();
-    tips.dismissTip('hours'); tips.setTipsOff(true);
-    await new Promise((r) => setTimeout(r, 20));
-    tips.__resetTips();
-    await tips.loadTips();
-    expect(await Storage.getItem('webtips:off:v1')).toBe('1');
-    expect(JSON.parse(await Storage.getItem('webtips:dismissed:v1'))).toEqual(['hours']);
-    tips.showTipsAgain();
-    expect(await Storage.getItem('webtips:off:v1')).toBe('0');
-  });
-  it('the phone renders nothing for the hints and the settings row', () => {
-    const { WebTips } = require('../src/components/WebTips');
-    const { TipsRow } = require('../src/components/TipsRow');
-    expect(WebTips({})).toBeNull();
-    expect(TipsRow()).toBeNull();
+    try {
+      await mount();
+      expect(ctl.tour?.steps).toBe(WEB_EDIT_STEPS);
+      expect(WEB_EDIT_STEPS.length).toBeLessThanOrEqual(6);
+      expect(WEB_EDIT_STEPS[WEB_EDIT_STEPS.length - 1].target).toBe('edit.publish');
+      expect(WEB_EDIT_STEPS.map((x) => x.target)).toEqual(expect.arrayContaining(['edit.changeImage', 'edit.text', 'edit.sections']));
+    } finally { spy.restore(); }
   });
 });
