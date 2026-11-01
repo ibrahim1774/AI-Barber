@@ -30,7 +30,8 @@ export function GetPaid({ shop, onChanged, firstCardRef, stripeReturn }: { shop:
   const [stripeBusy, setStripeBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [cardNote, setCardNote] = useState<string | null>(null);
-  const opening = useRef(false);
+  // Coming back from Stripe (web) counts as having opened it, so the status is read even before the shop row shows an account.
+  const opening = useRef(Platform.OS === 'web' && !!stripeReturn);
   // Web only: the time until which the status is re-read every few seconds (set when Stripe is opened or returned from).
   const watchUntil = useRef(stripeReturn && Platform.OS === 'web' ? Date.now() + STRIPE_POLL_WINDOW_MS : 0);
 
