@@ -47,6 +47,12 @@ export function WebResetPassword() {
     return () => { alive = false; };
   }, []);
 
+  // The router may put the address back after the first paint: once the link has been read, make sure no token is left in it.
+  useEffect(() => {
+    if (phase === 'checking') return;
+    try { if (window.location.hash || window.location.search) window.history.replaceState(window.history.state, '', window.location.pathname); } catch { /* ignore */ }
+  }, [phase]);
+
   const submit = async () => {
     if (busy) return;
     const problem = newPasswordProblem(password, confirm);
