@@ -8,7 +8,12 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
   APP_ORIGIN: () => 'https://app.test', callerFrom: async () => state.uid ? { id: state.uid, email: 'test@example.com' } : null,
   sbRest: async (...args: any[]) => { state.writes.push(args[0]); return state.rest(...args); },
   stripeCall: async (...args: any[]) => state.stripe(...args),
+  readRawBody: async (req: any) => req.body,
 }));
+vi.mock('../../lib/webApp/stripeCore.js', async (orig) => ({ ...(await orig<any>()), verifyStripeSignature: () => true }));
+vi.mock('../../lib/webApp/emails.js', () => ({ sendMail: vi.fn(async () => {}), welcomeEmail: () => ({}) }));
+vi.mock('../../lib/webApp/duplicates.js', () => ({ handleDuplicates: vi.fn(async () => {}), liveDupDeps: () => ({}) }));
+vi.mock('../../lib/webApp/dunning.js', () => ({ contactFor: async () => ({ email: null, firstName: null }), resetDunning: async () => {}, sendFailedPaymentIfDue: async () => {} }));
 vi.mock('../../lib/webApp/appStoreGuard.js', () => ({ appStoreStateOf: async () => null }));
 vi.mock('@vercel/functions', () => ({ waitUntil: vi.fn() }));
 import draft from '../../api/web-app/draft.js';
@@ -16,6 +21,7 @@ import checkout from '../../api/web-app/checkout.js';
 import status from '../../api/web-app/publish-status.js';
 import { prepareIntent, readDraft, suspendWork, markSiteOffline } from '../../lib/webApp/reliability.js';
 import publishApi from '../../api/web-app/publish.js';
+import webhook from '../../api/web-app/webhook.js';
 import { liveJobDeps, runJob, sweepJobs } from '../../lib/webApp/publishJobs.js';
 
 const U = '10000000-0000-0000-0000-000000000001';
@@ -85,7 +91,7 @@ beforeAll(async () => {
     create role anon; create role authenticated; create role service_role bypassrls;
     insert into auth.users values('${U}'),('${V}');
     create table web_app_entitlements(stripe_subscription_id text primary key, stripe_customer_id text, user_id uuid, site_slug text,
-      tier text, billing_interval text, status text, environment text, current_period_end timestamptz, cancel_at_period_end boolean, created_at timestamptz default now(), updated_at timestamptz);
+      tier text, billing_interval text, status text, environment text, current_period_end timestamptz, cancel_at_period_end boolean, created_at timestamptz default now(), updated_at timestamptz, welcome_sent_at timestamptz);
     create table web_app_customers(user_id uuid, environment text, stripe_customer_id text, primary key(user_id,environment));
     create table site_owners(slug text, user_id uuid);`);
   await db.exec(readFileSync(new URL('../../supabase/migrations/025_web_app_reliability.sql', import.meta.url),'utf8'));
@@ -132,7 +138,7 @@ describe('B1/S2: republish and checkout after take-offline', () => {
   });
   it('B1 an explicit republish of unchanged live content deploys again', async () => {
     const { job, deps } = await setup(); await runJob(job.id, deps);
-    const again = await prepareIntent(U, 'draft', 1, 'publish'); await runJob(again.id, deps);
+    const again = await prepareIntent(U, 'draft', 1, 'publish', null, undefined, true); await runJob(again.id, deps);
     expect(deps.publish).toHaveBeenCalledTimes(2);
   });
   it('S2 checkout from the Publish paywall works after take-offline, with unchanged content', async () => {
@@ -272,5 +278,94 @@ describe('S7: retry re-dispatch is throttled', () => {
       codes.push((await call(status, undefined, 'POST')).code);
     }
     expect(codes).toContain(429);
+  });
+});
+
+describe('S8: crash-looping jobs and payment polling', () => {
+  it('parks a job whose worker keeps dying (running, never finished) after the attempt cap', async () => {
+    const { job, deps } = await setup();
+    await db.query("update web_app_publish_intents set status='running', attempts=20, next_attempt_at=now()-interval '1 minute' where id=$1", [job.id]);
+    await runJob(job.id, deps);
+    expect(deps.publish).not.toHaveBeenCalled();
+    const row = (await db.query<any>('select status,result from web_app_publish_intents where id=$1', [job.id])).rows[0];
+    expect(row.status).toBe('cancelled'); expect(row.result.error).toBe('publish_gave_up');
+    expect((await readDraft(U))?.publish_lease).toBeNull();
+  });
+  it('counts attempts on every claim, including ones that never finish', async () => {
+    const { job } = await setup();
+    const deps = liveJobDeps();
+    expect((await deps.claim(job.id, '20000000-0000-0000-0000-000000000001'))?.attempts).toBe(1);
+    await db.query("update web_app_drafts set publish_lease=null, lease_until=null");
+    expect((await deps.claim(job.id, '20000000-0000-0000-0000-000000000002'))?.attempts).toBe(2);
+  });
+  it('ten stuck publish jobs cannot starve payment polling', async () => {
+    for (let i = 0; i < 10; i++) await db.query("insert into web_app_publish_intents(id,user_id,environment,draft_id,revision,snapshot,status,attempts,next_attempt_at) values($1,$2,'test','x',$3,'{}','running',1,now()-interval '1 hour')", ['run' + i, V, i + 20]);
+    for (let i = 0; i < 4; i++) await db.query("insert into web_app_publish_intents(id,user_id,environment,draft_id,revision,snapshot,status,requires_payment,next_attempt_at,created_at) values($1,$2,'test','x',$3,'{}','awaiting_payment',true,now()-interval '1 hour',now()-interval '10 minutes')", ['pay' + i, V, i + 40]);
+    const r = await sweepJobs();
+    expect(r.checked).toBe(10);
+    const polled = (await db.query<any>("select count(*)::int n from web_app_publish_intents where id like 'pay%' and next_attempt_at > now()")).rows[0].n;
+    expect(polled).toBeGreaterThanOrEqual(3);
+  });
+  it('the 1-hour abandon cancel never cancels a request whose payment went through', async () => {
+    await save(); const a = await prepareIntent(U, 'draft', 1, 'checkout:publish');
+    await db.query("update web_app_publish_intents set created_at=now()-interval '2 hours', next_attempt_at=now()+interval '1 hour'");
+    await db.query("insert into web_app_customers values($1,'test','cus_test') on conflict do nothing", [U]);
+    state.stripe = vi.fn(async (path: string) => {
+      if (path.startsWith('subscriptions?')) return { data: [{ id: 'sub_paid', status: 'active', metadata: { app: 'aibarber-app', user_id: U } }] };
+      if (path === 'subscriptions/sub_paid') return { id: 'sub_paid', customer: 'cus_test', status: 'active', metadata: { app: 'aibarber-app', user_id: U }, items: { data: [{ price: { id: 'price_test' } }] } };
+      throw new Error('unexpected ' + path);
+    });
+    await sweepJobs();
+    expect((await intents()).find((r) => r.id === a.id)?.status).not.toBe('cancelled');
+  });
+  it('a revived parked row starts with a fresh attempt budget (N5)', async () => {
+    const { job } = await setup();
+    await db.query("update web_app_publish_intents set status='cancelled', attempts=20, result='{\"error\":\"publish_gave_up\"}' where id=$1", [job.id]);
+    const again = await prepareIntent(U, 'draft', 1, 'publish');
+    expect(again.status).toBe('queued'); expect(again.attempts).toBe(0); expect(again.result).toBeNull();
+  });
+});
+
+describe('S9: automatic client retry does not redeploy live content', () => {
+  it('a repeated POST /publish for the same revision while the site is up deploys once and returns the stored result', async () => {
+    const { job, deps } = await setup(); await runJob(job.id, deps);
+    await db.query("insert into web_app_entitlements(stripe_subscription_id,user_id,status,environment) values('sub_x',$1,'active','test')", [U]);
+    const body = { draftId: 'draft', revision: 1, siteData: site() };
+    const first = await call(publishApi, body), second = await call(publishApi, body);
+    expect(first.code).toBe(200); expect(second.code).toBe(200);
+    expect(second.body.deployedUrl).toBe('https://test-cuts.example');
+    expect(deps.publish).toHaveBeenCalledTimes(1);
+    expect((await intents())[0].status).toBe('live');
+  });
+  it('an explicit republish flag or an offline site still deploys again', async () => {
+    const { job, deps } = await setup(); await runJob(job.id, deps);
+    const plain = await prepareIntent(U, 'draft', 1, 'publish');
+    expect(plain.status).toBe('live');
+    const explicit = await prepareIntent(U, 'draft', 1, 'publish', null, undefined, true);
+    expect(explicit.status).toBe('queued');
+  });
+});
+
+describe('S10: webhook wake expires the newest open session', () => {
+  it('expires the newest request\'s own Checkout session when an older session was paid', async () => {
+    await save(); await call(checkout, { tier: 'website', interval: 'month', publish: true, draftId: 'draft', revision: 1 });
+    const first = (await intents())[0];
+    await save({ ...site(), phone: 'rev2' }, 1);
+    const rev2 = await prepareIntent(U, 'draft', 2, 'checkout:publish');
+    await db.query("update web_app_publish_intents set stripe_session_id='cs_2' where id=$1", [rev2.id]);
+    const calls: string[] = [];
+    state.stripe = vi.fn(async (path: string, _b?: any, method?: string) => {
+      calls.push(`${method ?? ''} ${path}`);
+      if (path === 'subscriptions/sub_paid') return { id: 'sub_paid', customer: 'cus_test', status: 'active', metadata: { app: 'aibarber-app', user_id: U, intent_id: first.id }, items: { data: [{ price: { id: 'price_test' } }] } };
+      if (path.startsWith('checkout/sessions/cs_2/expire')) return { id: 'cs_2', status: 'expired' };
+      throw new Error('unexpected ' + path);
+    });
+    vi.stubEnv('STRIPE_WEBAPP_WEBHOOK_SECRET', 'whsec_x');
+    const ev = { id: 'evt_1', type: 'customer.subscription.created', livemode: false, data: { object: { id: 'sub_paid', metadata: { app: 'aibarber-app' } } } };
+    const raw = JSON.stringify(ev);
+    const r = response(); await webhook({ method: 'POST', headers: { 'stripe-signature': 'x' }, body: raw }, r);
+    expect(r.code).toBe(200);
+    expect(calls).toContain('POST checkout/sessions/cs_2/expire');
+    expect((await intents()).find((x) => x.id === rev2.id)?.status).not.toBe('awaiting_payment');
   });
 });

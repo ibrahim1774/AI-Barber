@@ -30,7 +30,7 @@ export default async function handler(req: any, res: any) {
       const ent = (await sbRest(`web_app_entitlements?user_id=eq.${enc(caller.id)}&environment=eq.${modeOf()}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&order=created_at.desc&limit=1`))?.[0];
       if (!ent) return res.status(402).json({ error: 'subscription-inactive' });
       const input = body as any;
-      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, input?.siteData);
+      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, input?.siteData, input?.republish === true);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);
       const finished = (await sbRest(`web_app_publish_intents?id=eq.${job.id}&select=status,result&limit=1`))?.[0];

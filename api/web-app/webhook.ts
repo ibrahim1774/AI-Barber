@@ -62,7 +62,12 @@ export default async function handler(req: any, res: any) {
           const latest = await sbRest(`web_app_publish_intents?id=eq.${enc(d.latest_intent_id)}&user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&status=in.(awaiting_payment,failed)`, {
             method: 'PATCH', body: { stripe_subscription_id: sub.id, status: 'queued' }, prefer: 'return=representation',
           });
-          if (latest?.length) dispatchJob(latest[0].id);
+          if (latest?.length) {
+            // The newest request's own Checkout page must not stay payable now that a hosting plan is paid.
+            const open = latest[0].stripe_session_id;
+            if (typeof open === 'string') await stripeCall(`checkout/sessions/${encodeURIComponent(open)}/expire`, {}, 'POST').catch((e: any) => console.error('[web-app webhook expire newest]', e?.message || e));
+            dispatchJob(latest[0].id);
+          }
         }
       }
     }

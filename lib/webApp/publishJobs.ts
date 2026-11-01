@@ -51,6 +51,13 @@ export function liveJobDeps(): JobDeps {
         await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,running)`, { method: 'PATCH', body: { next_attempt_at: new Date(Date.now() + 60_000).toISOString() } });
         return null;
       }
+      if (job.attempts >= MAX_JOB_ATTEMPTS) {
+        // Every claim counts as an attempt (a crash or timeout never reaches finish), so a job that keeps killing the worker is parked here.
+        console.error('[web publish worker] giving up after', job.attempts, 'attempts:', job.id);
+        await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,running)`, { method: 'PATCH', body: { status: 'cancelled', result: { error: 'publish_gave_up' } } });
+        await sbRest(`${draftPath(job.user_id)}&publish_lease=eq.${token}`, { method: 'PATCH', body: { publish_lease: null, lease_until: null } });
+        return null;
+      }
       try {
         const changed = await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,running)`, {
           method: 'PATCH', body: { status: 'running', worker_token: token, attempts: job.attempts + 1 }, prefer: 'return=representation',
@@ -148,16 +155,22 @@ export async function sweepJobs() {
   const env = modeOf();
   const nowIso = new Date().toISOString();
   const abandoned = new Date(Date.now() - ABANDON_AFTER_MS).toISOString();
-  // Housekeeping (database only): never-linked checkouts older than an hour, and jobs that exhausted their attempts.
-  await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.awaiting_payment&stripe_session_id=is.null&created_at=lt.${enc(abandoned)}`, { method: 'PATCH', body: { status: 'cancelled' } }).catch(() => {});
+  // Housekeeping (database only, plus a payment check): never-linked checkouts older than an hour, and jobs that exhausted their attempts.
+  // Running jobs that exhausted theirs are parked by `claim`, which counts every dispatch.
+  const stale: Intent[] = (await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.awaiting_payment&stripe_session_id=is.null&created_at=lt.${enc(abandoned)}&order=created_at.asc&limit=10`).catch(() => null)) ?? [];
+  for (const j of stale) {
+    // Never cancel a request whose payment actually went through (another tab's session); a failed check keeps it.
+    const paid = await liveJobDeps().paid(j).catch(() => true);
+    await sbRest(`web_app_publish_intents?id=eq.${j.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: paid ? { status: 'queued' } : { status: 'cancelled' } }).catch(() => {});
+  }
   await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.failed&attempts=gte.${MAX_JOB_ATTEMPTS}`, { method: 'PATCH', body: { status: 'cancelled' } }).catch(() => {});
   const due = `environment=eq.${env}&next_attempt_at=lte.${enc(nowIso)}`;
-  const LIMIT = 10;
-  // Work that is already paid (or free of payment) comes first, oldest due first; payment polling only uses the remaining slots.
-  const work: Intent[] = (await sbRest(`web_app_publish_intents?${due}&status=in.(queued,failed,running)&order=next_attempt_at.asc&limit=${LIMIT}`)) ?? [];
-  const polling: Intent[] = work.length >= LIMIT ? [] :
-    (await sbRest(`web_app_publish_intents?${due}&status=eq.awaiting_payment&order=created_at.asc&limit=${LIMIT - work.length}`)) ?? [];
-  const rows = [...work, ...polling];
+  const LIMIT = 10, RESERVED_POLLS = 3;
+  // Payment polling keeps a reserved slice of the batch, so stuck publish jobs can never starve it; real work uses the rest.
+  const pollCandidates: Intent[] = (await sbRest(`web_app_publish_intents?${due}&status=eq.awaiting_payment&order=created_at.asc&limit=${LIMIT}`)) ?? [];
+  const work: Intent[] = (await sbRest(`web_app_publish_intents?${due}&status=in.(queued,failed,running)&order=next_attempt_at.asc&limit=${LIMIT - Math.min(pollCandidates.length, RESERVED_POLLS)}`)) ?? [];
+  const polling = pollCandidates.slice(0, LIMIT - work.length);
+  const rows = [...polling, ...work];
   const started = Date.now();
   for (const job of rows) {
     if (Date.now() - started > 210_000) break;
