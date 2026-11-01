@@ -71,6 +71,8 @@ import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
 import { migrateSamplePrices, mirrorServices } from '@/lib/samplePrices';
 import { WebTips } from '@/components/WebTips';
+import { StripeReturn } from '@/components/StripeReturn';
+import { requestPublish } from '@/lib/publishRequest';
 import { PublishBar } from '@/components/PublishBar';
 import { PaymentBlock } from '@/components/PaymentLock';
 import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
@@ -757,6 +759,8 @@ export default function Editor() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* The prompts / guide cover this body; the tab bar is hidden meanwhile. */}
       <View style={styles.body}>
+        {/* Web: the note after Stripe Checkout; when the plan is on it runs the publish that was under way. */}
+        <StripeReturn onResume={(h) => { requestPublish(h); runPublishRequest(); }} />
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
@@ -785,12 +789,12 @@ export default function Editor() {
           data={data}
           draftId={site.draftId}
           published={!!site.deployedUrl}
-          hidden={overlay != null || sheet != null || uploading || Platform.OS !== 'web'}
+          hidden={overlay != null || sheet != null || uploading || !!welcome || Platform.OS !== 'web'}
           actions={{
             photos: () => setSheet('photos'),
             phone: () => openEdit('phone', false),
-            services: () => { setServicesAdd(false); setServicesFocus(null); setSheet('services'); },
-            hours: () => { setHoursFromPreview(false); setSheet('hours'); },
+            services: () => { setServicesAdd(true); setServicesFocus(null); setSheet('services'); },
+            hours: () => { setHoursFromPreview(true); setSheet('hours'); },
             team: () => setSheet('team'),
             pages: () => setSheet('pages'),
             publish: handlePublish,

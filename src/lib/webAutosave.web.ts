@@ -29,6 +29,18 @@ const clean = (raw: unknown): unknown => {
   return rest;
 };
 
+/**
+ * Pushes any unsynced edit to the account and waits for it, but never longer than `capMs` and never rejects (offline
+ * included): used right before leaving the page for Stripe, so the account holds the latest draft.
+ */
+let flushNow: () => Promise<void> = async () => {};
+export function flushWebAutosave(capMs = 5000): Promise<void> {
+  return Promise.race([
+    flushNow().catch(() => {}),
+    new Promise<void>((res) => setTimeout(res, capMs)),
+  ]);
+}
+
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pushing: Promise<void> | null = null;
@@ -64,6 +76,8 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
     // One push at a time; an edit made meanwhile is unsynced again and schedules the next one.
     pushing = (pushing ?? Promise.resolve()).then(run).catch((e) => console.warn('[autosave] failed:', e)).finally(() => { pushing = null; });
   };
+
+  flushNow = async () => { push(); await (pushing ?? Promise.resolve()); };
 
   siteStore.onSiteSaved((r) => {
     if (!unsynced(r)) return; // a stamp write after a push: nothing new to send (also stops a save loop)

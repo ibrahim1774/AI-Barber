@@ -46,7 +46,7 @@ export function WebTips({ data, draftId, published, hidden, actions }: WebTipsPr
         style={st.chipMain}
       >
         <Animated.View style={[st.dot, strong && st.dotStrong, { opacity: pulse }]} />
-        <Text style={[st.chipText, strong && st.chipTextStrong]} numberOfLines={strong ? 2 : 1}>{TIPS[id].text}</Text>
+        <Text style={[st.chipText, strong && st.chipTextStrong]} numberOfLines={id === 'publish' ? 2 : 1}>{TIPS[id].text}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={`Dismiss tip: ${TIPS[id].text}`} hitSlop={8} onPress={() => dismissTip(id)} style={st.x}>
         <Text style={[st.xText, strong && st.chipTextStrong]}>×</Text>
@@ -76,6 +76,10 @@ export function WebTips({ data, draftId, published, hidden, actions }: WebTipsPr
           )}
         </View>
       )}
+      {publish && (
+        // A small arrow down at the Publish button on the tool bar below (the right-most control).
+        <View style={st.arrowRow} pointerEvents="none"><Text style={st.arrow} accessibilityElementsHidden importantForAccessibility="no">▼</Text></View>
+      )}
     </View>
   );
 }
@@ -94,6 +98,8 @@ const st = StyleSheet.create({
   chipTextStrong: { color: colors.accentInk, fontFamily: fonts.bodyBold },
   x: { paddingHorizontal: 10, paddingVertical: 6 },
   xText: { color: colors.text, fontFamily: fonts.body, fontSize: 18, lineHeight: 18 },
+  arrowRow: { alignItems: 'flex-end', marginTop: -6 },
+  arrow: { color: colors.accent, fontFamily: fonts.body, fontSize: 12, marginRight: 26 },
   hide: { paddingVertical: 6, paddingHorizontal: 4 },
   hideText: { color: colors.body, fontFamily: fonts.body, fontSize: 12, textDecorationLine: 'underline' },
 });

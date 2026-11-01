@@ -23,9 +23,11 @@ export const TIP_ORDER: TipId[] = ['photos', 'phone', 'services', 'hours', 'team
 /** What the draft looked like when the hints first appeared; a change means the owner did that action. */
 export type Baseline = { stock: number; services: string; hours: string; team: string; pages: string };
 const j = (v: unknown) => JSON.stringify(v ?? null);
+// Only the service names count as "done" (the app fills in ids, sample prices and defaults by itself after a reload).
+const svc = (d: WebsiteData) => j((d.services ?? []).map((x) => x.title));
 
 export function baselineOf(d: WebsiteData): Baseline {
-  return { stock: stockPhotoPaths(d).length, services: j(d.services), hours: j(d.hours), team: j(d.staff), pages: j([d.pages, d.extraPages]) };
+  return { stock: stockPhotoPaths(d).length, services: svc(d), hours: j(d.hours), team: j(d.staff), pages: j([d.pages, d.extraPages]) };
 }
 
 /** True once the action behind a tip is done (so the tip goes away by itself). */
@@ -33,7 +35,7 @@ export function tipDone(id: TipId, d: WebsiteData, base: Baseline, published: bo
   switch (id) {
     case 'photos': return stockPhotoPaths(d).length < base.stock || base.stock === 0;
     case 'phone': return !!d.phone?.trim();
-    case 'services': return j(d.services) !== base.services;
+    case 'services': return svc(d) !== base.services;
     case 'hours': return j(d.hours) !== base.hours;
     case 'team': return j(d.staff) !== base.team;
     case 'pages': return j([d.pages, d.extraPages]) !== base.pages;

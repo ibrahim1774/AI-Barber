@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
+import { flushWebAutosave } from '@/lib/webAutosave';
+import { setResume } from '@/lib/webResume';
 import { appStoreNotice, isStripeUrl, checkoutFailure, CHECKOUT_RETRY_MESSAGE, PROCESSING_MESSAGE } from '@/lib/webBilling';
 
 // The web app's plan screen (the iOS app shows Superwall's paywall here). Same plans and prices as iOS;
@@ -91,13 +93,17 @@ function WebPaywall() {
         if (f.kind === 'portal') {
           const p = await fetch(`${BASE}/api/web-app/portal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
           const pb = await p.json().catch(() => ({}));
-          if (isStripeUrl(pb.url)) { window.location.assign(pb.url); return; }
+          if (isStripeUrl(pb.url)) { await flushWebAutosave(); window.location.assign(pb.url); return; }
           setError(CHECKOUT_RETRY_MESSAGE);
         } else if (f.kind === 'app-store') setAppStore(f.message);
         else { setProcessing(f.kind === 'processing'); setError(f.message); }
         return;
       }
       if (!r.ok || !isStripeUrl(body.url)) throw new Error('checkout');
+      // The page is about to unload: put the latest draft on the account first, and remember that a publish was under
+      // way so the editor can finish it when Stripe sends the customer back.
+      await flushWebAutosave();
+      setResume(tier);
       window.location.assign(body.url);
     } catch {
       setError(CHECKOUT_RETRY_MESSAGE);

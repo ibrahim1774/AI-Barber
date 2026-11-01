@@ -53,7 +53,7 @@ async function refresh() {
 // Coming back from Stripe (?paid=1) the webhook may lag a moment: ask a few times.
 function pollAfterPayment() {
   let n = 0;
-  const t = setInterval(async () => { n++; await refresh(); if (state.status.status === 'ACTIVE' || n >= 15) clearInterval(t); }, 2000);
+  const t = setInterval(async () => { n++; await refresh(); if (state.status.status === 'ACTIVE' || n >= 30) clearInterval(t); }, 2000);
 }
 if (typeof window !== 'undefined') {
   window.addEventListener('focus', refresh);
