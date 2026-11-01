@@ -93,7 +93,7 @@ const st = StyleSheet.create({
   chipText: { color: colors.text, fontFamily: fonts.bodyMedium, fontSize: 13, flexShrink: 1 },
   chipTextStrong: { color: colors.accentInk, fontFamily: fonts.bodyBold },
   x: { paddingHorizontal: 10, paddingVertical: 6 },
-  xText: { color: colors.text, fontSize: 18, lineHeight: 18 },
+  xText: { color: colors.text, fontFamily: fonts.body, fontSize: 18, lineHeight: 18 },
   hide: { paddingVertical: 6, paddingHorizontal: 4 },
   hideText: { color: colors.body, fontFamily: fonts.body, fontSize: 12, textDecorationLine: 'underline' },
 });
