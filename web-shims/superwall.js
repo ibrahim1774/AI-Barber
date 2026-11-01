@@ -4,7 +4,7 @@
 const React = require('react');
 const { router } = require('expo-router');
 const { supabase } = require('../src/lib/supabase');
-const { setWebPlanActive, markWebPlanSettled, useWebPlanCheckFailed } = require('../src/lib/webPlan');
+const { setWebPlanActive, setWebPlanCancellation, markWebPlanSettled, useWebPlanCheckFailed } = require('../src/lib/webPlan');
 const { Text, Pressable, View } = require('react-native');
 
 const BASE = process.env.EXPO_PUBLIC_API_BASE || 'https://www.aibarber.org';
@@ -42,6 +42,7 @@ async function refresh() {
     if (mine !== seq) return;
     retryN = 0;
     setWebPlanActive(!!(me.entitled && ENTS[me.tier]));
+    setWebPlanCancellation(me.entitled && me.cancelAtPeriodEnd ? me.currentPeriodEnd : null);
     if (!me.entitled || !ENTS[me.tier]) return set({ status: { status: 'INACTIVE' }, subs: [] });
     set({
       status: { status: 'ACTIVE', entitlements: ENTS[me.tier].map((id) => ({ id })) },

@@ -1,4 +1,5 @@
-import { ActionSheetIOS, Pressable, StyleSheet } from 'react-native';
+import { ActionSheetIOS } from '@/lib/actionSheet';
+import { Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
 import { PlusIcon } from '@/components/bookings/icons';

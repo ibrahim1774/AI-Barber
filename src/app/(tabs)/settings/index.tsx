@@ -1,6 +1,7 @@
+import { ActionSheetIOS } from '@/lib/actionSheet';
 import { LearnEntry } from '@/components/LearnEntry';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
@@ -42,6 +43,7 @@ import {
   SUBSCRIPTION_CONTINUES,
 } from '@/lib/deleteCopy';
 import { useLinkActions } from '@/lib/useLinkActions';
+import { useWebPlanCancellation } from '@/lib/webPlan';
 import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
@@ -64,6 +66,7 @@ export default function Settings() {
   // undefined while loading; fresh on every visit (the editor and a publish change it).
   const [site, setSite] = useState<SiteRecord | null | undefined>(undefined);
   const signedIn = !!session?.user;
+  const cancelDate = useWebPlanCancellation();
 
   useFocusEffect(
     useCallback(() => {
@@ -311,6 +314,7 @@ export default function Settings() {
       </Section>
 
       <Section title="Subscription">
+        {Platform.OS === 'web' && cancelDate && <Row label="Cancels on" detail={new Date(cancelDate).toLocaleDateString()} />}
         {planTier && <Row label="Plan" detail={planLabel(planTier)} onPress={openPlan} chevron />}
         {Platform.OS !== 'web' && <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />}
         <Row label="Manage subscription" onPress={manageSubscription} external />

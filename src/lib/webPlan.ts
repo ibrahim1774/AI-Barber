@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from 'react';
 
 let active = false;
+let cancelDate: string | null = null;
 let settled = false;
 let failed = false;
 let waiters: (() => void)[] = [];
@@ -26,6 +27,7 @@ function settle(): void {
 export function setWebPlanActive(v: boolean): void {
   const changed = active !== v || failed;
   active = v;
+  if (!v) setWebPlanCancellation(null);
   failed = false;
   settle();
   if (changed) emit();
@@ -54,4 +56,11 @@ export const useWebPlanActive = (): boolean => useSyncExternalStore(subscribe, i
 export const useWebPlanCheckFailed = (): boolean => useSyncExternalStore(subscribe, webPlanCheckFailed, () => false);
 
 /** Test hook. */
-export function __resetWebPlan(): void { active = false; settled = false; failed = false; waiters = []; listeners.clear(); }
+export function __resetWebPlan(): void { active = false; cancelDate = null; settled = false; failed = false; waiters = []; listeners.clear(); }
+
+/** Web billing display only; never used to grant access. */
+export function setWebPlanCancellation(value: string | null): void {
+  const next = value && Number.isFinite(Date.parse(value)) ? value : null;
+  if (cancelDate !== next) { cancelDate = next; emit(); }
+}
+export const useWebPlanCancellation = (): string | null => useSyncExternalStore(subscribe, () => cancelDate, () => null);
