@@ -20,7 +20,7 @@ describe('web app emails', () => {
   });
   it('failed payment: first name + barber hosting subject, bare URL, Stripe update button, sign-in link', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', firstName: 'Jack Smith', siteUrl: site, tier: 'website', updateUrl: 'https://invoice.stripe.com/i/x' }, O);
-    expect(m.subject).toBe('Jack, your barber site hosting payment failed');
+    expect(m.subject).toBe('Jack, barber site plan card failed');
     expect(m.html).toContain('>joes.vercel.app<');
     expect(m.html).toContain('href="https://invoice.stripe.com/i/x"');
     expect(m.html).toContain('Update payment method');
@@ -29,7 +29,7 @@ describe('web app emails', () => {
   });
   it('failed payment: no name falls back, reminders are labelled, no update url falls back to sign-in', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'website', reminder: 2 }, O);
-    expect(m.subject).toBe('Reminder: Your barber site hosting payment failed');
+    expect(m.subject).toBe('Reminder: Barber site plan card failed');
     expect(m.html).toContain(`href="${signInLink(O)}"`);
   });
   it('omits the site row when there is no site yet', () => {

@@ -95,7 +95,7 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   const reminder = (i.reminder ?? 0) > 0;
   const href = i.updateUrl || signInLink(origin);
   return render({
-    subject: (reminder ? 'Reminder: ' : '') + personal(i.firstName, (plan) => `your ${plan} payment failed`, i.tier),
+    subject: (reminder ? 'Reminder: ' : '') + (firstOf(i.firstName) ? `${firstOf(i.firstName)}, barber site plan card failed` : 'Barber site plan card failed'),
     preheader: 'Your payment failed. Update your payment method to keep your site online.',
     headline: reminder ? 'Your site is still at risk' : 'Your payment failed',
     lead: `We couldn't charge your card for your barber website hosting. <b style="color:#fff">Update your payment method now or you're about to lose your site</b>: it will go offline and customers won't be able to find or book you.`,
