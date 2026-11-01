@@ -18,21 +18,22 @@ const stores = (): Store[] => {
 };
 
 /** Tied to the signed-in account: another person signing in on a shared browser can never trigger it. */
-export function setResume(planHint: PlanHint | undefined, uid: string, now = Date.now()): void {
-  const v = JSON.stringify({ planHint: planHint ?? null, at: now, uid });
+export function setResume(planHint: PlanHint | undefined, uid: string, now = Date.now(), draftRevision?: number): void {
+  const v = JSON.stringify({ planHint: planHint ?? null, at: now, uid, ...(draftRevision === undefined ? {} : { draftRevision }) });
   for (const s of stores()) { try { s.setItem(RESUME_KEY, v); } catch { /* full / blocked */ } }
 }
 
 /** The saved request, or null (none, unreadable, older than 2 h, or another account's; those are removed). Does not clear a valid one. */
-export function readResume(uid: string | null | undefined, now = Date.now()): { planHint?: PlanHint } | null {
+export function readResume(uid: string | null | undefined, now = Date.now()): { planHint?: PlanHint; draftRevision?: number } | null {
   for (const s of stores()) {
     try {
       const raw = s.getItem(RESUME_KEY);
       if (!raw) continue;
-      const v = JSON.parse(raw) as { planHint?: unknown; at?: unknown; uid?: unknown };
+      const v = JSON.parse(raw) as { planHint?: unknown; at?: unknown; uid?: unknown; draftRevision?: unknown };
       if (!uid || v.uid !== uid) { clearResume(); return null; }
       if (typeof v.at !== 'number' || now - v.at > RESUME_MAX_AGE_MS || v.at > now + 60_000) { clearResume(); return null; }
-      return isPlanHint(v.planHint) ? { planHint: v.planHint } : {};
+      const revision = typeof v.draftRevision === 'number' && Number.isSafeInteger(v.draftRevision) ? { draftRevision: v.draftRevision } : {};
+      return isPlanHint(v.planHint) ? { planHint: v.planHint, ...revision } : revision;
     } catch { /* try the next store */ }
   }
   return null;
@@ -43,7 +44,7 @@ export function clearResume(): void {
 }
 
 /** One-shot: the saved request, cleared in the same step (so a refresh or a second tab cannot publish twice). */
-export function takeResume(uid: string | null | undefined, now = Date.now()): { planHint?: PlanHint } | null {
+export function takeResume(uid: string | null | undefined, now = Date.now()): { planHint?: PlanHint; draftRevision?: number } | null {
   const r = readResume(uid, now);
   if (r) clearResume();
   return r;

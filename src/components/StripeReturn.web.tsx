@@ -1,3 +1,5 @@
+import { webDraftsEnabled } from '@/lib/webReliability';
+import { WebPublishRecovery } from './WebPublishRecovery.web';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
@@ -25,7 +27,11 @@ let cancelledReturn = false;
  * run the publish that was under way (the normal publish path, which skips the paywall now that the plan is active).
  * Cancelled: say the site is saved. The draft is never touched here.
  */
-export function StripeReturn({ onResume }: { onResume(hint?: PlanHint): void }) {
+export function StripeReturn(props: { onResume(hint?: PlanHint): void }) {
+  return webDraftsEnabled() ? <WebPublishRecovery {...props} /> : <LegacyStripeReturn {...props} />;
+}
+
+function LegacyStripeReturn({ onResume }: { onResume(hint?: PlanHint): void }) {
   const active = useWebPlanActive();
   const [kind, setKind] = useState<Kind | null>(null);
   const resume = useRef(onResume);

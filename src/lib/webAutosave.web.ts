@@ -1,102 +1,71 @@
-import { Platform } from 'react-native';
-import { IOS_PREFS, onSiteAdopted, pullSiteFromAccount, syncIfSignedIn } from '@/lib/account';
-import { merge3 } from '@/lib/mergeSite';
-import { publishPayload } from '@/lib/publish';
-import { keepRemoved } from '@/lib/sections/gallery';
-import * as siteStore from '@/lib/siteStore';
-import { supabase } from '@/lib/supabase';
-import { clearResume } from '@/lib/webResume';
-import Storage from 'expo-sqlite/kv-store';
+import { sameDraft } from './webDraftEngine';
+import { emitSiteAdopted } from './siteEvents';
+import { pendingWebAssets } from './webAssets';
+import { webDraftsEnabled } from './webReliability';
+import { pullSiteFromAccount } from './account';
+import { flushWebAutosave as legacyFlush } from './webAutosaveLegacy.web';
+import { ensureWebDraftSaved, currentWebSaveState, resetWebSaveState } from './webAccount.web';
+import { loadSite, onSiteSaved } from './siteStore';
+import { supabase } from './supabase';
+import { clearResume } from './webResume';
+import type { SavedDraft } from './webDraftEngine';
 
-// A browser can lose its local storage (cleared, private mode, Safari's 7-day rule) and a second device never sees
-// edits that only live in one browser. So on the web every edit is copied to the signed-in account a moment after it
-// is made (the phone app keeps its draft locally for good and copies it only on publish / sign-out).
-//  - 1.5 s after the last edit: the draft is pushed (syncIfSignedIn: the same push the publish and sign-out use, which
-//    also records what the account has). If another device wrote to the account since this one last synced, the two
-//    copies are merged field by field first (mergeSite.ts), so edits made at the same moment on two devices both stay.
-//  - tab hidden or closed: pushed at once, best effort.
-//  - tab visible again / focused: a newer copy written by another device is adopted (pullSiteFromAccount only adopts
-//    when this browser has no unsynced edits).
-const DELAY_MS = 1500;
-const BASE_KEY = 'webBase.v1';
-
-type Base = { draftId: string; data: unknown };
-const readBase = async (): Promise<Base | null> => { try { return JSON.parse((await Storage.getItem(BASE_KEY)) ?? 'null'); } catch { return null; } };
-const writeBase = (b: Base) => Storage.setItem(BASE_KEY, JSON.stringify(b)).catch(() => {});
-/** The row's site data the way this device holds it: without the app's own markers. */
-const clean = (raw: unknown): unknown => {
-  if (!raw || typeof raw !== 'object') return raw;
-  const { source: _s, editedAt: _e, [IOS_PREFS]: _p, ...rest } = raw as Record<string, unknown>;
-  return rest;
-};
-
-/**
- * Pushes any unsynced edit to the account and waits for it, but never longer than `capMs` and never rejects (offline
- * included): used right before leaving the page for Stripe, so the account holds the latest draft.
- */
-let flushNow: () => Promise<void> = async () => {};
-export function flushWebAutosave(capMs = 5000): Promise<void> {
-  return Promise.race([
-    flushNow().catch(() => {}),
-    new Promise<void>((res) => setTimeout(res, capMs)),
-  ]);
+let timer: ReturnType<typeof setTimeout> | null = null;
+let retry = 0;
+function schedule(ms: number) {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => { timer = null; void push(); }, ms);
 }
-
-if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let pushing: Promise<void> | null = null;
-  const unsynced = (r: siteStore.SiteRecord) => r.accountSyncedAt === undefined || r.accountSyncedAt < r.updatedAt;
-
-  const run = async () => {
-    const { data: sess } = await supabase.auth.getSession();
-    const uid = sess.session?.user?.id;
-    let local = await siteStore.loadSite();
-    if (!uid || !local || !unsynced(local)) return;
-    // Another device wrote since this one last synced: fold its edits in before pushing ours over them.
-    const base = await readBase();
-    if (base && base.draftId === local.draftId) {
-      const { data: row } = await supabase.from('sites').select('site_data, updated_at').eq('id', local.draftId).eq('user_id', uid).maybeSingle();
-      const rowAt = Date.parse((row as { updated_at?: string } | null)?.updated_at ?? '');
-      if (row && !Number.isNaN(rowAt) && rowAt > (local.accountRowAt ?? 0)) {
-        const merged = merge3(base.data, publishPayload(local.data), clean((row as { site_data: unknown }).site_data));
-        if (JSON.stringify(merged) !== JSON.stringify(publishPayload(local.data))) {
-          const cur = await siteStore.loadSite();
-          if (cur && cur.draftId === local.draftId) {
-            await siteStore.saveSite({ ...cur, data: keepRemoved(cur.data, merged as typeof cur.data), updatedAt: Date.now() });
-            local = (await siteStore.loadSite()) ?? local;
-          }
-        }
-      }
-    }
-    await syncIfSignedIn(local);
-    // What the account holds now: the base the next merge starts from.
-    await writeBase({ draftId: local.draftId, data: publishPayload(local.data) });
-  };
-  const push = () => {
-    if (timer) { clearTimeout(timer); timer = null; }
-    // One push at a time; an edit made meanwhile is unsynced again and schedules the next one.
-    pushing = (pushing ?? Promise.resolve()).then(run).catch((e) => console.warn('[autosave] failed:', e)).finally(() => { pushing = null; });
-  };
-
-  flushNow = async () => { push(); await (pushing ?? Promise.resolve()); };
-
-  siteStore.onSiteSaved((r) => {
-    if (!unsynced(r)) return; // a stamp write after a push: nothing new to send (also stops a save loop)
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(push, DELAY_MS);
+async function push() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  const uid = (await supabase.auth.getSession()).data.session?.user.id;
+  if (!uid) return;
+  const local = await loadSite();
+  if (!local || local.ownerUserId && local.ownerUserId !== uid) return;
+  try { await ensureWebDraftSaved(); retry = 0; }
+  catch {
+    if (currentWebSaveState().kind !== 'conflict') schedule(Math.min(30_000, 2000 * 2 ** Math.min(retry++, 4)));
+  }
+}
+/** Strict acknowledgement. A timeout preserves the draft and blocks checkout; it never means saved. */
+export async function flushWebAutosave(capMs = 12_000): Promise<SavedDraft> {
+  if (!webDraftsEnabled()) { await legacyFlush(capMs); return undefined as unknown as SavedDraft; }
+  if (pendingWebAssets()) throw new Error('Your photo is still uploading. Wait for it to finish, then continue.');
+  if (timer) { clearTimeout(timer); timer = null; }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      ensureWebDraftSaved(),
+      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('Your latest changes are still saving. Please retry in a moment.')), capMs); }),
+    ]);
+  } finally { if (timeout) clearTimeout(timeout); }
+}
+async function refreshFromAccount() {
+  await push();
+  const uid = (await supabase.auth.getSession()).data.session?.user.id;
+  if (uid) await pullSiteFromAccount(uid);
+}
+if (webDraftsEnabled() && typeof window !== 'undefined' && typeof document !== 'undefined') {
+  onSiteSaved(s => { if ((s.accountSyncedAt ?? -1) < s.updatedAt) schedule(1000); });
+  supabase.auth.onAuthStateChange(event => {
+    if (event === 'SIGNED_OUT') { clearResume(); resetWebSaveState(); if (timer) clearTimeout(timer); }
+    else schedule(0);
   });
-  // A copy adopted from the account (sign-in, another device's edit) is what the account holds: the merge base.
-  onSiteAdopted((s) => { void writeBase({ draftId: s.draftId, data: publishPayload(s.data) }); });
-
-  // A publish waiting on Stripe belongs to the account that started it: sign-out (from any tab) ends it.
-  supabase.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') clearResume(); });
-
-  const pull = async () => {
-    const { data } = await supabase.auth.getSession();
-    const uid = data.session?.user?.id;
-    if (uid) await pullSiteFromAccount(uid);
-  };
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') push(); else void pull(); });
-  window.addEventListener('pagehide', push);
-  window.addEventListener('focus', () => { void pull(); });
+  window.addEventListener('storage', event => {
+    if (event.key !== 'abapp:site.v1' || !event.newValue) return;
+    void (async () => {
+      try {
+        const next = JSON.parse(event.newValue!);
+        const previous = event.oldValue ? JSON.parse(event.oldValue) : null;
+        if (sameDraft(previous?.data, next.data) && sameDraft(previous?.inputs, next.inputs)) return;
+        const uid = (await supabase.auth.getSession()).data.session?.user.id;
+        const current = await loadSite();
+        if (uid && next.ownerUserId === uid && sameDraft(current, next)) emitSiteAdopted(next);
+      } catch { /* An unreadable other-tab event never replaces the editor. */ }
+    })();
+  });
+  window.addEventListener('online', () => { retry = 0; void push(); });
+  window.addEventListener('focus', () => { void refreshFromAccount(); });
+  window.addEventListener('pagehide', () => { void push(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void push(); else void refreshFromAccount(); });
 }

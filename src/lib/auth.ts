@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+import { webDraftsEnabled } from './webReliability';
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { identifyUser, resetUser, track, trackRegistration } from '@/lib/analytics';
@@ -194,7 +196,10 @@ export async function afterSession(id: string | null | undefined): Promise<void>
       return; // 'replaced': the phone now holds a copy of the account's own row; nothing to push
     }
   }
-  await syncIfSignedIn();
+  // Web signup/sign-in completes after account adoption; background autosave handles the draft copy.
+  // Checkout performs its own strict acknowledgement, so a slow save cannot hold signup open.
+  if (Platform.OS === 'web' && webDraftsEnabled()) void syncIfSignedIn();
+  else await syncIfSignedIn();
 }
 
 const SWITCH_FAILED = "Couldn't load your account's website. Check your connection and sign in again.";

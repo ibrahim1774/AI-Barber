@@ -1,3 +1,5 @@
+import { webDraftsEnabled } from './webReliability';
+import { withPendingWebAsset } from './webAssets';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
@@ -76,7 +78,7 @@ function filename(): string {
  * re-encoded so the bytes match the `image/jpeg` the URL was signed for
  * (HEIC/PNG picks included).
  */
-export async function uploadPhoto(
+async function uploadPhotoImpl(
   localUri: string,
   folder: string,
   deps: UploadDeps = {},
@@ -186,7 +188,7 @@ function logoFilename(): string {
  * uploads it with the signed PUT as image/png, kind 'logo'. A file over 300 KB is saved again at 400 px. Throws
  * LogoError: 'decode' when the file cannot be read, 'upload' when anything after that fails (nothing was changed).
  */
-export async function uploadLogo(localUri: string, folder: string, deps: UploadDeps = {}): Promise<LogoUpload> {
+async function uploadLogoImpl(localUri: string, folder: string, deps: UploadDeps = {}): Promise<LogoUpload> {
   const doFetch = deps.fetchFn ?? fetch;
 
   let ref: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>>;
@@ -243,4 +245,12 @@ export async function pickAndUploadLogo(folder: string, onPicked?: () => void): 
   if (res.canceled || !res.assets?.length) return null;
   onPicked?.();
   return uploadLogo(res.assets[0].uri, folder);
+}
+
+// A checkout cannot abandon a photo/logo selected moments earlier while its upload is still in flight.
+export function uploadPhoto(uri: string, folder: string, deps: UploadDeps = {}): Promise<string> {
+  return Platform.OS === 'web' && webDraftsEnabled() ? withPendingWebAsset(() => uploadPhotoImpl(uri, folder, deps)) : uploadPhotoImpl(uri, folder, deps);
+}
+export function uploadLogo(uri: string, folder: string, deps: UploadDeps = {}): Promise<LogoUpload> {
+  return Platform.OS === 'web' && webDraftsEnabled() ? withPendingWebAsset(() => uploadLogoImpl(uri, folder, deps)) : uploadLogoImpl(uri, folder, deps);
 }

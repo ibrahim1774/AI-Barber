@@ -74,7 +74,7 @@ function PlanCheckNotice() {
     React.createElement(Pressable, { accessibilityRole: 'button', onPress: () => refresh() }, React.createElement(Text, { style: { color: '#fff', fontSize: 13, fontWeight: '600' } }, 'Try now')));
 }
 
-function SuperwallProvider({ children }) { return React.createElement(React.Fragment, null, children, React.createElement(PlanCheckNotice)); }
+function SuperwallProvider({ children }) { const { WebSaveNotice } = require('../src/components/WebSaveNotice.web'); return React.createElement(React.Fragment, null, children, React.createElement(PlanCheckNotice), React.createElement(WebSaveNotice)); }
 
 // The placement callbacks of the paywall that is showing; the plan screen reports its closing through dismissWebPaywall.
 let showing = null;

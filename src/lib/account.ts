@@ -1,3 +1,6 @@
+import { Platform } from 'react-native';
+import { webDraftsEnabled } from './webReliability';
+import { readWebAccountSite, saveWebAccountSite } from './webAccount';
 import { keepRemoved } from '@/lib/sections/gallery';
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
@@ -34,6 +37,7 @@ export const IOS_SOURCE = 'ios';
 export async function syncSiteToSupabase(site: SiteRecord, userId: string): Promise<number | null> {
   // Never write another account's site under this account's id.
   if (site.ownerUserId && site.ownerUserId !== userId) throw new Error('site belongs to another account');
+  if (Platform.OS === 'web' && webDraftsEnabled()) return saveWebAccountSite(site, userId);
   const data = publishPayload(site.data); // no editor markers, no inline data: images
   const { data: written, error } = await supabase.from('sites').upsert(
     {
@@ -69,7 +73,7 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
 export const IOS_PREFS = 'iosPrefs';
 type StoredPrefs = { bookingChoice?: BookingChoice; ownBookingUrl?: string; ownBookingCleared?: true; pricesReviewed?: true; samplePricesApplied?: true; samplePricesFilled?: true };
 
-function appPrefsField(inputs: Partial<SiteRecord['inputs']>): { iosPrefs?: StoredPrefs } {
+export function appPrefsField(inputs: Partial<SiteRecord['inputs']>): { iosPrefs?: StoredPrefs } {
   const p: StoredPrefs = {};
   if (inputs.bookingChoice === 'own' || inputs.bookingChoice === 'aibarber' || inputs.bookingChoice === 'call') p.bookingChoice = inputs.bookingChoice;
   if (typeof inputs.ownBookingUrl === 'string' && inputs.ownBookingUrl.trim()) p.ownBookingUrl = inputs.ownBookingUrl.trim();
@@ -149,7 +153,14 @@ async function stampOwner(draftId: string, userId: string, syncedUpdatedAt: numb
   }
 }
 
-type SiteRow = { id: string; site_data: unknown; deployed_url: string | null; updated_at: string | null };
+type SiteRow = { id: string; site_data: unknown; deployed_url: string | null; updated_at: string | null; revision?: number; webBinding?: { slug?: string; transactionId?: string; serverVersion?: number; publishedRevision?: number } };
+function webBoundRecord(record: SiteRecord, row: SiteRow): SiteRecord {
+  if (Platform.OS !== 'web' || !webDraftsEnabled()) return record;
+  if (!row.webBinding?.slug) return { ...record, draftId: row.id, slug: null, transactionId: null, deployedUrl: row.deployed_url ?? null };
+  return { ...record, draftId: row.id, slug: row.webBinding.slug, transactionId: row.webBinding.transactionId ?? null,
+    serverVersion: row.webBinding.serverVersion,
+    ...(row.webBinding.publishedRevision === row.revision ? { syncedAt: record.updatedAt } : {}) };
+}
 const ROW_COLUMNS = 'id, site_data, deployed_url, updated_at';
 
 export type PullResult = 'adopted' | 'unchanged' | null;
@@ -206,6 +217,9 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     const local = await siteStore.loadSite();
     // Another account's site on this phone is never adopted into (afterSession swaps it on sign-in).
     if (local?.ownerUserId && local.ownerUserId !== userId) return 'unchanged';
+    let found: { data: any; error: any };
+    if (Platform.OS === 'web' && webDraftsEnabled()) found = await readWebAccountSite(userId);
+    else {
     const sites = supabase.from('sites');
     // No local site: the account's published app site first, so a newer unpublished draft row (one built signed out,
     // then saved into the account on sign-in) never hides the live site on the next sign-in or another phone.
@@ -214,10 +228,11 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
       if (deployedOnly) q = q.eq('deployment_status', 'deployed');
       return q.order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     };
-    let found = local
+    found = local
       ? await sites.select(ROW_COLUMNS).eq('id', local.draftId).eq('user_id', userId).maybeSingle()
       : await newestApp(true);
     if (!local && !found.error && !found.data) found = await newestApp(false);
+    }
     const { data: row, error } = found;
     if (error) throw error;
     const r = row as SiteRow | null;
@@ -241,7 +256,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
       ? {
           ...cur,
           data,
-          inputs: { ...cur.inputs, ...inputsFrom(data) },
+          inputs: Platform.OS === 'web' && webDraftsEnabled() ? adoptedInputs(r.site_data as unknown as Record<string, unknown>, data, !!r.deployed_url) : { ...cur.inputs, ...inputsFrom(data) },
           deployedUrl: r.deployed_url ?? cur.deployedUrl,
           updatedAt: adoptedAt(rowAt),
           accountSyncedAt: adoptedAt(rowAt),
@@ -260,8 +275,9 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           transactionId: null,
           ownerUserId: userId,
         };
-    await siteStore.saveSite(next);
-    emitSiteAdopted(next);
+    const boundNext = webBoundRecord(next, r);
+    await siteStore.saveSite(boundNext);
+    emitSiteAdopted(boundNext);
     return 'adopted';
   } catch (e) {
     console.warn('[account] loading the site from the account failed:', e);
@@ -343,8 +359,11 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
     if (deployedOnly) q = q.eq('deployment_status', 'deployed');
     return q.order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
   };
+  let res: { data: any; error: any };
+  if (Platform.OS === 'web' && webDraftsEnabled()) res = await readWebAccountSite(userId);
+  else {
   // The published app site first (an unpublished draft row must not hide it), then any app-made row.
-  let res = await newest(true, true);
+  res = await newest(true, true);
   if (res.error) throw res.error;
   if (!res.data) {
     res = await newest(true);
@@ -354,6 +373,7 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
   if (!res.data) {
     res = await newest(false);
     if (res.error) throw res.error;
+  }
   }
   const r = res.data as SiteRow | null;
   const found = r && isSiteData(r.site_data) && isPlainSiteData(r.site_data) ? r : null;
@@ -387,8 +407,9 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
     syncedAt: now,
     ownerUserId: userId,
   };
-  await siteStore.saveSite(next);
-  emitSiteAdopted(next);
+  const boundNext = webBoundRecord(next, found);
+  await siteStore.saveSite(boundNext);
+  emitSiteAdopted(boundNext);
   return 'replaced';
 }
 

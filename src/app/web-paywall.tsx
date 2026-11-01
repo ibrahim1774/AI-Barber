@@ -1,3 +1,5 @@
+import { invalidateWebDraftReceipt } from '@/lib/webAccount';
+import { webDraftsEnabled } from '@/lib/webReliability';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
@@ -90,11 +92,19 @@ function WebPaywall() {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) { router.replace('/sign-in' as never); return; }
-      const r = await fetch(`${BASE}/api/web-app/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tier, interval }) });
-      const body = await r.json().catch(() => ({}));
+      let saved = webDraftsEnabled() ? await flushWebAutosave() : undefined;
+      const placement = (window as unknown as { __webPaywall?: { placement?: string } }).__webPaywall?.placement;
+      const requestCheckout = () => fetch(`${BASE}/api/web-app/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tier, interval, ...(saved ? { draftId: saved.id, revision: saved.revision, publish: placement === 'publish' } : {}) }) });
+      let r = await requestCheckout();
+      let body = await r.json().catch(() => ({}));
+      if (webDraftsEnabled() && r.status === 409 && body?.error === 'draft_changed') {
+        invalidateWebDraftReceipt(); saved = await flushWebAutosave();
+        r = await requestCheckout(); body = await r.json().catch(() => ({}));
+      }
       if (!r.ok) {
         const f = checkoutFailure(r.status, body?.error);
         if (f.kind === 'portal') {
+          if (webDraftsEnabled() && placement === 'publish') { setResume(tier, data.session?.user?.id ?? '', Date.now(), saved?.revision); window.location.assign('/app/edit?paid=1'); return; }
           const p = await fetch(`${BASE}/api/web-app/portal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
           const pb = await p.json().catch(() => ({}));
           if (isStripeUrl(pb.url)) { await flushWebAutosave(); window.location.assign(pb.url); return; }
@@ -106,16 +116,15 @@ function WebPaywall() {
       if (!r.ok || !isStripeUrl(body.url)) throw new Error('checkout');
       // The page is about to unload: put the latest draft on the account first, and remember that a publish was under
       // way so the editor can finish it when Stripe sends the customer back.
-      await flushWebAutosave();
+      if (!webDraftsEnabled()) await flushWebAutosave();
       // Only the Publish paywall resumes a publish on return; an upgrade or domain checkout just says the payment arrived.
-      const placement = (window as unknown as { __webPaywall?: { placement?: string } }).__webPaywall?.placement;
       // Any other placement drops a leftover publish flag (the owner left an earlier Stripe page with Back), so an
       // upgrade payment can never be used up by a stale publish.
-      if (placement === 'publish') setResume(tier, data.session?.user?.id ?? '');
+      if (placement === 'publish') setResume(tier, data.session?.user?.id ?? '', Date.now(), saved?.revision);
       else clearResume();
       window.location.assign(body.url);
-    } catch {
-      setError(CHECKOUT_RETRY_MESSAGE);
+    } catch (e) {
+      setError(webDraftsEnabled() && e instanceof Error ? e.message : CHECKOUT_RETRY_MESSAGE);
     } finally {
       setBusy(false);
     }
