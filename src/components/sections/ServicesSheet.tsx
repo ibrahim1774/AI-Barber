@@ -1,7 +1,7 @@
 import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { useEffect, useRef, useState } from 'react';
 import { FormLabel } from '@/components/FormLabel';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
@@ -11,7 +11,8 @@ import {
   removeService, serviceRowMeta, updateService, type ServiceDraft,
 } from '@/lib/sections/services';
 import { cleanText } from '@/lib/sections/text';
-import { MAX_SERVICE_NAME } from '@/lib/setup/serviceDraft';
+import { photoFailMessage } from '@/lib/photos';
+import { MAX_SERVICE_NAME, WORD_TOO_LONG, hasLongWord } from '@/lib/setup/serviceDraft';
 import { Button } from '@/components/Button';
 import { useKeyboardHeight, sheetBodyMaxHeight } from '@/lib/keyboard';
 import { Sheet, SheetAction } from '@/components/EditSheet';
@@ -41,6 +42,7 @@ function formProblems(d: ServiceDraft): { title?: string; price?: string } {
   const n = cleanText(d.title);
   if (!n) e.title = 'Give this service a name.';
   else if (n.length > MAX_SERVICE_NAME) e.title = `Keep the name to ${MAX_SERVICE_NAME} characters or fewer (now ${n.length}).`;
+  else if (Platform.OS === 'web' && hasLongWord(n)) e.title = WORD_TOO_LONG;
   if (/^\s*-/.test(d.price)) e.price = "The price can't be negative.";
   return e;
 }
@@ -136,7 +138,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
         console.warn('[services] photo upload failed:', e);
         setUploading(false);
         // Bring the sheet back only once the alert is gone, or iOS drops it.
-        Alert.alert(PHOTO_FAIL, undefined, [{ text: 'OK', onPress: () => setPicking(false) }]);
+        Alert.alert(photoFailMessage(e, PHOTO_FAIL), undefined, [{ text: 'OK', onPress: () => setPicking(false) }]);
       }
     };
     setPicking(true);

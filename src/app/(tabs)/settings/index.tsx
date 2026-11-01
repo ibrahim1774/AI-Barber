@@ -1,6 +1,6 @@
 import { LearnEntry } from '@/components/LearnEntry';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
@@ -312,7 +312,7 @@ export default function Settings() {
 
       <Section title="Subscription">
         {planTier && <Row label="Plan" detail={planLabel(planTier)} onPress={openPlan} chevron />}
-        <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
+        {Platform.OS !== 'web' && <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />}
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>
 

@@ -1,6 +1,6 @@
 import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import type { BookingChoice, BookTargetStatus } from '@/lib/bookingChoice';
@@ -9,18 +9,20 @@ import {
   BOOKING_LINK_ERRORS, PHONE_ERROR, normalizeAddress, normalizeBookingLink, normalizePhone,
 } from '@/lib/linkRules';
 
+/** The phone app names the product in these lines; the web app (a Stripe plan on the account) just says "your plan"/"booking". */
+const BRAND = Platform.OS === 'web' ? '' : 'Prime Barber ';
 export const SCHEDULER_NOTE = 'Changes every Book button on your site.';
 export const DOUBLE_BOOKING = "Turn off your old booking app so clients don't double-book.";
 export const PUBLISH_BUTTON_NOTE = 'Publish your site to update your Book button.';
 export const TEAM_LINK_NOTE = 'Barbers with their own link in Team keep it on their card.';
-export const PLAN_NOT_LINKED = 'Your booking page opens once your Prime Barber plan is active.';
+export const PLAN_NOT_LINKED = `Your booking page opens once your ${BRAND}plan is active.`;
 export const CALL_NOTE = 'Changes your phone number everywhere on your site.';
 export const DIRECTIONS_NOTE = 'Directions open Google Maps for this address.';
 export const SHOP_NOTE = 'Manage your store in Store.';
 export const CHOOSER_HEADING = 'What should your button do?';
 export const CALL_OPTION = { label: 'Call my number', detail: 'Calls your phone number when a client taps it.' };
 export const LINK_OPTION = { label: 'Booking link', detail: 'Opens your own booking page, like Booksy or Square, where clients book.' };
-export const BUILTIN_OPTION = { label: 'Built-in booking', detail: 'Opens your Prime Barber booking page with deposits and reminders.' };
+export const BUILTIN_OPTION = { label: 'Built-in booking', detail: `Opens your ${BRAND}booking page with deposits and reminders.` };
 export const NEEDS_BOOKINGS_PLAN = 'Needs the Bookings plan';
 export const PLAN_INFO = {
   title: 'Built-in booking needs the Bookings plan',

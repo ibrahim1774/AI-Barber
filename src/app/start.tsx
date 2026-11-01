@@ -1,4 +1,4 @@
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Button } from '@/components/Button';
@@ -50,13 +50,15 @@ export default function Start() {
           onPress={() => go('/manual')}
         />
       </View>
-      <Button
-        variant="link"
-        title="Already subscribed? Restore purchases"
-        onPress={() => void restore()}
-        loading={busy}
-        style={styles.restore}
-      />
+      {Platform.OS !== 'web' && (
+        <Button
+          variant="link"
+          title="Already subscribed? Restore purchases"
+          onPress={() => void restore()}
+          loading={busy}
+          style={styles.restore}
+        />
+      )}
     </Screen>
   );
 }

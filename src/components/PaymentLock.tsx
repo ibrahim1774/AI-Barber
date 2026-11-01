@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { AlertCircleIcon } from '@/components/Icons';
@@ -73,7 +73,7 @@ export function PaymentBlock({
         <Button title={UPDATE_PAYMENT_BUTTON} onPress={updatePayment(screen)} style={styles.wide} />
         <Button variant="ghost" title={CHECK_AGAIN_BUTTON} onPress={() => void check()} loading={busy} style={[styles.wide, styles.gap]} />
         {onResubscribe && <Button variant="ghost" title="Subscribe again" onPress={onResubscribe} style={[styles.wide, styles.gap]} />}
-        {onRestore && <Button variant="ghost" title="Restore purchases" onPress={onRestore} loading={restoring} style={[styles.wide, styles.gap]} />}
+        {onRestore && Platform.OS !== 'web' && <Button variant="ghost" title="Restore purchases" onPress={onRestore} loading={restoring} style={[styles.wide, styles.gap]} />}
         {onBack && <Button variant="link" title="Back" onPress={onBack} style={styles.gap} />}
       </View>
     </View>

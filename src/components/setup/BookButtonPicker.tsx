@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Card, Note, Row } from '@/components/setup/ui';
 import { shortLink, type BookingChoice } from '@/lib/bookingChoice';
 
-export const AIBARBER_DETAIL = 'Your Prime Barber booking page with deposits and reminders.';
+const BRAND = Platform.OS === 'web' ? '' : 'Prime Barber ';
+export const AIBARBER_DETAIL = `Your ${BRAND}booking page with deposits and reminders.`;
 export const DOUBLE_BOOKING_NOTE = "Turn off your old booking app so clients don't double-book.";
-export const NO_OWN_NOTE = 'Your Book button will use Prime Barber booking after you publish.';
+export const NO_OWN_NOTE = Platform.OS === 'web' ? 'Your Book button will open your booking page after you publish.' : 'Your Book button will use Prime Barber booking after you publish.';
 export const PUBLISH_NOTE = 'Publish your site to update your Book button.';
 
 /**

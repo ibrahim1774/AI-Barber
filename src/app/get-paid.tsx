@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Page } from '@/components/Page';
@@ -8,12 +8,15 @@ import { GetPaid } from '@/components/setup/GetPaid';
 import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 import { useTour } from '@/components/tutorial/useTour';
+import { stripeReturnParam } from '@/lib/stripeWeb';
 import { goBackOrHome } from '@/lib/nav';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { withPaymentGate } from '@/components/PaymentLock';
 
 /** "How do you want to get paid?" Also where aibarber://get-paid (the Stripe return) lands. */
 function GetPaidScreen() {
+  const params = useLocalSearchParams<{ stripe?: string }>();
+  const stripeReturn = stripeReturnParam(params.stripe);
   // undefined: loading. null: no shop yet. 'error': the lookup failed (offline): a retry, never "set up bookings first".
   const [shop, setShop] = useState<Shop | null | undefined | 'error'>(undefined);
   const load = useCallback(() => { loadMyShop().then(setShop).catch(() => setShop('error')); }, []);
@@ -43,7 +46,7 @@ function GetPaidScreen() {
       )}
       {shop && shop !== 'error' && (
         <View ref={cardsRef} collapsable={false}>
-          <GetPaid shop={shop} onChanged={load} firstCardRef={firstCardRef} />
+          <GetPaid shop={shop} onChanged={load} firstCardRef={firstCardRef} stripeReturn={stripeReturn} />
         </View>
       )}
       <TutorialLayer controller={tour} />

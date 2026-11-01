@@ -25,7 +25,7 @@ import type { PreviewProduct } from '@/lib/editable';
 import { listProducts } from '@/lib/store/data';
 import { isSiteShopLink } from '@/web/lib/render/subpages';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, visibleOverlay, type Overlay } from '@/lib/overlayFlags';
-import { LogoError, pickAndUploadLogo, pickAndUploadPhoto } from '@/lib/photos';
+import { LogoError, photoFailMessage, pickAndUploadLogo, pickAndUploadPhoto } from '@/lib/photos';
 import { LOGO_ENABLED, withHeaderShow, withLogo, withLogoPreview, withoutLogo } from '@/lib/logo';
 import type { LogoVerdict } from '@/lib/logoContrast';
 import { HeaderSheet } from '@/components/HeaderSheet';
@@ -432,7 +432,7 @@ export default function Editor() {
         }
       } catch (e) {
         console.warn('[editor] photo upload failed:', e);
-        Alert.alert('Photo upload failed', 'Please try again or pick a different photo.');
+        Alert.alert('Photo upload failed', photoFailMessage(e, 'Please try again or pick a different photo.'));
       } finally {
         uploadingRef.current = false;
         setUploading(false);

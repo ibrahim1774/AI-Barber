@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
-import { pickAndUploadPhoto } from '@/lib/photos';
+import { photoFailMessage, pickAndUploadPhoto } from '@/lib/photos';
 import {
   getMemberServiceIds, listMembers, listServices, type Member, type Service, type Shop,
 } from '@/lib/shop';
@@ -124,8 +124,8 @@ function BarberForm({
       setUploading(true);
       const url = await pickAndUploadPhoto(uploadFolder);
       if (url) setPhoto(url);
-    } catch {
-      Alert.alert("Couldn't upload that photo. Check your connection and try again.");
+    } catch (e) {
+      Alert.alert(photoFailMessage(e, "Couldn't upload that photo. Check your connection and try again."));
     } finally {
       setUploading(false);
     }

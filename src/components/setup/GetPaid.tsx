@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
-import { ActivityIndicator, Alert, AppState, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Platform, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { track } from '@/lib/analytics';
 import { Button } from '@/components/Button';
@@ -9,12 +9,16 @@ import { stripeOnboard, stripeStatus, type StripeStatus } from '@/lib/setup/owne
 import { updateShopSettings, type ManualMethod, type Shop } from '@/lib/shop';
 import { colors, fonts } from '@/constants/theme';
 import { Card, Input, Label, Note, ToggleRow } from '@/components/setup/ui';
+import {
+  STRIPE_CARDS_ON, STRIPE_NEEDS_DETAILS, STRIPE_POLL_MS, STRIPE_POLL_WINDOW_MS, STRIPE_VERIFYING,
+  cardState, pollingOpen, stripeReturnBanner,
+} from '@/lib/stripeWeb';
 
 export const CARDS_NOT_SET_UP = "Card payments aren't set up yet.";
 export const GET_PAID_RETURN = 'aibarber://get-paid';
 
 /** Three cards: in the shop, Cash App / Venmo / Zelle / PayPal handles, card payments through Stripe. */
-export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChanged(): void; firstCardRef?: Ref<View> }) {
+export function GetPaid({ shop, onChanged, firstCardRef, stripeReturn }: { shop: Shop; onChanged(): void; firstCardRef?: Ref<View>; stripeReturn?: 'return' | 'refresh' | null }) {
   const [inShop, setInShop] = useState(shop.payInShop);
   const [inputs, setInputs] = useState<Record<ManualMethod, string>>({
     cashapp: shop.manualHandles.cashapp ?? '', venmo: shop.manualHandles.venmo ?? '',
@@ -27,6 +31,8 @@ export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChang
   const [checking, setChecking] = useState(false);
   const [cardNote, setCardNote] = useState<string | null>(null);
   const opening = useRef(false);
+  // Web only: the time until which the status is re-read every few seconds (set when Stripe is opened or returned from).
+  const watchUntil = useRef(stripeReturn && Platform.OS === 'web' ? Date.now() + STRIPE_POLL_WINDOW_MS : 0);
 
   const cardReady = status ? status.chargesEnabled : shop.stripeChargesEnabled;
   const connected = status ? status.connected : shop.stripeConnected;
@@ -52,6 +58,21 @@ export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChang
     const sub = AppState.addEventListener('change', (st) => { if (st === 'active') void refreshStatus(); });
     return () => sub.remove();
   }, [refreshStatus]);
+
+  // Web: the owner finishes Stripe in another tab, so this tab re-reads the status when it is shown again and every
+  // few seconds for a while after Stripe was opened. (The phone app already does this through AppState.)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const onShow = () => { if (document.visibilityState === 'visible') void refreshStatus(); };
+    document.addEventListener('visibilitychange', onShow);
+    window.addEventListener('focus', onShow);
+    const timer = setInterval(() => { if (!cardReady && pollingOpen(watchUntil.current)) void refreshStatus(); }, STRIPE_POLL_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', onShow);
+      window.removeEventListener('focus', onShow);
+      clearInterval(timer);
+    };
+  }, [refreshStatus, cardReady]);
 
   const saveInShop = async (value: boolean) => {
     const handles = checkAllHandles(inputs);
@@ -98,6 +119,7 @@ export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChang
     if (stripeBusy) return;
     setStripeBusy(true);
     opening.current = true;
+    if (Platform.OS === 'web') watchUntil.current = Date.now() + STRIPE_POLL_WINDOW_MS;
     setCardNote(null);
     try {
       const { url } = await stripeOnboard();
@@ -160,10 +182,15 @@ export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChang
           {connected ? '' : 'Takes about 5 minutes. '}Customers pay by card or Apple Pay. {cardPayoutNote()}
         </Note>
         <Note>{cardFeeNote(fee)} There is no monthly fee for cards.</Note>
+        {Platform.OS === 'web' && !!stripeReturn && !!status && !cardReady && !status.detailsSubmitted && (
+          <Note tone="warn">{stripeReturnBanner(stripeReturn, cardState(status)).text}</Note>
+        )}
         {cardReady ? (
-          <Text style={{ color: '#22c55e', fontFamily: fonts.bodySemi, fontSize: 15 }}>Cards are on. Customers can pay by card when they book.</Text>
+          <Text style={{ color: '#22c55e', fontFamily: fonts.bodySemi, fontSize: 15 }}>{STRIPE_CARDS_ON}</Text>
+        ) : Platform.OS === 'web' && status?.detailsSubmitted ? (
+          <Note tone="warn">{STRIPE_VERIFYING}</Note>
         ) : connected ? (
-          <Note tone="warn">Stripe still needs a few details before cards can be used. Finish setup to turn them on.</Note>
+          <Note tone="warn">{STRIPE_NEEDS_DETAILS}</Note>
         ) : null}
         {!!cardNote && !cardReady && <Note tone="warn">{cardNote}</Note>}
         {checking && <ActivityIndicator color={colors.accent} />}

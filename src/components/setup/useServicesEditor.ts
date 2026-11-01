@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
+import { photoFailMessage } from '@/lib/photos';
 import { addService, listServices, removeService, reorderServices, updateService, type Service, type Shop } from '@/lib/shop';
 import { draftToPatch, emptyDraft, serviceToDraft, type ServiceDraft } from '@/lib/setup/serviceDraft';
 
@@ -111,8 +112,8 @@ export function useServicesEditor(
       setUploading(true);
       const url = await pickPhoto();
       if (url) setDraft({ photoUrl: url });
-    } catch {
-      Alert.alert("Couldn't upload that photo. Check your connection and try again.");
+    } catch (e) {
+      Alert.alert(photoFailMessage(e, "Couldn't upload that photo. Check your connection and try again."));
     } finally {
       setUploading(false);
     }

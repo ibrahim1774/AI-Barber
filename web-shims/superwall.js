@@ -4,6 +4,7 @@
 const React = require('react');
 const { router } = require('expo-router');
 const { supabase } = require('../src/lib/supabase');
+const { setWebPlanActive } = require('../src/lib/webPlan');
 
 const BASE = process.env.EXPO_PUBLIC_API_BASE || 'https://www.aibarber.org';
 const PRODUCT = { website: 'hosting', bookings: 'bookings', store: 'store' };
@@ -18,10 +19,11 @@ async function refresh() {
   try {
     const { data } = await supabase.auth.getSession();
     const token = data && data.session && data.session.access_token;
-    if (!token) return set({ status: { status: 'INACTIVE' }, subs: [] });
+    if (!token) { setWebPlanActive(false); return set({ status: { status: 'INACTIVE' }, subs: [] }); }
     const r = await fetch(BASE + '/api/web-app/me', { headers: { Authorization: 'Bearer ' + token } });
     if (!r.ok) return;
     const me = await r.json();
+    setWebPlanActive(!!(me.entitled && ENTS[me.tier]));
     if (!me.entitled || !ENTS[me.tier]) return set({ status: { status: 'INACTIVE' }, subs: [] });
     set({
       status: { status: 'ACTIVE', entitlements: ENTS[me.tier].map((id) => ({ id })) },

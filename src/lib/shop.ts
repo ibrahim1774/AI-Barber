@@ -1,4 +1,6 @@
+import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { isWebPlanActive, webPlanReady } from '@/lib/webPlan';
 import { isSiteBookLink, isSiteShopLink } from '@/web/lib/render/subpages';
 
 /**
@@ -131,7 +133,8 @@ export function toShop(r: Record<string, any>): Shop {
     name: r.name ?? '',
     timezone: r.timezone ?? 'America/New_York',
     bookingsEnabled: !!r.bookings_enabled,
-    purchaseLinked: !!r.ios_otid,
+    // The phone app ties the plan to an Apple purchase (ios_otid); a web owner's plan is the Stripe web plan.
+    purchaseLinked: !!r.ios_otid || (Platform.OS === 'web' && isWebPlanActive()),
     payInShop: r.pay_in_shop !== false,
     manualHandles: handles as ManualHandles,
     stripeChargesEnabled: !!r.stripe_charges_enabled,
@@ -210,6 +213,7 @@ async function currentUserId(): Promise<string | null> {
 export async function loadMyShop(): Promise<Shop | null> {
   const uid = await currentUserId();
   if (!uid) return null;
+  if (Platform.OS === 'web') await webPlanReady();
   const { data, error } = await supabase.from('ab_shops').select('*').eq('owner_id', uid).maybeSingle();
   if (error) fail(error);
   return data ? toShop(data as Record<string, any>) : null;

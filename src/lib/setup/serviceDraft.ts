@@ -1,7 +1,13 @@
+import { Platform } from 'react-native';
 import type { DepositType, Service } from '@/lib/shop';
 import { MAX_DURATION, MIN_DURATION, centsToPrice, parsePriceCents } from '@/lib/setup/servicesMap';
 
 export const MAX_SERVICE_NAME = 80;
+/** Web only: the longest single word (no spaces) a service or product name may have; longer ones overflow a phone screen. */
+export const MAX_WORD = 30;
+export const WORD_TOO_LONG = `Keep each word to ${MAX_WORD} characters or fewer.`;
+/** True when the name has a word (run without spaces) of more than MAX_WORD characters. */
+export const hasLongWord = (name: string): boolean => name.split(/\s+/).some((w) => [...w].length > MAX_WORD);
 
 export type ServiceDraft = {
   name: string;
@@ -50,6 +56,7 @@ export function draftErrors(d: ServiceDraft, opts?: { website?: boolean }): Draf
   const name = d.name.trim().replace(/\s+/g, ' ');
   if (!name) e.name = 'Give this service a name.';
   else if (name.length > MAX_SERVICE_NAME) e.name = `Keep the name to ${MAX_SERVICE_NAME} characters or fewer (now ${name.length}).`;
+  else if (Platform.OS === 'web' && hasLongWord(name)) e.name = WORD_TOO_LONG;
   if (!Number.isInteger(d.durationMin) || d.durationMin < MIN_DURATION || d.durationMin > MAX_DURATION) {
     e.duration = `Length must be from ${MIN_DURATION} to ${MAX_DURATION} minutes.`;
   }

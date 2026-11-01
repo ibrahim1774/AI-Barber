@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -396,9 +396,11 @@ export default function Claim() {
           />
         )}
         <SupportLink />
-        <Pressable onPress={() => void restore()} disabled={restoring || busy} accessibilityRole="link" hitSlop={8} style={styles.restoreRow}>
-          <Text style={styles.forgot}>Restore purchases</Text>
-        </Pressable>
+        {Platform.OS !== 'web' && (
+          <Pressable onPress={() => void restore()} disabled={restoring || busy} accessibilityRole="link" hitSlop={8} style={styles.restoreRow}>
+            <Text style={styles.forgot}>Restore purchases</Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.switchRow}>

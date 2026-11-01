@@ -7,7 +7,7 @@ import { Button } from '@/components/Button';
 import { HoursGrid } from '@/components/setup/HoursGrid';
 import { Chip, Chips, Input, Label, Note, TextAction, ToggleRow } from '@/components/setup/ui';
 import { defaultWeek, type DayHours } from '@/lib/setup/availability';
-import { pickAndUploadPhoto } from '@/lib/photos';
+import { photoFailMessage, pickAndUploadPhoto } from '@/lib/photos';
 import type { Member, Service, Shop } from '@/lib/shop';
 import {
   initialOf, openDays, removeTeamMember, saveTeamMember, type MemberDraft, type TeamCard,
@@ -93,8 +93,8 @@ export function BarberSheet({ visible, card, shop, services, shopHours, profileL
       setUploading(true);
       const url = await pickAndUploadPhoto(uploadFolder);
       if (url) setPhoto(url);
-    } catch {
-      setError("Couldn't upload that photo. Check your connection and try again.");
+    } catch (e) {
+      setError(photoFailMessage(e, "Couldn't upload that photo. Check your connection and try again."));
     } finally {
       setUploading(false);
     }

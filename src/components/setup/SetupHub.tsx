@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Text } from 'react-native';
+import { Alert, Platform, Text } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Card, Note, Row, TextAction, ToggleRow } from '@/components/setup/ui';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
@@ -19,7 +19,7 @@ import { useCustomerLinkState } from '@/lib/customerLinks';
 import { icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
-export const PLAN_PENDING = 'Your booking page opens once your Prime Barber plan is active.';
+export const PLAN_PENDING = `Your booking page opens once your ${Platform.OS === 'web' ? '' : 'Prime Barber '}plan is active.`;
 
 export type HubTarget = 'services' | 'barbers' | 'hours' | 'rules' | 'pay';
 

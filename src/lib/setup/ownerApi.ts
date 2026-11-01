@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { MOVE_IN_PROGRESS_MESSAGE } from '@/lib/claimCopy';
 import { accessToken } from '@/lib/accessToken';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -65,8 +66,8 @@ export async function call<T>(method: 'GET' | 'POST', path: string, rawBody?: un
 function friendly(status: number, code: string): string {
   if (code === 'move-in-progress') return MOVE_IN_PROGRESS_MESSAGE;
   if (status === 401) return 'Your sign-in has expired. Sign in again.';
-  if (code === 'store-paused') return 'Your Prime Barber plan needs to be active to sell online.';
-  if (status === 423 || code === 'bookings-paused') return 'Your Prime Barber plan needs to be active to take bookings.';
+  if (code === 'store-paused') return `Your ${Platform.OS === 'web' ? '' : 'Prime Barber '}plan needs to be active to sell online.`;
+  if (status === 423 || code === 'bookings-paused') return `Your ${Platform.OS === 'web' ? '' : 'Prime Barber '}plan needs to be active to take bookings.`;
   if (code === 'stripe-account-unavailable') return "We couldn't reach your Stripe account. Email support@davoxa.com and we'll sort it out.";
   if (code === 'members-unavailable') return "Adding barbers isn't available yet. Try again in a little while.";
   if (code === 'members-need-bookings') return 'Adding barbers is part of the Bookings plan.';

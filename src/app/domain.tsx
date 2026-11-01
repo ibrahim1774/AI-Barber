@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Page } from '@/components/Page';
@@ -21,7 +21,7 @@ export const CHECK_BACK_NOTE = 'Your domain is set up. The secure connection can
 const MESSAGES: Partial<Record<BuyResult['kind'], string>> = {
   taken: 'That name was just taken. Pick another.',
   'not-eligible': "That name isn't available at the standard price. Pick another.",
-  inactive: "Your domain subscription isn't active. Restore purchases, or buy again.",
+  inactive: Platform.OS === 'web' ? "Your domain subscription isn't active. Buy it again." : "Your domain subscription isn't active. Restore purchases, or buy again.",
   unconfirmed: "We couldn't confirm the purchase yet. If you were charged, try again in a minute — you won't pay twice.",
   'no-site': 'Publish your website first, then add a domain.',
 };

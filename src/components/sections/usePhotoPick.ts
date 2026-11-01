@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Alert } from 'react-native';
+import { photoFailMessage } from '@/lib/photos';
 
 /**
  * Picks and uploads one photo from inside a sheet. iOS can't present the photo
@@ -37,7 +38,7 @@ export function usePhotoPick(upload: (onPicked?: () => void) => Promise<string |
       .catch((e) => {
         console.warn('[sections] photo upload failed:', e);
         setBusy(false);
-        Alert.alert("Couldn't upload that photo. Check your connection and try again.", undefined, [
+        Alert.alert(photoFailMessage(e, "Couldn't upload that photo. Check your connection and try again."), undefined, [
           { text: 'OK', onPress: () => setHidden(false) },
         ]);
       });

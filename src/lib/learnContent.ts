@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 /** What Prime Barber does for the barber, in plain words. Settings, Learn how it works: four collapsible sections, then one screen per topic. */
 export type LearnSectionId = 'website' | 'bookings' | 'store' | 'settings';
 
@@ -86,7 +87,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
     detail: 'Go live, then send your link to customers.',
     steps: [
       'Tap the Edit tab, then tap Publish.',
-      'If you are asked to pick a plan, choose one and follow Apple\'s prompt.',
+      Platform.OS === 'web' ? 'If you are asked to pick a plan, choose one and continue to checkout.' : 'If you are asked to pick a plan, choose one and follow Apple\'s prompt.',
       'If you are asked for an account, enter your details and tap Create Account & Publish (or Sign In & Publish).',
       'Not ready? Tap Back to return to the editor. Your payment is kept, and Publish brings you back to the same step.',
       'When it finishes, your site is live.',
@@ -252,13 +253,20 @@ export const LEARN_TOPICS: LearnTopic[] = [
     steps: [
       'Tap the Settings tab and find the Subscription group.',
       'Tap Plan to see your plan. A menu called Your plan opens.',
-      'Tap Upgrade to Bookings or Upgrade to Store to add one, then follow Apple\'s prompt.',
-      'Tap Manage subscription to open your subscriptions in the App Store. Cancel or downgrade there.',
-      'New phone or reinstalled app? Sign in, then tap Restore purchases. Use the same Apple ID you paid with.',
-      'A subscription is tied to your Apple ID, so only one Prime Barber account can use it at a time.',
-      'If it is on another account, the app says so. Tap Move subscription to this account and confirm.',
-      'You can find that button on the Choose an account screen, on a locked Bookings or Store tab, and in the Restore purchases message.',
-      'Or sign in to the other account instead.',
+      ...(Platform.OS === 'web'
+        ? [
+          'Tap Upgrade to Bookings or Upgrade to Store to add one, then continue to checkout.',
+          'Tap Manage subscription to change your card, switch plans or cancel.',
+        ]
+        : [
+          'Tap Upgrade to Bookings or Upgrade to Store to add one, then follow Apple\'s prompt.',
+          'Tap Manage subscription to open your subscriptions in the App Store. Cancel or downgrade there.',
+          'New phone or reinstalled app? Sign in, then tap Restore purchases. Use the same Apple ID you paid with.',
+          'A subscription is tied to your Apple ID, so only one Prime Barber account can use it at a time.',
+          'If it is on another account, the app says so. Tap Move subscription to this account and confirm.',
+          'You can find that button on the Choose an account screen, on a locked Bookings or Store tab, and in the Restore purchases message.',
+          'Or sign in to the other account instead.',
+        ]),
     ] },
   { slug: 'team', section: 'settings', title: 'Team',
     detail: 'Add barbers so each has their own schedule. How many depends on your plan.',

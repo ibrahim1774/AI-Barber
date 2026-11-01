@@ -9,6 +9,16 @@ import { decodePngBase64 } from '@/lib/logoPixels';
 const MAX_EDGE = 2048;
 const JPEG_QUALITY = 0.8;
 
+export const PHOTO_FORMAT_MESSAGE = "This photo format isn't supported by your browser. Try a JPG or PNG photo, or take it with your camera.";
+
+/** Web only: the browser could not read the picked picture (HEIC and other formats it cannot decode). */
+export class PhotoFormatError extends Error {
+  constructor() { super(PHOTO_FORMAT_MESSAGE); this.name = 'PhotoFormatError'; }
+}
+
+/** The words for a failed photo upload: the format advice when the browser could not read the picture, else `fallback`. */
+export const photoFailMessage = (e: unknown, fallback: string): string => (e instanceof PhotoFormatError ? PHOTO_FORMAT_MESSAGE : fallback);
+
 export interface UploadDeps {
   fetchFn?: typeof fetch;
 }
@@ -74,13 +84,20 @@ export async function uploadPhoto(
   const doFetch = deps.fetchFn ?? fetch;
 
   // Dimensions are read from a first render; the resize is applied to that ref.
-  let ref = await ImageManipulator.manipulate(localUri).renderAsync();
-  const longEdge = Math.max(ref.width, ref.height);
-  if (longEdge > MAX_EDGE) {
-    const size = ref.width >= ref.height ? { width: MAX_EDGE } : { height: MAX_EDGE };
-    ref = await ImageManipulator.manipulate(ref).resize(size).renderAsync();
+  let out;
+  try {
+    let ref = await ImageManipulator.manipulate(localUri).renderAsync();
+    const longEdge = Math.max(ref.width, ref.height);
+    if (longEdge > MAX_EDGE) {
+      const size = ref.width >= ref.height ? { width: MAX_EDGE } : { height: MAX_EDGE };
+      ref = await ImageManipulator.manipulate(ref).resize(size).renderAsync();
+    }
+    out = await ref.saveAsync({ format: SaveFormat.JPEG, compress: JPEG_QUALITY });
+  } catch (e) {
+    // Web: a picture the browser cannot decode (HEIC, some TIFF/RAW) fails here; say what to do about it.
+    if (Platform.OS === 'web') throw new PhotoFormatError();
+    throw e;
   }
-  const out = await ref.saveAsync({ format: SaveFormat.JPEG, compress: JPEG_QUALITY });
 
   const name = filename();
   const [target] = await api.getUploadUrls(folder, [name]);

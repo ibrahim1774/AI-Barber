@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { hasLockedClaim, rebindAdoptedSite } from '@/lib/account';
 import { useLatestTransactionId } from '@/lib/paywall';
 import { takeEmptyAccountNotice } from '@/lib/auth';
@@ -56,6 +56,11 @@ export function useAfterSignIn(
         void rebindAdoptedSite({ latestTransactionId });
         // A plain sign-in says nothing; a password reset confirms itself.
         if (message) Alert.alert(title, message);
+        return;
+      }
+      // Web: there is no Apple purchase to restore (the plan is a Stripe subscription on the account), so say nothing.
+      if (Platform.OS === 'web') {
+        leave();
         return;
       }
       Alert.alert(title, 'Already subscribed with this Apple ID? Restore purchases to bring your website back.', [

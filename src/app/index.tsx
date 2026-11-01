@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { Platform } from 'react-native';
 import { Redirect } from 'expo-router';
 import { colors } from '@/constants/theme';
 import { launchRoute } from '@/lib/launchRoute';
@@ -10,6 +11,13 @@ import { launchRoute } from '@/lib/launchRoute';
  * to /live on success.
  */
 export default function Index() {
+  // Web: Stripe's onboarding ends on /app/?stripe=return (or ?stripe=refresh when its link expired): show the owner
+  // where their cards stand instead of dropping them into the editor.
+  const stripe = Platform.OS === 'web' && typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('stripe')
+    : null;
+  if (stripe === 'return' || stripe === 'refresh') return <Redirect href={{ pathname: '/get-paid', params: { stripe } }} />;
+
   const [target, setTarget] = useState<'/edit' | '/start' | '/claim' | null>(null);
   useEffect(() => {
     launchRoute()
