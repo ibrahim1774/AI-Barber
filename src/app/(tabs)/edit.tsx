@@ -227,7 +227,7 @@ export default function Editor() {
     if (!isAlive()) return;
     siteRef.current = s;
     overlayRef.current = o;
-    welcomeChecked.current = null; setWelcomeKnown(false); // a freshly generated draft is looked at again (its flag was cleared)
+    welcomeChecked.current = null; if (Platform.OS === 'web') setWelcomeKnown(false); // a freshly generated draft is looked at again (its flag was cleared)
     setOverlay(o);
     setSite(s);
     runPublishRequest();
@@ -683,10 +683,10 @@ export default function Editor() {
   useEffect(() => {
     const cur = siteRef.current;
     if (!site || !cur || overlay === 'prompts') return;
-    if (cur.slug != null || cur.deployedUrl) { setWelcomeKnown(true); return; }
+    if (cur.slug != null || cur.deployedUrl) { if (Platform.OS === 'web') setWelcomeKnown(true); return; }
     if (welcomeChecked.current === cur.draftId) return;
     welcomeChecked.current = cur.draftId;
-    hasSeen('welcome', cur.draftId).then((seen) => { if (!seen && mountedRef.current) setWelcome(true); if (mountedRef.current) setWelcomeKnown(true); });
+    hasSeen('welcome', cur.draftId).then((seen) => { if (!seen && mountedRef.current) setWelcome(true); if (mountedRef.current && Platform.OS === 'web') setWelcomeKnown(true); });
   }, [site, overlay]);
   const closeWelcome = useCallback(() => {
     setWelcome(false);

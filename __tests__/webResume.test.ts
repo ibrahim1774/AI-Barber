@@ -9,7 +9,8 @@ afterEach(() => { delete (globalThis as any).sessionStorage; delete (globalThis 
 describe('resume-publish flag', () => {
   it('is written to sessionStorage and localStorage and read back with its plan hint', () => {
     setResume('bookings', 'u1', 1000);
-    expect(session.m.has(RESUME_KEY) && local.m.has(RESUME_KEY)).toBe(true);
+    expect(local.m.has(RESUME_KEY)).toBe(true);
+    expect(session.m.has(RESUME_KEY)).toBe(false); // localStorage only: shared by every tab
     expect(readResume('u1', 2000)).toEqual({ planHint: 'bookings' });
   });
   it('without a hint it still resumes', () => { setResume(undefined, 'u1', 1000); expect(readResume('u1', 1500)).toEqual({}); });
@@ -58,6 +59,29 @@ describe('resume flag belongs to one account', () => {
     const fs = require('fs');
     expect(fs.readFileSync(require('path').join(__dirname, '../src/lib/auth.ts'), 'utf8')).toMatch(/clearResume\(\)/);
     expect(fs.readFileSync(require('path').join(__dirname, '../src/lib/webAutosave.web.ts'), 'utf8')).toMatch(/SIGNED_OUT[\s\S]*clearResume/);
+  });
+});
+
+describe('one-shot across tabs (S2)', () => {
+  it("a sessionStorage-only copy is ignored (scenario A: the tab that started checkout cannot publish a second time)", () => {
+    session.setItem(RESUME_KEY, JSON.stringify({ planHint: 'website', at: 1000, uid: 'u1' }));
+    expect(takeResume('u1', 1500)).toBeNull();
+  });
+  it('scenario B: whichever tab takes it first wins; the other finds nothing', () => {
+    setResume('website', 'u1', 1000);        // tab A started the checkout (storage shared by A and C)
+    expect(takeResume('u1', 1500)).toEqual({ planHint: 'website' }); // tab C's focus refresh takes it
+    expect(takeResume('u1', 1600)).toBeNull();                        // tab A's own wait finds none
+  });
+});
+
+describe('web-paywall and the return banner (S3, S4)', () => {
+  const fs = require('fs'); const path = require('path');
+  const read = (f: string) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  it('only the publish placement writes the resume flag', () => {
+    expect(read('src/app/web-paywall.tsx')).toMatch(/placement === 'publish'\) setResume/);
+  });
+  it('the paid-return note is cleared after its first handling', () => {
+    expect(read('src/components/StripeReturn.web.tsx')).toMatch(/paidReturn = false; \/\/ handled/);
   });
 });
 

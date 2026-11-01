@@ -103,7 +103,9 @@ function WebPaywall() {
       // The page is about to unload: put the latest draft on the account first, and remember that a publish was under
       // way so the editor can finish it when Stripe sends the customer back.
       await flushWebAutosave();
-      setResume(tier, data.session?.user?.id ?? '');
+      // Only the Publish paywall resumes a publish on return; an upgrade or domain checkout just says the payment arrived.
+      const placement = (window as unknown as { __webPaywall?: { placement?: string } }).__webPaywall?.placement;
+      if (placement === 'publish') setResume(tier, data.session?.user?.id ?? '');
       window.location.assign(body.url);
     } catch {
       setError(CHECKOUT_RETRY_MESSAGE);

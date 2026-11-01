@@ -1,5 +1,5 @@
 // Web only: remembering "I was publishing" across the trip to Stripe Checkout (the page unloads, so nothing in memory
-// survives). The flag is one-shot, kept in sessionStorage AND localStorage (either may be blocked), and ignored after 2 h.
+// survives). The flag is one-shot, kept in localStorage only (shared by all tabs, so exactly one tab can take it), and ignored after 2 h.
 import type { PlanHint } from '@/lib/publishRequest';
 import { isPlanHint } from '@/lib/publishRequest';
 
@@ -7,9 +7,11 @@ export const RESUME_KEY = 'ab.resumePublish';
 export const RESUME_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+// localStorage only: it is shared by every tab, so a take in one tab removes the flag for all of them (a sessionStorage
+// copy would survive in the tab that started the checkout and publish a second time).
 const stores = (): Store[] => {
   const out: Store[] = [];
-  for (const name of ['sessionStorage', 'localStorage'] as const) {
+  for (const name of ['localStorage'] as const) {
     try { const s = (globalThis as unknown as Record<string, Store | undefined>)[name]; if (s) out.push(s); } catch { /* blocked */ }
   }
   return out;

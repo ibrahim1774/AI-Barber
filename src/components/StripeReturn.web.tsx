@@ -57,7 +57,9 @@ export function StripeReturn({ onResume }: { onResume(hint?: PlanHint): void }) 
       const uid = data.session?.user?.id;
       if (!paidReturn && !readResume(uid)) return;
       const r = takeResume(uid); // another account's flag is ignored and cleared here
-      if (!r) { if (paidReturn) setKind('received'); return; }
+      const wasPaidReturn = paidReturn;
+      paidReturn = false; // handled: a later Editor mount in this page load must not show it again
+      if (!r) { if (wasPaidReturn) setKind('received'); return; }
       setKind('waiting');
       t = setTimeout(() => resume.current(r.planHint), 400);
     });

@@ -118,7 +118,8 @@ function BookingsSetup() {
   // Web: the plan turning on (after the payment webhook, or a slow first check) re-reads the shop so its link state updates.
   const webPlanOn = useWebPlanActive();
   useEffect(() => {
-    if (Platform.OS === 'web' && webPlanOn) void reloadShop();
+    if (Platform.OS !== 'web' || !webPlanOn) return;
+    void reloadShop();
   }, [webPlanOn, reloadShop]);
 
   const goGate = (to: '/sign-up' | '/sign-in') => {

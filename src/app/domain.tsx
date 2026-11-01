@@ -253,4 +253,17 @@ const st = StyleSheet.create({
   disclosure: { fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.faint, marginTop: 36, textAlign: 'center' },
 });
 
-export default withPaymentGate(Domain, 'domain');
+const GatedDomain = withPaymentGate(Domain, 'domain');
+
+// Web: there is no web checkout for domains yet (the plan screen would sell the wrong product), so say so.
+function WebDomainSoon() {
+  return (
+    <Page title="Custom domain" onBack={goBackOrHome}>
+      <Text style={{ color: colors.text, fontFamily: fonts.body, fontSize: 15, lineHeight: 22 }}>Custom domains are coming to the web app.</Text>
+    </Page>
+  );
+}
+
+export default function DomainRoute() {
+  return Platform.OS === 'web' ? <WebDomainSoon /> : <GatedDomain />;
+}
