@@ -81,7 +81,7 @@ export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   const first = firstOf(i.firstName);
   return render({
     // Short and the same for every plan so a phone preview never cuts it off; the plan is named in the body.
-    subject: `${first ? `Congrats ${first}! ` : 'Congrats! '}Signed Up For Your AI Barber Website Plan`,
+    subject: `${first ? `Welcome ${first}! ` : 'Welcome! '}Barber plan active`,
     preheader: `Your plan: ${plan}.`,
     headline: "You're signed up",
     lead: `Your plan is active: <b style="color:#fff">${esc(plan)}</b>. Sign in to edit your site and manage your plan.`,

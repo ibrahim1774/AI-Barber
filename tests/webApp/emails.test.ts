@@ -6,7 +6,7 @@ const site = 'https://joes.vercel.app';
 describe('web app emails', () => {
   it('welcome: short subject saying what they signed up for, with site, account, sign-in and reset links, no password', () => {
     const m = welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
-    expect(m.subject).toBe('Congrats! Signed Up For Your AI Barber Website Plan');
+    expect(m.subject).toBe('Welcome! Barber plan active');
     expect(m.text).toContain('Custom site');
     for (const part of [site, 'a@b.co', signInLink(O), resetLink(O)]) { expect(m.html).toContain(part); expect(m.text).toContain(part); }
     expect(m.text).toContain('We never email passwords');
@@ -14,7 +14,7 @@ describe('web app emails', () => {
   });
   it('welcome: personal fixed subject; the body names the plan', () => {
     const m = welcomeEmail({ email: 'a@b.co', firstName: 'Jake Lee', siteUrl: null, tier: 'bookings' }, O);
-    expect(m.subject).toBe('Congrats Jake! Signed Up For Your AI Barber Website Plan');
+    expect(m.subject).toBe('Welcome Jake! Barber plan active');
     expect(m.text).toContain('Custom site + booking');
     expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).toContain('Custom site, booking + your own store');
   });
