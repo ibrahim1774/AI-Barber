@@ -8,7 +8,8 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
 vi.mock('../../lib/ios/deleteAccount.js', () => ({ liveDeleteDeps: vi.fn() }));
 vi.mock('../../lib/ios/removeSiteLive.js', () => ({ liveRemoveDeps: vi.fn() }));
 
-import { cancelWebSubscriptions, isWebSite } from '../../lib/webApp/deleteAccount.js';
+import { sbRest } from '../../lib/webApp/webAppServer.js';
+import { cancelThenForgetCustomers, cancelWebSubscriptions, isWebSite } from '../../lib/webApp/deleteAccount.js';
 
 const set = (r: any[]) => { rows.length = 0; rows.push(...r); };
 const row = (id: string, status: string, environment: 'live' | 'test') => ({ stripe_subscription_id: id, status, environment });
@@ -81,6 +82,20 @@ describe('web delete-account helpers', () => {
     const boom = async () => { throw Object.assign(new Error('whatever'), { status: 400, code: 'something_unexpected' }); };
     expect(await cancelWebSubscriptions('u1', boom, async () => 'canceled', async () => [])).toEqual(['sub_a']);
     await expect(cancelWebSubscriptions('u1', boom, async () => 'active', async () => [])).rejects.toThrow('whatever');
+  });
+  it('N6: web_app_customers rows are deleted only AFTER the subscriptions were cancelled', async () => {
+    set([row('sub_a', 'active', 'live')]);
+    (sbRest as any).mockClear();
+    await cancelThenForgetCustomers('u1', async () => {});
+    const calls = (sbRest as any).mock.calls;
+    expect(calls.at(-1)[0]).toMatch(/^web_app_customers\?user_id=eq\.u1/);
+    expect(calls.at(-1)[1]).toMatchObject({ method: 'DELETE' });
+  });
+  it('N6: a failed cancel deletes nothing', async () => {
+    set([row('sub_a', 'active', 'live')]);
+    (sbRest as any).mockClear();
+    await expect(cancelThenForgetCustomers('u1', async () => { throw Object.assign(new Error('boom'), { status: 500 }); })).rejects.toThrow();
+    expect((sbRest as any).mock.calls.some((c: any[]) => c[1]?.method === 'DELETE')).toBe(false);
   });
   it('an unknown key mode throws', async () => {
     vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', '');

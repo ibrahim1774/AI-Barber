@@ -1,7 +1,8 @@
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
 // 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
-// Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers) must be applied first; until then this
-// fails closed with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
+// Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers etc.) must be applied BEFORE turning on ANY web-app
+// flag (WEB_APP_CHECKOUT, and WEB_APP_ENTITLEMENTS too: delete-account reads web_app_customers). Until then checkout fails closed
+// with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
 import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, priceIdFor } from '../../lib/webApp/stripeCore.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
@@ -40,7 +41,10 @@ export default async function handler(req: any, res: any) {
     const subs = await stripeCall(`subscriptions?customer=${encodeURIComponent(customer)}&status=all&limit=20`, null, 'GET');
     const ours: any[] = (subs?.data ?? []).filter((x: any) => x?.metadata?.app === WEB_APP_TAG);
     if (ours.some((x) => isEntitledStatus(String(x.status)) || x.status === 'unpaid' || x.status === 'paused')) return res.status(409).json({ error: 'already_subscribed' });
-    if (ours.some((x) => x.status === 'incomplete')) return res.status(409).json({ error: 'payment_processing' });
+    // An incomplete subscription is a payment still being confirmed (3DS, slow card) for a while; after an hour it is abandoned
+    // (Stripe expires it itself at 23 h) and must not lock the user out. Ignored, never cancelled: no Stripe write.
+    const stale = Math.floor(Date.now() / 1000) - 3600;
+    if (ours.some((x) => x.status === 'incomplete' && Number(x.created) > stale)) return res.status(409).json({ error: 'payment_processing' });
 
     const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval };
     const nowMs = Date.now();

@@ -175,6 +175,12 @@ describe('sweepIosOverlap (alert only)', () => {
     await sweepIosOverlap(d);
     expect(d.stampChecked).toHaveBeenCalledTimes(2);
   });
+  it('a row with no user_id is stamped checked (so it cannot sit at the head of the queue) and otherwise skipped', async () => {
+    const d = ofakes({ rows: [orow('nouser', null)] });
+    await sweepIosOverlap(d);
+    expect(d.stampChecked).toHaveBeenCalledWith('nouser');
+    expect(d.appStoreState).not.toHaveBeenCalled(); expect(d.claim).not.toHaveBeenCalled();
+  });
   it('a lookup error skips that user without throwing the sweep', async () => {
     const d = ofakes({ lookupErr: true, rows: [orow('sub_1'), orow('sub_2', 'u2')] });
     const r = await sweepIosOverlap(d);

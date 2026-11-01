@@ -182,9 +182,10 @@ export async function sweepIosOverlap(deps: IosOverlapDeps, limit = 50): Promise
   const out: IosOverlapSummary = { checked: 0, notified: [], lookupFailed: 0, mailFailed: [], noEmail: [], ownerOnly: [] };
   const rows = await deps.candidates(limit);
   for (const row of rows) {
-    if (!row.user_id) continue;
     out.checked++;
+    // Stamp FIRST: a row with no user_id must not stay at the head of the queue forever.
     await deps.stampChecked(row.stripe_subscription_id).catch(() => {});
+    if (!row.user_id) continue;
     let state: AppStoreState;
     try { state = await deps.appStoreState(row.user_id); }
     catch (e: any) { console.warn('[web-app ios-overlap] lookup failed; skipping:', e?.message || e); out.lookupFailed++; continue; }

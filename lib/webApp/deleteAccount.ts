@@ -3,6 +3,8 @@
 //   - the account's web subscriptions CANCELED right after the shop is closed (no billing for a deleted account),
 //   - the account's web_app_sites handled like the iOS purchases' sites (removed_at + taken_down_at on web_app_sites,
 //     never on ios_purchases), so the lapse job can never bring a deleted site back.
+// DEPLOY GATE: migration 024 (web_app_customers) must be applied BEFORE turning on ANY web-app flag, WEB_APP_ENTITLEMENTS included:
+// this flow reads and deletes web_app_customers.
 // An account with iOS purchases too is handled by the unchanged iOS parts. Flag: WEB_APP_ENTITLEMENTS.
 import { liveDeleteDeps, type DeleteAccountDeps } from '../ios/deleteAccount.js';
 import { liveRemoveDeps } from '../ios/removeSiteLive.js';
@@ -75,6 +77,13 @@ export async function cancelWebSubscriptions(
   return done;
 }
 
+/** Cancel the web subscriptions, and only AFTER that succeeded forget the user's stored Stripe customers (web_app_customers). */
+export async function cancelThenForgetCustomers(userId: string, cancel?: Parameters<typeof cancelWebSubscriptions>[1]): Promise<string[]> {
+  const done = await cancelWebSubscriptions(userId, cancel);
+  await sbRest(`web_app_customers?user_id=eq.${enc(userId)}`, { method: 'DELETE' });
+  return done;
+}
+
 /** Take the user's web sites offline and delete their stored copy, keeping the account and the subscription ("Take my website offline"). */
 export async function removeWebSitesOf(userId: string): Promise<number> {
   const deps = liveWebDeleteDeps();
@@ -116,7 +125,7 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
           await planWebCancellations(userId); // refuse BEFORE the shop is closed if a live subscription is out of this key's reach
           const r = await base.closeShop!(userId);
           if (!r.ok) return r;
-          await cancelWebSubscriptions(userId);
+          await cancelThenForgetCustomers(userId);
           return r;
         }
       : undefined,

@@ -1,6 +1,7 @@
 -- 024: web app "paid twice" protection + iOS overlap bookkeeping. Additive only (new table, new nullable columns).
 -- Do not apply until the owner says so.
--- DEPLOY GATE: apply this BEFORE deploying code with WEB_APP_CHECKOUT=1 / WEB_APP_ENTITLEMENTS=1. Checkout reads web_app_customers and
+-- DEPLOY GATE: apply this BEFORE turning on ANY web-app flag (WEB_APP_CHECKOUT and WEB_APP_ENTITLEMENTS: delete-account and the
+-- lapse cron read these tables/columns). Checkout reads web_app_customers and
 -- fails closed (502, no Stripe session) while the table is missing.
 
 -- One Stripe customer per user and Stripe mode for the web app (checkout reuses it before any webhook lands).

@@ -111,7 +111,7 @@ describe('POST /api/web-app/checkout', () => {
   });
 
   it('an incomplete subscription: 409 payment_processing', async () => {
-    subs = [{ id: 'sub_1', status: 'incomplete', metadata: { app: 'aibarber-app' } }];
+    subs = [{ id: 'sub_1', status: 'incomplete', created: Math.floor(Date.now() / 1000) - 60, metadata: { app: 'aibarber-app' } }];
     const r = await run();
     expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
     expect(created()).toHaveLength(0);
@@ -158,6 +158,26 @@ describe('POST /api/web-app/checkout', () => {
     const r = await run();
     expect(r.body).toEqual({ url: 'https://stripe.test/cs_fresh' });
     expect(created()[1].opts.idempotencyKey).toMatch(/:r\d+$/);
+  });
+
+  it('N3: an incomplete subscription older than an hour is abandoned and does not block; a fresh one still does', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    subs = [{ id: 's', status: 'incomplete', created: nowSec - 7200, metadata: { app: 'aibarber-app' } }];
+    expect((await run()).code).toBe(200);
+    expect(stripe.calls.some((c) => c.method === 'DELETE')).toBe(false); // ignored, never cancelled
+    subs = [{ id: 's', status: 'incomplete', created: nowSec - 600, metadata: { app: 'aibarber-app' } }];
+    expect((await run()).body.error).toBe('payment_processing');
+  });
+
+  it('N1: at the very end of a 10-minute window expires_at is still at least 30 min + 2 min ahead', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const windowStart = Math.floor(Date.now() / 600_000) * 600_000;
+      vi.setSystemTime(windowStart + 599_000);
+      await run();
+      const nowSec = Math.floor((windowStart + 599_000) / 1000);
+      expect(Number(created()[0].body.expires_at) - nowSec).toBeGreaterThanOrEqual(1800 + 119);
+    } finally { vi.useRealTimers(); }
   });
 
   it('unpaid and paused tagged subscriptions block checkout', async () => {
