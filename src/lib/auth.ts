@@ -9,6 +9,7 @@ import type { SwitchResult } from '@/lib/account';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { unregisterPushToken } from '@/lib/bookings/pushStamp';
 import { clearEntitlements } from '@/lib/entitlements';
+import { clearResume } from '@/lib/webResume';
 import { resetSharedPlan } from '@/lib/plan';
 import { resetSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
@@ -222,6 +223,7 @@ export async function signOut(): Promise<void> {
   // Offline: the refresh token can't be revoked, but this phone still signs out.
   if (error) await supabase.auth.signOut({ scope: 'local' });
   userId = null;
+  clearResume(); // web: a publish waiting on Stripe belongs to the account that left (a no-op on the phone)
   clearCustomersCache();
   resetSharedPlan(); // the next account must not read this one's tier, entitlements or team cap
   resetSubscriptionStatus();

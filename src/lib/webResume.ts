@@ -15,18 +15,20 @@ const stores = (): Store[] => {
   return out;
 };
 
-export function setResume(planHint: PlanHint | undefined, now = Date.now()): void {
-  const v = JSON.stringify({ planHint: planHint ?? null, at: now });
+/** Tied to the signed-in account: another person signing in on a shared browser can never trigger it. */
+export function setResume(planHint: PlanHint | undefined, uid: string, now = Date.now()): void {
+  const v = JSON.stringify({ planHint: planHint ?? null, at: now, uid });
   for (const s of stores()) { try { s.setItem(RESUME_KEY, v); } catch { /* full / blocked */ } }
 }
 
-/** The saved request, or null (none, unreadable, or older than 2 h; an expired one is removed). Does not clear a valid one. */
-export function readResume(now = Date.now()): { planHint?: PlanHint } | null {
+/** The saved request, or null (none, unreadable, older than 2 h, or another account's; those are removed). Does not clear a valid one. */
+export function readResume(uid: string | null | undefined, now = Date.now()): { planHint?: PlanHint } | null {
   for (const s of stores()) {
     try {
       const raw = s.getItem(RESUME_KEY);
       if (!raw) continue;
-      const v = JSON.parse(raw) as { planHint?: unknown; at?: unknown };
+      const v = JSON.parse(raw) as { planHint?: unknown; at?: unknown; uid?: unknown };
+      if (!uid || v.uid !== uid) { clearResume(); return null; }
       if (typeof v.at !== 'number' || now - v.at > RESUME_MAX_AGE_MS || v.at > now + 60_000) { clearResume(); return null; }
       return isPlanHint(v.planHint) ? { planHint: v.planHint } : {};
     } catch { /* try the next store */ }
@@ -39,8 +41,8 @@ export function clearResume(): void {
 }
 
 /** One-shot: the saved request, cleared in the same step (so a refresh or a second tab cannot publish twice). */
-export function takeResume(now = Date.now()): { planHint?: PlanHint } | null {
-  const r = readResume(now);
+export function takeResume(uid: string | null | undefined, now = Date.now()): { planHint?: PlanHint } | null {
+  const r = readResume(uid, now);
   if (r) clearResume();
   return r;
 }

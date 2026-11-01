@@ -5,6 +5,7 @@ import { publishPayload } from '@/lib/publish';
 import { keepRemoved } from '@/lib/sections/gallery';
 import * as siteStore from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
+import { clearResume } from '@/lib/webResume';
 import Storage from 'expo-sqlite/kv-store';
 
 // A browser can lose its local storage (cleared, private mode, Safari's 7-day rule) and a second device never sees
@@ -86,6 +87,9 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   });
   // A copy adopted from the account (sign-in, another device's edit) is what the account holds: the merge base.
   onSiteAdopted((s) => { void writeBase({ draftId: s.draftId, data: publishPayload(s.data) }); });
+
+  // A publish waiting on Stripe belongs to the account that started it: sign-out (from any tab) ends it.
+  supabase.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') clearResume(); });
 
   const pull = async () => {
     const { data } = await supabase.auth.getSession();

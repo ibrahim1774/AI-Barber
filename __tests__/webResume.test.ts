@@ -8,30 +8,57 @@ afterEach(() => { delete (globalThis as any).sessionStorage; delete (globalThis 
 
 describe('resume-publish flag', () => {
   it('is written to sessionStorage and localStorage and read back with its plan hint', () => {
-    setResume('bookings', 1000);
+    setResume('bookings', 'u1', 1000);
     expect(session.m.has(RESUME_KEY) && local.m.has(RESUME_KEY)).toBe(true);
-    expect(readResume(2000)).toEqual({ planHint: 'bookings' });
+    expect(readResume('u1', 2000)).toEqual({ planHint: 'bookings' });
   });
-  it('without a hint it still resumes', () => { setResume(undefined, 1000); expect(readResume(1500)).toEqual({}); });
+  it('without a hint it still resumes', () => { setResume(undefined, 'u1', 1000); expect(readResume('u1', 1500)).toEqual({}); });
   it('takeResume is one-shot', () => {
-    setResume('store', 1000);
-    expect(takeResume(1500)).toEqual({ planHint: 'store' });
-    expect(takeResume(1600)).toBeNull();
+    setResume('store', 'u1', 1000);
+    expect(takeResume('u1', 1500)).toEqual({ planHint: 'store' });
+    expect(takeResume('u1', 1600)).toBeNull();
     expect(session.m.size + local.m.size).toBe(0);
   });
   it('is ignored (and removed) after 2 hours', () => {
-    setResume('website', 1000);
-    expect(readResume(1000 + RESUME_MAX_AGE_MS + 1)).toBeNull();
+    setResume('website', 'u1', 1000);
+    expect(readResume('u1', 1000 + RESUME_MAX_AGE_MS + 1)).toBeNull();
     expect(local.m.has(RESUME_KEY)).toBe(false);
   });
   it('survives blocked sessionStorage and garbage values', () => {
     (globalThis as any).sessionStorage = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
-    setResume('website', 1000);
-    expect(readResume(1500)).toEqual({ planHint: 'website' });
+    setResume('website', 'u1', 1000);
+    expect(readResume('u1', 1500)).toEqual({ planHint: 'website' });
     local.setItem(RESUME_KEY, '{not json');
-    expect(readResume(1500)).toBeNull();
+    expect(readResume('u1', 1500)).toBeNull();
   });
-  it('clearResume removes it from both', () => { setResume('store', 1); clearResume(); expect(readResume(2)).toBeNull(); });
+  it('clearResume removes it from both', () => { setResume('store', 'u1', 1); clearResume(); expect(readResume('u1', 2)).toBeNull(); });
+});
+
+describe('resume flag belongs to one account', () => {
+  it("another account's sign-in ignores AND clears it", () => {
+    setResume('store', 'u1', 1000);
+    expect(takeResume('u2', 1500)).toBeNull();
+    expect(session.m.size + local.m.size).toBe(0);
+    expect(readResume('u1', 1600)).toBeNull(); // gone for the owner too: it was cleared
+  });
+  it('no signed-in account means no resume', () => {
+    setResume('store', 'u1', 1000);
+    expect(readResume(null, 1500)).toBeNull();
+    expect(readResume('u1', 1500)).toBeNull();
+  });
+  it('the same account gets it exactly once', () => {
+    setResume('bookings', 'u1', 1000);
+    expect(takeResume('u1', 1500)).toEqual({ planHint: 'bookings' });
+    expect(takeResume('u1', 1501)).toBeNull();
+  });
+  it('sign-out clears it (signOut and the SIGNED_OUT listener both call clearResume)', () => {
+    setResume('store', 'u1', 1000);
+    clearResume();
+    expect(readResume('u1', 1500)).toBeNull();
+    const fs = require('fs');
+    expect(fs.readFileSync(require('path').join(__dirname, '../src/lib/auth.ts'), 'utf8')).toMatch(/clearResume\(\)/);
+    expect(fs.readFileSync(require('path').join(__dirname, '../src/lib/webAutosave.web.ts'), 'utf8')).toMatch(/SIGNED_OUT[\s\S]*clearResume/);
+  });
 });
 
 describe('Stripe return parameter', () => {

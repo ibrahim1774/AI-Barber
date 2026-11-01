@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import type { PlanHint } from '@/lib/publishRequest';
+import { supabase } from '@/lib/supabase';
 import { useWebPlanActive } from '@/lib/webPlan';
 import { clearResume, paidParam, readResume, stripPaidParam, takeResume } from '@/lib/webResume';
 
@@ -49,12 +50,18 @@ export function StripeReturn({ onResume }: { onResume(hint?: PlanHint): void }) 
   // The plan is on: finish the publish (one-shot), or just say the payment arrived.
   useEffect(() => {
     if (!active || cancelledReturn) return;
-    if (!paidReturn && !readResume()) return;
-    const r = takeResume();
-    if (!r) { if (paidReturn) setKind('received'); return; }
-    setKind('waiting');
-    const t = setTimeout(() => resume.current(r.planHint), 400);
-    return () => clearTimeout(t);
+    let alive = true;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      const uid = data.session?.user?.id;
+      if (!paidReturn && !readResume(uid)) return;
+      const r = takeResume(uid); // another account's flag is ignored and cleared here
+      if (!r) { if (paidReturn) setKind('received'); return; }
+      setKind('waiting');
+      t = setTimeout(() => resume.current(r.planHint), 400);
+    });
+    return () => { alive = false; if (t) clearTimeout(t); };
   }, [active]);
 
   // Messages that need no action fade away.
