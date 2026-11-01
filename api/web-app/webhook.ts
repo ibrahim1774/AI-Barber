@@ -1,3 +1,5 @@
+import { reliabilityOn, enc } from '../../lib/webApp/reliability.js';
+import { dispatchJob } from '../../lib/webApp/publishJobs.js';
 // Stripe webhook for the web app only (its own endpoint + secret). Upserts one row per subscription
 // into web_app_entitlements. The row is built from the subscription's CURRENT state fetched from Stripe,
 // never from the event body, so late or replayed events can't bring back a canceled subscription.
@@ -47,6 +49,12 @@ export default async function handler(req: any, res: any) {
     const upsertBody: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() };
     if (webAppEntitlementsOn() && upsertBody.site_slug == null) delete upsertBody.site_slug;
     await sbRest('web_app_entitlements?on_conflict=stripe_subscription_id', { method: 'POST', body: upsertBody, prefer: 'resolution=merge-duplicates,return=minimal' });
+    if (reliabilityOn() && row.user_id && isEntitledStatus(row.status) && typeof sub.metadata?.intent_id === 'string') {
+      const jobs = await sbRest(`web_app_publish_intents?id=eq.${enc(sub.metadata.intent_id)}&user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&status=in.(awaiting_payment,queued,failed)`, {
+        method: 'PATCH', body: { stripe_subscription_id: sub.id, status: 'queued' }, prefer: 'return=representation',
+      });
+      if (jobs?.length) dispatchJob(jobs[0].id);
+    }
     if (row.status === 'active' || row.status === 'trialing') await resetDunning(row.stripe_subscription_id);
     // Welcome email: once per subscription. The claim (welcome_sent_at is null -> now) is atomic, so two
     // deliveries can't both send; a failed send releases the claim and 500s so Stripe retries.

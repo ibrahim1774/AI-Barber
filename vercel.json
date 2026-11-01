@@ -107,6 +107,10 @@
     {
       "path": "/api/web-app/lapse",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/web-app/publish-jobs",
+      "schedule": "* * * * *"
     }
   ],
   "functions": {
@@ -182,6 +186,15 @@
       "maxDuration": 300
     },
     "api/web-app/lapse.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/webhook.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/publish-jobs.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/publish-status.ts": {
       "maxDuration": 300
     }
   }

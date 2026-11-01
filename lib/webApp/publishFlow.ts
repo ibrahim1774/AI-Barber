@@ -40,6 +40,7 @@ export interface WebSiteRow {
 
 export interface WebPublishDeps {
   environment: 'live' | 'test';
+  assertCurrent?(): Promise<void>;
   /** The signed-in account behind the Authorization header (null = invalid; throws on an outage). */
   userOf(authorization: unknown): Promise<{ id: string; email: string | null } | null>;
   /** The user's newest ENTITLED web subscription in this environment, or null. */
@@ -97,6 +98,35 @@ export function siteBody(slug: string, pending: PendingSite | null, active: bool
   };
 }
 
+export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['render']) {
+  if (!validSiteData(siteData) || Buffer.byteLength(JSON.stringify(siteData)) > MAX_BODY_BYTES) throw new Error('invalid_snapshot');
+  const sd = siteData as WebsiteData;
+  if (hasDataUrl(sd)) throw new Error('invalid_snapshot');
+  let imageUrlMap: Record<string, string>;
+  let pendingData: WebsiteData;
+  try {
+    imageUrlMap = buildImageUrlMap(sd);
+    pendingData = toPendingSiteData(sd, imageUrlMap);
+  } catch { throw new Error('invalid_snapshot'); }
+  const problem = validationProblem(sd);
+  if (problem) { console.warn(`[web-app/publish] refused before any write: ${problem}`); throw new Error('invalid_snapshot'); }
+  if (sd.logo != null) {
+    const logo = logoProblem(sd.logo, { bucketName: configuredBucket(), allowFolder: isDraftLogoFolder });
+    if (logo) {
+      console.warn(`[web-app/publish] refused before any write: ${logo}`);
+      if (!logoProblem(sd.logo, { bucketName: configuredBucket() })) throw new Error('logo-folder');
+      throw new Error('invalid_snapshot');
+    }
+  }
+  try {
+    (render ?? renderPending)({ siteData: pendingData, imageUrlMap });
+  } catch (e) {
+    console.warn(`[web-app/publish] refused before any write: the template can't render this: ${(e as Error)?.message || e}`);
+    throw new Error('invalid_snapshot');
+  }
+  return { sd, imageUrlMap, pendingData };
+}
+
 export async function runWebPublish(
   input: { siteData?: unknown; baseVersion?: number | null },
   deps: WebPublishDeps,
@@ -109,30 +139,9 @@ export async function runWebPublish(
   const { siteData, baseVersion } = input as { siteData?: unknown; baseVersion?: unknown };
   if (!validSiteData(siteData)) return badRequest;
   if (baseVersion != null && !(Number.isInteger(baseVersion) && (baseVersion as number) >= 0)) return badRequest;
-  const sd = siteData as WebsiteData;
-  if (hasDataUrl(sd)) return badRequest;
-  let imageUrlMap: Record<string, string>;
-  let pendingData: WebsiteData;
-  try {
-    imageUrlMap = buildImageUrlMap(sd);
-    pendingData = toPendingSiteData(sd, imageUrlMap);
-  } catch { return badRequest; }
-  const problem = validationProblem(sd);
-  if (problem) { console.warn(`[web-app/publish] refused before any write: ${problem}`); return badRequest; }
-  if (sd.logo != null) {
-    const logo = logoProblem(sd.logo, { bucketName: configuredBucket(), allowFolder: isDraftLogoFolder });
-    if (logo) {
-      console.warn(`[web-app/publish] refused before any write: ${logo}`);
-      if (!logoProblem(sd.logo, { bucketName: configuredBucket() })) return { status: 400, body: { error: 'bad-request', reason: 'logo-folder' } };
-      return badRequest;
-    }
-  }
-  try {
-    (deps.render ?? renderPending)({ siteData: pendingData, imageUrlMap });
-  } catch (e) {
-    console.warn(`[web-app/publish] refused before any write: the template can't render this: ${(e as Error)?.message || e}`);
-    return badRequest;
-  }
+  let sd: WebsiteData, imageUrlMap: Record<string,string>, pendingData: WebsiteData;
+  try { ({ sd, imageUrlMap, pendingData } = validateWebSnapshot(siteData, deps.render)); }
+  catch (e: any) { return e.message === 'logo-folder' ? { status: 400, body: { error: 'bad-request', reason: 'logo-folder' } } : badRequest; }
 
   try {
     // 1. Who is asking.
@@ -154,6 +163,7 @@ export async function runWebPublish(
     // 3. Tier links.
     pendingData = stripLapsedLinks(pendingData, webProductId(ent.tier, ent.billing_interval));
 
+    await deps.assertCurrent?.();
     // 4./5. Slug + bindings.
     const existing = await deps.sites.byUser(caller.id, deps.environment);
     const wasBound = !!existing;
@@ -216,6 +226,7 @@ export async function runWebPublish(
     // 6. Write the copy (compare-and-set), honouring admin versions like iOS.
     const io = { readPending: deps.readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned };
     type Refusal = { status: 409; body: { error: 'site-updated'; site: WebSiteBody } | { error: 'slug-owned' } };
+    await deps.assertCurrent?.();
     const cas = await casPending<Refusal | null>(slug, io, (previous) => {
       // A slug we just bound must have no copy yet: one already there belongs to someone else (e.g. an iOS
       // publish that picked the same name in the gap). Never overwrite it.
@@ -248,6 +259,7 @@ export async function runWebPublish(
     }
     const pending = cas.written;
 
+    await deps.assertCurrent?.();
     // 7. Deploy.
     const outcome = await deps.publish(slug, { force: wasBound });
     if (!outcome.ok) {
