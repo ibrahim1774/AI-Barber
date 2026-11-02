@@ -98,7 +98,7 @@ const methodLabel = (m: string) => METHODS[m] ?? clean(m);
 /** Build the owner email for an event. Pure; `first` is the owner's first name when known. */
 export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_ORIGIN()): Mail {
   const hi = first ? `Hi ${esc(first)}, ` : '';
-  const cta = { label: 'Open AI Barber', href: signInLink(origin) };
+  const cta = { label: 'Open Prime Barber', href: signInLink(origin) };
   const name = fullWho(e.customerName);
   let subject: string; let headline: string; let lead: string; let leadText: string;
   let facts: Array<[string, string]> = [];

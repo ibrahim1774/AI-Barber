@@ -1,7 +1,7 @@
 // CORS for the web domain endpoints (api/create-domain-checkout, api/purchase-domain): only the
 // first-party site may call them from a browser. The allowed origin is also the only origin
 // Stripe may redirect back to (no open redirect carrying a session id).
-export const FIRST_PARTY_ORIGINS = ['https://www.aibarber.org', 'https://aibarber.org'];
+export const FIRST_PARTY_ORIGINS = ['https://www.aibarber.org', 'https://aibarber.org', 'https://www.primebarber.org', 'https://primebarber.org'];
 const DEV_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
 
 export function allowedOrigins(env: string | undefined = process.env.VERCEL_ENV): string[] {

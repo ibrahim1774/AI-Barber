@@ -51,7 +51,7 @@ export function render(l: Layout): Mail {
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(l.preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:${INK};border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">AI<span style="color:${AMBER}">BARBER</span></span></td></tr>
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:${AMBER}">BARBER</span></span></td></tr>
 <tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">${esc(l.headline)}</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">${l.lead}</div></td></tr>
 <tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a">${factRows}</table></td></tr>
 <tr><td style="padding:26px 28px 6px 28px"><a href="${l.cta.href}" style="display:block;text-align:center;background:${AMBER};color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">${esc(l.cta.label)}</a></td></tr>
@@ -77,7 +77,7 @@ function facts(i: EmailInput, bare = false): Layout['facts'] {
 }
 
 export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
-  const plan = TIER_NAME[i.tier] ?? 'AI Barber';
+  const plan = TIER_NAME[i.tier] ?? 'Prime Barber';
   const first = firstOf(i.firstName);
   return render({
     // Short and the same for every plan so a phone preview never cuts it off; the plan is named in the body.
@@ -112,19 +112,19 @@ export async function sendMail(to: string, mail: Mail): Promise<void> {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'AIBarber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text }),
+    body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text }),
   });
   if (!r.ok) throw new Error(`resend ${r.status}`);
 }
 
 /** Customer was charged twice and the second charge was refunded (only sent when WEB_APP_DUP_REFUND=1 acted). */
 export function duplicateRefundEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
-  const plan = TIER_NAME[i.tier] ?? 'AI Barber';
+  const plan = TIER_NAME[i.tier] ?? 'Prime Barber';
   return render({
-    subject: 'We refunded a duplicate AI Barber charge',
+    subject: 'We refunded a duplicate Prime Barber charge',
     preheader: 'You were charged twice. We refunded the second charge.',
     headline: 'We refunded a duplicate charge',
-    lead: `You were charged twice for AI Barber, so we cancelled the second subscription and refunded it. Your plan stays active: <b style="color:#fff">${esc(plan)}</b>.`,
+    lead: `You were charged twice for Prime Barber, so we cancelled the second subscription and refunded it. Your plan stays active: <b style="color:#fff">${esc(plan)}</b>.`,
     facts: facts(i),
     cta: { label: 'Sign in', href: signInLink(origin) },
     note: 'To change your plan, sign in and open Settings, then Manage plan.',
@@ -136,10 +136,10 @@ export function duplicateRefundEmail(i: EmailInput, origin = APP_ORIGIN()): Mail
 export function iosOverlapEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   const site = i.siteUrl ? i.siteUrl.replace(/^https?:\/\//, '') : null;
   return render({
-    subject: 'You now pay for AI Barber twice',
+    subject: 'You now pay for Prime Barber twice',
     preheader: 'You have an App Store plan and a web plan. Cancel the web plan to stop paying twice.',
-    headline: 'You now pay for AI Barber twice',
-    lead: 'You have an AI Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.',
+    headline: 'You now pay for Prime Barber twice',
+    lead: 'You have an Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.',
     facts: facts(i),
     cta: { label: 'Manage web plan', href: signInLink(origin) },
     note: site ? `Note: your web site address ${esc(site)} goes offline when the web plan ends.` : undefined,
