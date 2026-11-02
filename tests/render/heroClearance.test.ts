@@ -48,8 +48,32 @@ describe.each([false, true])('luxe home hero clearance (multi-page: %s)', (multi
     const html = home(site('luxe', multi));
     const block = html.slice(html.indexOf('/* Fixed header vs hero'), html.indexOf('section.py-12, section.py-16 {'));
     const rules = block.replace(/\/\*[\s\S]*?\*\//g, '').split(/\n/).map((l) => l.trim()).filter(Boolean);
-    expect(rules.length).toBe(13);
-    for (const r of rules) expect(r, r).toMatch(/^(:root|#header|#home|@media[^{]*\{ (:root|#header))/);
+    expect(rules.length).toBe(20);
+    for (const r of rules) expect(r, r).toMatch(/^(:root|#header|#home|@media[^{]*\{ (:root|#header|@container[^{]*\{ #header))/);
+  });
+
+  it('collapses the call box to its icon (number hidden) only when the number cannot fit beside the name', () => {
+    const rules = (phone: string) => {
+      const html = home(site('luxe', multi, { phone }));
+      return [...html.matchAll(/@media ([^{]*) \{ @container \(max-width: (\d+)px\) \{ (#header \.ab-call \{[^}]*\}) (#header \.ab-call-text \{[^}]*\}) \} \}/g)]
+        .map((m) => ({ mq: m[1], px: +m[2], box: m[3], text: m[4] }));
+    };
+    const std = rules('(512) 555-0142');
+    const long = rules('+1 (512) 555-0100 ext. 2345');
+    expect(std.length).toBe(6);
+    expect(long.length).toBe(6);
+    for (const r of std) {
+      // the call box becomes just the icon: no divider, no padding, no gap, no minimum width; the number text is display: none
+      expect(r.box).toContain('min-width: 0');
+      expect(r.box).toContain('padding-left: 0');
+      expect(r.box).toContain('border-left: 0');
+      expect(r.box).toContain('gap: 0');
+      expect(r.text).toContain('display: none');
+    }
+    // a standard number collapses only below the narrowest header group that still fits it (360px phone: the group is about 270px wide)
+    expect(std[0].px).toBeLessThan(270);
+    // a long number collapses at larger widths than a standard one in every size regime
+    std.forEach((r, i) => expect(long[i].px).toBeGreaterThan(r.px));
   });
 
   it('the phone number is never taken out of the markup (only squeezed to its icon by CSS)', () => {

@@ -426,7 +426,7 @@ describe('phone number in the header', () => {
     // the whole header row is allowed to shrink and the call link is not
     expect(header).toContain('shrink-0');
     // the number stays visible at every width (it sits next to the icon); the phone sizes only make it smaller
-    expect(html).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
+    expect(html.replace(/@container[^{]*\{[^@]*?\} \}/g, "")).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
     expect(html).toMatch(/@media \(max-width: 430px\)[^\n]*\.ab-call-text \{ font-size: 12px/);
   });
 

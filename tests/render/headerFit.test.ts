@@ -67,7 +67,7 @@ describe('luxe phone at 430px and under', () => {
   it('shows the number next to the phone icon; the tel link and its aria-label stay (nested page and home)', () => {
     for (const multi of [true, false]) {
       for (const page of pagesOf('luxe', multi).slice(0, multi ? 3 : 1)) {
-        expect(page.html, page.path).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
+        expect(page.html.replace(/@container[^{]*\{[^@]*?\} \}/g, ""), page.path).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
         expect(page.html, page.path).toMatch(/@media\s*\(\s*max-width:\s*430px\s*\)/);
         expect(page.html).not.toMatch(/max-width:\s*379px/);
         expect(page.html).toMatch(/href="tel:[^"]+"/);

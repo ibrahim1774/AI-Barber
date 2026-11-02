@@ -9,7 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
-import { mapMarked, unwrapMarked } from './markers.js';
+import { mapMarked, stripMarkersText, unwrapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars, to12h,
@@ -148,6 +148,8 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   const nameFirst = esc(nameOpen + nameWords[0] + nameClose);
   const brand = headerBrand(siteData);
   // Which header row the hero reserves room for (the CSS block after .ab-name): name only, logo only, or logo and name.
+  // Header call button: below this width the full number cannot sit beside the name, so only the icon shows (see ab-call CSS).
+  const callCss = callCollapseCss(stripMarkersText(displayPhone(siteData.phone)));
   const headRow = brand.mode === 'logo' ? 'logo' : brand.mode === 'both' ? 'pair' : 'name';
   const nameRest = nameWords.length > 1 ? esc(nameOpen + nameWords.slice(1).join(' ') + nameClose) : '';
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
@@ -402,6 +404,9 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
     @media (min-width: 768px) { :root { --ab-head-pad: 64px; --ab-row-name: 72px; } #header > .container { column-gap: 24px; } #header .ab-name { font-size: 30px; line-height: 36px; } #header .ab-call { min-width: 62px; height: 28px; } }
     @media (min-width: 1024px) { :root { --ab-row-name: 80px; } #header .ab-name { font-size: 36px; line-height: 40px; } #header .ab-call { height: 32px; } }
     @media (min-width: 1024px) and (max-width: 1279px) { :root { --ab-row-name: 64px; } #header > .container > div:first-child { gap: 16px; } #header .ab-name { font-size: 28px; line-height: 32px; } #header .ab-call { gap: 8px; padding-left: 16px; min-width: 46px; height: 28px; } #header .ab-call-text { font-size: 18px; line-height: 28px; } }
+    /* The number does not fit beside the name: the call box collapses to its icon so the name keeps the space (the number stays in the link, aria-label and the hero's Call button). */
+    #header > .container > div:first-child { flex: 1 1 0; min-width: 0; container-type: inline-size; }
+${callCss}
     :root { --ab-head-row: var(--ab-row-${headRow}); }
     #home { height: auto; min-height: 55vh; padding-top: calc(var(--ab-head-pad) + var(--ab-head-row)); }
     #home > .relative { padding-top: 24px; }
@@ -561,4 +566,31 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
   </script>
 </body>
 </html>`;
+}
+
+// Approximate advance of a phone string in em (Montserrat bold, tabular digits), with a small safety margin.
+function phoneEm(s: string): number {
+  let w = 0;
+  for (const c of s) w += /\d/.test(c) ? 0.72 : c === ' ' ? 0.3 : /[()\-.]/.test(c) ? 0.38 : c === '+' ? 0.62 : 0.66;
+  return w * 1.04;
+}
+
+// @container rules (one per type-size regime) that hide the number and shrink .ab-call to the icon once the header's name group
+// is too narrow for: the full call link (icon + gap + divider/padding + number) plus the room the name needs. Thresholds come from
+// the number's length, so a standard "(512) 555-0142" is never hidden at a normal width.
+function callCollapseCss(phone: string): string {
+  const em = phoneEm(phone);
+  // [media query, font px, call chrome px (icon + gap + padding + divider), room kept for the name px]
+  const regimes: [string, number, number, number][] = [
+    ['(max-width: 360px)', 11, 24, 120],
+    ['(min-width: 361px) and (max-width: 430px)', 12, 26, 125],
+    ['(min-width: 431px) and (max-width: 767px)', 14, 42, 150],
+    ['(min-width: 768px) and (max-width: 1023px)', 20, 78, 220],
+    ['(min-width: 1024px) and (max-width: 1279px)', 18, 54, 170],
+    ['(min-width: 1280px)', 24, 78, 300],
+  ];
+  const body = '#header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; }';
+  return regimes
+    .map(([mq, fs, chrome, room]) => `    @media ${mq} { @container (max-width: ${Math.ceil(em * fs + chrome + room)}px) { ${body} } }`)
+    .join('\n');
 }

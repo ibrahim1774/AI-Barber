@@ -44,8 +44,8 @@ describe('luxe header phone on a phone: one row, number next to the icon', () =>
       expect(hdr).not.toContain('ab-sub');
       expect(hdr).not.toContain('ab-brandcol');
       expect(html).not.toContain('ab-hdrgap');
-      // the number is shown at phone widths: nothing hides .ab-call-text any more
-      expect(html).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
+      // the number is shown at phone widths: only a container query (the name group too narrow for it) may hide .ab-call-text
+      expect(html.replace(/@container[^{]*\{[^@]*?\} \}/g, '')).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
       // and it keeps one line
       expect(html).toMatch(/\.ab-call-text\s*\{[^}]*(white-space:\s*nowrap|font-variant-numeric)/);
       expect(call).toMatch(/whitespace-nowrap|ab-call-text/);

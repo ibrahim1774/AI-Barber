@@ -359,6 +359,14 @@ exports[`luxe team section > snapshot 1`] = `
     @media (min-width: 768px) { :root { --ab-head-pad: 64px; --ab-row-name: 72px; } #header > .container { column-gap: 24px; } #header .ab-name { font-size: 30px; line-height: 36px; } #header .ab-call { min-width: 62px; height: 28px; } }
     @media (min-width: 1024px) { :root { --ab-row-name: 80px; } #header .ab-name { font-size: 36px; line-height: 40px; } #header .ab-call { height: 32px; } }
     @media (min-width: 1024px) and (max-width: 1279px) { :root { --ab-row-name: 64px; } #header > .container > div:first-child { gap: 16px; } #header .ab-name { font-size: 28px; line-height: 32px; } #header .ab-call { gap: 8px; padding-left: 16px; min-width: 46px; height: 28px; } #header .ab-call-text { font-size: 18px; line-height: 28px; } }
+    /* The number does not fit beside the name: the call box collapses to its icon so the name keeps the space (the number stays in the link, aria-label and the hero's Call button). */
+    #header > .container > div:first-child { flex: 1 1 0; min-width: 0; container-type: inline-size; }
+    @media (max-width: 360px) { @container (max-width: 243px) { #header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; } } }
+    @media (min-width: 361px) and (max-width: 430px) { @container (max-width: 259px) { #header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; } } }
+    @media (min-width: 431px) and (max-width: 767px) { @container (max-width: 318px) { #header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; } } }
+    @media (min-width: 768px) and (max-width: 1023px) { @container (max-width: 478px) { #header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; } } }
+    @media (min-width: 1024px) and (max-width: 1279px) { @container (max-width: 386px) { #header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; } } }
+    @media (min-width: 1280px) { @container (max-width: 594px) { #header .ab-call { min-width: 0; flex-shrink: 0; gap: 0; padding-left: 0; border-left: 0; } #header .ab-call-text { display: none; } } }
     :root { --ab-head-row: var(--ab-row-name); }
     #home { height: auto; min-height: 55vh; padding-top: calc(var(--ab-head-pad) + var(--ab-head-row)); }
     #home > .relative { padding-top: 24px; }
