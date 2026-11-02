@@ -1,4 +1,4 @@
-import { prepareIntent, reliabilityOn, modeOf, enc } from '../../lib/webApp/reliability.js';
+import { prepareIntent, readDraft, reliabilityOn, modeOf, enc } from '../../lib/webApp/reliability.js';
 import { runJob, dispatchJob } from '../../lib/webApp/publishJobs.js';
 import { callerFrom, sbRest } from '../../lib/webApp/webAppServer.js';
 // POST { siteData, baseVersion? } + Authorization: Bearer <supabase jwt>. Publishes the caller's web-app site.
@@ -24,12 +24,21 @@ export default async function handler(req: any, res: any) {
     let body: unknown;
     try { body = req.body; } catch { return res.status(400).json({ error: 'bad-request' }); }
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { return res.status(400).json({ error: 'bad-request' }); } }
-    if (reliabilityOn()) {
+    const input = body as any;
+    const drafted = typeof input?.draftId === 'string' && Number.isSafeInteger(input?.revision);
+    if (reliabilityOn() && !drafted) {
+      // An older web client (no draft engine): the pre-reliability browser publish, unchanged. Never deploy alongside this account's running server job.
+      const caller = await callerFrom(req.headers?.authorization);
+      if (caller) {
+        const d = await readDraft(caller.id);
+        if (d?.publish_lease && Date.parse(d.lease_until ?? '') > Date.now()) return res.status(503).json({ error: 'temporarily-unavailable' });
+      }
+    }
+    if (reliabilityOn() && drafted) {
       const caller = await callerFrom(req.headers?.authorization);
       if (!caller) return res.status(401).json({ error: 'unauthorized' });
       const ent = (await sbRest(`web_app_entitlements?user_id=eq.${enc(caller.id)}&environment=eq.${modeOf()}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&order=created_at.desc&limit=1`))?.[0];
       if (!ent) return res.status(402).json({ error: 'subscription-inactive' });
-      const input = body as any;
       const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, input?.siteData, input?.republish === true);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);

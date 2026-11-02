@@ -1,0 +1,173 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+
+const state = vi.hoisted(() => ({ uid: '10000000-0000-0000-0000-000000000001' as string | null, rest: null as any, stripe: null as any, writes: [] as string[] }));
+vi.mock('../../lib/webApp/webAppServer.js', () => ({
+  webAppCors: () => false, webAppCheckoutOn: () => true, webAppEntitlementsOn: () => true,
+  APP_ORIGIN: () => 'https://app.test', callerFrom: async () => state.uid ? { id: state.uid, email: 'test@example.com' } : null,
+  sbRest: async (...args: any[]) => { state.writes.push(args[0]); return state.rest(...args); },
+  stripeCall: async (...args: any[]) => state.stripe(...args),
+  readRawBody: async (req: any) => req.body,
+}));
+vi.mock('../../lib/webApp/stripeCore.js', async (orig) => ({ ...(await orig<any>()), verifyStripeSignature: () => true }));
+vi.mock('../../lib/webApp/emails.js', () => ({ sendMail: vi.fn(async () => {}), welcomeEmail: () => ({}), alertOwner: vi.fn(async () => {}) }));
+vi.mock('../../lib/webApp/publishFlow.js', async (orig) => {
+  const o = await orig<any>();
+  return {
+    ...o,
+    runWebPublish: vi.fn(async () => ({ status: 200, body: { siteId: 'test-cuts', deployedUrl: 'https://test-cuts.example', version: 1 } })),
+    liveWebPublishDeps: vi.fn(() => ({})),
+    validateWebSnapshot: vi.fn(o.validateWebSnapshot),
+  };
+});
+vi.mock('../../lib/webApp/duplicates.js', () => ({ handleDuplicates: vi.fn(async () => {}), liveDupDeps: () => ({}) }));
+vi.mock('../../lib/webApp/dunning.js', () => ({ contactFor: async () => ({ email: null, firstName: null }), resetDunning: async () => {}, sendFailedPaymentIfDue: async () => {} }));
+vi.mock('../../lib/webApp/appStoreGuard.js', () => ({ appStoreStateOf: async () => null }));
+vi.mock('@vercel/functions', () => ({ waitUntil: vi.fn() }));
+import draft from '../../api/web-app/draft.js';
+import checkout from '../../api/web-app/checkout.js';
+import status from '../../api/web-app/publish-status.js';
+import { prepareIntent, readDraft, suspendWork, markSiteOffline } from '../../lib/webApp/reliability.js';
+import publishApi from '../../api/web-app/publish.js';
+import webhook from '../../api/web-app/webhook.js';
+import { liveJobDeps, runJob, sweepJobs } from '../../lib/webApp/publishJobs.js';
+import { alertOwner } from '../../lib/webApp/emails.js';
+import { runWebPublish, validateWebSnapshot } from '../../lib/webApp/publishFlow.js';
+
+const U = '10000000-0000-0000-0000-000000000001';
+const V = '10000000-0000-0000-0000-000000000002';
+const site = () => ({ shopName: 'Test Cuts', area: 'Brooklyn', phone: '555-0100',
+  hero: { heading: 'Fresh cuts', tagline: 'Welcome', imageUrl: 'https://img.example/hero.jpg' },
+  about: { heading: 'About', description: ['Welcome'], imageUrl: '' },
+  services: [{ title: 'Fade', name: 'Fade', price: '$30', imageUrl: 'https://img.example/service.jpg' }],
+  gallery: [], craftImages: [], staff: [], contact: { address: '1 Main Street', email: 'test@example.com' }, source: 'web-app' });
+const response = () => { const r: any = { code: 0, body: null, setHeader: vi.fn() }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; };
+async function call(fn: any, body?: any, method = 'POST') { const r = response(); await fn({ method, headers: { authorization: 'Bearer test' }, body }, r); return r; }
+let db: PGlite;
+
+// Exercise the real SQL migration through a small PostgREST adapter, with no external database or Stripe calls.
+async function rest(path: string, init: any = {}) {
+  if (path === 'rpc/submit_web_app_intent') {
+    const b = init.body;
+    return (await db.query('select * from submit_web_app_intent($1,$2,$3,$4,$5,$6,$7,$8)',
+      [b.p_user,b.p_environment,b.p_draft,b.p_revision,b.p_id,b.p_status,b.p_base_version,b.p_snapshot])).rows;
+  }
+  const [table, query = ''] = path.split('?');
+  if (!/^(web_app_[a-z_]+|site_owners)$/.test(table)) throw new Error('unexpected table ' + table);
+  const p = new URLSearchParams(query); const values: any[] = [];
+  const arg = (v: any) => { values.push(v); return '$' + values.length; };
+  const filter = (key: string, expression: string): string => {
+    if (!/^[a-z_]+$/.test(key)) throw new Error('invalid column');
+    const [op, ...parts] = expression.split('.'); const value = parts.join('.');
+    if (op === 'is' && value === 'null') return `${key} is null`;
+    if (op === 'not' && value === 'is.null') return `${key} is not null`;
+    if (op === 'in') return `${key} in (${value.slice(1,-1).split(',').map(arg).join(',')})`;
+    const sign: any = { eq: '=', neq: '<>', lt: '<', lte: '<=', gt: '>', gte: '>=' };
+    if (!sign[op]) throw new Error('invalid operator');
+    return `${key}${sign[op]}${arg(value)}`;
+  };
+  const where: string[] = [];
+  for (const [key, value] of p) {
+    if (['select','order','limit','on_conflict'].includes(key)) continue;
+    if (key === 'or') where.push('(' + value.slice(1,-1).split(',').map(x => { const at = x.indexOf('.'); return filter(x.slice(0,at),x.slice(at+1)); }).join(' or ') + ')');
+    else where.push(filter(key,value));
+  }
+  const condition = where.length ? ' where ' + where.join(' and ') : '';
+  const method = init.method ?? 'GET'; let sql: string;
+  if (method === 'GET') {
+    const cols = p.get('select') ?? '*'; if (!/^[a-z_,*]+$/.test(cols)) throw new Error('invalid select');
+    sql = `select ${cols} from ${table}${condition}`;
+    if (p.has('order')) sql += ' order by ' + p.get('order')!.split(',').map(x => x.replace('.desc', ' desc').replace('.asc', ' asc')).join(',');
+    if (p.has('limit')) sql += ' limit ' + Number(p.get('limit'));
+  } else if (method === 'PATCH') {
+    const sets = Object.entries(init.body).map(([k,v]) => `${k}=${arg(v)}`);
+    sql = `update ${table} set ${sets.join(',')}${condition} returning *`;
+  } else if (method === 'DELETE') sql = `delete from ${table}${condition} returning *`;
+  else {
+    // POST filters aren't used in these production calls; build values from the body.
+    values.length = 0;
+    const entries = Object.entries(init.body);
+    sql = `insert into ${table}(${entries.map(([k])=>k).join(',')}) values(${entries.map(([,v])=>arg(v)).join(',')})`;
+    if (p.has('on_conflict')) {
+      sql += ` on conflict(${p.get('on_conflict')}) ` + (init.prefer?.includes('ignore-duplicates') ? 'do nothing' :
+        'do update set ' + entries.filter(([k])=>!p.get('on_conflict')!.split(',').includes(k)).map(([k])=>`${k}=excluded.${k}`).join(','));
+    }
+    sql += ' returning *';
+  }
+  return (await db.query(sql,values)).rows;
+}
+beforeAll(async () => {
+  db = new PGlite();
+  await db.exec(`create schema auth; create table auth.users(id uuid primary key);
+    create role anon; create role authenticated; create role service_role bypassrls;
+    insert into auth.users values('${U}'),('${V}');
+    create table web_app_entitlements(stripe_subscription_id text primary key, stripe_customer_id text, user_id uuid, site_slug text,
+      tier text, billing_interval text, status text, environment text, current_period_end timestamptz, cancel_at_period_end boolean, created_at timestamptz default now(), updated_at timestamptz, welcome_sent_at timestamptz);
+    create table web_app_customers(user_id uuid, environment text, stripe_customer_id text, primary key(user_id,environment));
+    create table site_owners(slug text, user_id uuid);
+    create table web_app_sites(slug text primary key, stripe_subscription_id text, user_id uuid, environment text, published_at timestamptz, taken_down_at timestamptz, removed_at timestamptz, created_at timestamptz default now());`);
+  await db.exec(readFileSync(new URL('../../supabase/migrations/025_web_app_reliability.sql', import.meta.url),'utf8'));
+}, 30_000);
+afterAll(async () => { await db?.close(); });
+beforeEach(async () => {
+  vi.stubEnv('WEB_APP_RELIABILITY','1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY','sk_test_test');
+  vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH','price_test');
+  await db.exec('truncate web_app_draft_versions, web_app_drafts, web_app_publish_intents, web_app_entitlements, web_app_customers, web_app_sites');
+  vi.mocked(alertOwner).mockClear(); vi.mocked(alertOwner).mockImplementation(async () => {});
+  vi.mocked(runWebPublish).mockReset();
+  vi.mocked(runWebPublish).mockImplementation((async () => ({ status: 200, body: { siteId: 'test-cuts', deployedUrl: 'https://test-cuts.example', version: 1 } })) as any);
+  state.uid = U; state.rest = rest; state.writes = [];
+  state.stripe = vi.fn(async (path: string) => {
+    if (path === 'customers') return { id: 'cus_test' };
+    if (path === 'subscriptions/sub_x') return { id: 'sub_x', customer: 'cus_test', status: 'active', metadata: { app: 'aibarber-app', user_id: U }, items: { data: [{ price: { id: 'price_test' } }] } };
+    if (path.startsWith('subscriptions?')) return { data: [] };
+    if (path === 'checkout/sessions') return { id: 'cs_test' };
+    if (path === 'checkout/sessions/cs_test') return { id: 'cs_test', status: 'open', url: 'https://checkout.stripe.com/test' };
+    if (path.startsWith('checkout/sessions?')) return { data: [] };
+    throw new Error('unexpected Stripe call '+path);
+  });
+});
+afterEach(() => vi.unstubAllEnvs());
+const save = (data = site(), expectedRevision = 0) => call(draft, { id: 'draft', site_data: data, expectedRevision },'PUT');
+
+
+const setup = async () => {
+  await save(); const job = await prepareIntent(U, 'draft', 1, 'publish');
+  const deps = liveJobDeps(); deps.paid = vi.fn(async () => true);
+  deps.publish = vi.fn(async (_j, guard) => { await guard(); return { status: 200, body: { siteId: 'test-cuts', deployedUrl: 'https://test-cuts.example', version: 1 } }; });
+  return { job, deps };
+};
+
+const intents = async () => (await db.query<any>('select id,revision,status,stripe_session_id,result,requires_payment,attempts from web_app_publish_intents order by revision, created_at')).rows;
+const entitle = () => db.query("insert into web_app_entitlements(stripe_subscription_id,user_id,status,environment) values('sub_x',$1,'active','test')", [U]);
+describe('S1 legacy client compatibility', () => {
+  it('legacy publish body without draftId publishes through the browser path', async () => {
+    await entitle();
+    const r = await call(publishApi, { transactionId: 'web:sub_x', siteData: site() });
+    expect(r.code).toBe(200);
+    expect(runWebPublish).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runWebPublish).mock.calls[0]).toEqual([{ transactionId: 'web:sub_x', siteData: site() }, {}, { authorization: 'Bearer test' }]);
+    expect((await intents()).length).toBe(0);
+  });
+  it("legacy publish waits while this account's server job holds the lease", async () => {
+    await save();
+    await db.query("update web_app_drafts set publish_lease=gen_random_uuid(), lease_until=now()+interval '5 minutes'");
+    const r = await call(publishApi, { transactionId: 'web:sub_x', siteData: site() });
+    expect(r.code).toBe(503); expect(r.body.error).toBe('temporarily-unavailable');
+    expect(runWebPublish).not.toHaveBeenCalled();
+  });
+  it('drafted publish body still runs as a server job', async () => {
+    await save(); await entitle();
+    const r = await call(publishApi, { draftId: 'draft', revision: 1, siteData: site() });
+    expect(r.code).toBe(200);
+    const rows = await intents();
+    expect(rows).toHaveLength(1); expect(rows[0].status).toBe('live');
+  });
+  it('legacy publish with the flag off is untouched', async () => {
+    vi.stubEnv('WEB_APP_RELIABILITY', '');
+    const r = await call(publishApi, { transactionId: 'web:sub_x', siteData: site() });
+    expect(r.code).toBe(200);
+    expect(runWebPublish).toHaveBeenCalledTimes(1);
+  });
+});
