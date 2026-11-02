@@ -16,7 +16,7 @@ Implementation is local and opt-in. It has NOT been activated on aibarber.org or
 
 The new tables, routes, Stripe metadata and flags are web-only. No iOS purchase table, native config, auth password policy or iOS publishing route is changed. Shared account deletion remains the existing GLOBAL auth-account deletion behavior; it is not a promise of separate web/iOS account deletion.
 
-Legacy builds stored web drafts with source='ios'. Do not blindly import those rows into the new web storage. `scripts/backfill-web-drafts.ts` is dry-run by default and copies only an exact URL match to a proven web_app_sites binding. Legacy unpublished drafts without provenance require review; keep their old rows and existing browser storage, and do not enable this rollout for affected users until migration/recovery is resolved. This is a release gate, not a claim that all legacy drafts have already migrated.
+Legacy builds stored web drafts with source='ios'. Per approved decision D6, on a new browser those legacy rows are opened read-only (the same rows the legacy client read) and saved as the user's first server draft, so they are not imported blindly in bulk. `scripts/backfill-web-drafts.ts` remains dry-run by default and copies only an exact URL match to a proven web_app_sites binding.
 
 ## Release gates and known limits (not fixed here)
 
