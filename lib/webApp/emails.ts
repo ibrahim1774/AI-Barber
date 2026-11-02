@@ -139,7 +139,7 @@ export function iosOverlapEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
     subject: 'You now pay for Prime Barber twice',
     preheader: 'You have an App Store plan and a web plan. Cancel the web plan to stop paying twice.',
     headline: 'You now pay for Prime Barber twice',
-    lead: 'You have an Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.',
+    lead: 'You have a Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.',
     facts: facts(i),
     cta: { label: 'Manage web plan', href: signInLink(origin) },
     note: site ? `Note: your web site address ${esc(site)} goes offline when the web plan ends.` : undefined,
