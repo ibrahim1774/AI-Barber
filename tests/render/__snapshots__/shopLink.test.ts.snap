@@ -319,15 +319,6 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
     @media (max-width: 430px) { header#header .container { gap: 8px; } header#header .ab-call { gap: 6px; padding-left: 0; border-left: 0; } header#header .ab-call svg { width: 1.25rem; height: 1.25rem; } header#header .ab-call-text { font-size: 12px; letter-spacing: 0; } }
     @media (max-width: 360px) { header#header .ab-call-text { font-size: 11px; } header#header .ab-call svg { width: 1.1rem; height: 1.1rem; } }
     .ab-name { font-size: clamp(14px, 4.4vw, 18px); line-height: 1.1; overflow-wrap: anywhere; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-    /* Desktop hero must fit its content below the fixed header, including on short laptop windows. */
-@media (min-width: 768px) {
-  #home { height: auto; min-height: 55vh; padding-top: 144px; }
-  #home > .relative { padding-top: 32px; padding-bottom: 64px; }
-  #header > .container { gap: 24px; }
-  #header .ab-name { font-size: clamp(18px, 2vw, 28px); line-height: 1.15; }
-  #header .ab-call-text { font-size: clamp(14px, 1.3vw, 20px); }
-}
-
     section.py-12, section.py-16 {
       background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
       background-blend-mode: overlay;
