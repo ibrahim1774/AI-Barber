@@ -4,16 +4,17 @@ import { dispatchJob } from '../../lib/webApp/publishJobs.js';
 // into web_app_entitlements. The row is built from the subscription's CURRENT state fetched from Stripe,
 // never from the event body, so late or replayed events can't bring back a canceled subscription.
 // Events without metadata.app = 'aibarber-app' are acknowledged and ignored.
-import { isEntitledStatus, keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
+import { WEB_APP_TAG, cleanShopName, isEntitledStatus, keyMode, planDescription, rowFromSubscription, shopFromDescription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
 import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
 import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { draftPath } from '../../lib/webApp/reliability.js';
 import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
 
 export const config = { api: { bodyParser: false } };
 
-const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted']);
+const SUB_EVENTS = new Set(['checkout.session.completed', 'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted']);
 const siteUrlOf = (slug: string | null) => (slug ? stampedSiteUrl(slug) : Promise.resolve(null));
 
 export default async function handler(req: any, res: any) {
@@ -33,7 +34,12 @@ export default async function handler(req: any, res: any) {
   if (!SUB_EVENTS.has(event.type)) return res.status(200).json({ ignored: true });
   // Only the mode this deployment's key belongs to (a test event can never grant access in live, or the reverse).
   if ((mode === 'live') !== !!event.livemode) return res.status(200).json({ ignored: true });
-  const evSub = event.data?.object;
+  let evSub = event.data?.object;
+  if (event.type === 'checkout.session.completed') {
+    // Only subscription checkouts of ours; the subscription itself is then handled like any subscription event.
+    if (evSub?.mode !== 'subscription' || typeof evSub.subscription !== 'string') return res.status(200).json({ ignored: true });
+    evSub = { id: evSub.subscription, metadata: evSub.metadata };
+  }
   if (evSub?.metadata?.app !== 'aibarber-app' || typeof evSub.id !== 'string') return res.status(200).json({ ignored: true });
   try {
     let sub: any;
@@ -50,6 +56,11 @@ export default async function handler(req: any, res: any) {
     const upsertBody: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() };
     if (webAppEntitlementsOn() && upsertBody.site_slug == null) delete upsertBody.site_slug;
     await sbRest('web_app_entitlements?on_conflict=stripe_subscription_id', { method: 'POST', body: upsertBody, prefer: 'resolution=merge-duplicates,return=minimal' });
+    // The customer now exists (Checkout created it on payment): remember it for this user and mode, and tag it.
+    if (row.user_id && row.status !== 'invalid_price') {
+      await recordCustomer(row.user_id, row.stripe_customer_id, mode, event.type !== 'customer.subscription.deleted');
+      if (isEntitledStatus(row.status)) await syncDescription(sub, row.tier, row.user_id, mode);
+    }
     if (reliabilityOn() && row.user_id && isEntitledStatus(row.status) && typeof sub.metadata?.intent_id === 'string') {
       const jobs = await sbRest(`web_app_publish_intents?id=eq.${enc(sub.metadata.intent_id)}&user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&status=in.(awaiting_payment,queued,failed)`, {
         method: 'PATCH', body: { stripe_subscription_id: sub.id, status: 'queued' }, prefer: 'return=representation',
@@ -118,4 +129,24 @@ async function handleFailedPayment(event: any, mode: 'live' | 'test', res: any) 
     console.error('[web-app webhook payment_failed]', e.message);
     return res.status(200).json({ ok: false, emailed: false });
   }
+}
+
+/** Idempotent: first customer per (user, mode) wins; later ones (a duplicate payment) keep their entitlement rows only. Throws on a DB error so Stripe retries. */
+async function recordCustomer(userId: string, customerId: string, mode: 'live' | 'test', tag: boolean) {
+  await sbRest('web_app_customers?on_conflict=user_id,environment', { method: 'POST', body: { user_id: userId, environment: mode, stripe_customer_id: customerId }, prefer: 'resolution=ignore-duplicates,return=minimal' });
+  if (!tag) return;
+  // Checkout never copies metadata onto the customer it creates. Best effort, never fails the webhook.
+  await stripeCall(`customers/${encodeURIComponent(customerId)}`, { 'metadata[app]': WEB_APP_TAG, 'metadata[user_id]': userId }, 'POST', { idempotencyKey: `aibarber-app:cust-meta:${userId}:${customerId}` })
+    .catch((e: any) => console.error('[web-app webhook customer metadata]', e?.message || e));
+}
+
+/** Keep the subscription description (invoices, receipts, portal) equal to the CURRENT plan's text; a plan switch rewrites it. Best effort. */
+async function syncDescription(sub: any, tier: any, userId: string, mode: 'live' | 'test') {
+  try {
+    let shop: unknown = (await sbRest(`${draftPath(userId, mode)}&select=shop:site_data->>shopName&limit=1`))?.[0]?.shop;
+    if (cleanShopName(shop) === 'your shop') shop = shopFromDescription(sub.description); // never overwrite a real name with the fallback
+    const want = planDescription(tier, shop);
+    if (sub.description === want) return;
+    await stripeCall(`subscriptions/${encodeURIComponent(sub.id)}`, { description: want }, 'POST');
+  } catch (e: any) { console.error('[web-app webhook description]', e?.message || e); }
 }

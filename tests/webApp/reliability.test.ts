@@ -131,7 +131,9 @@ describe('web draft and payment boundary (real PostgreSQL)', () => {
   it('keeps the old recoverable job when Stripe already knows the customer paid before its webhook arrived', async () => {
     await save();const old=await prepareIntent(U,'draft',1,'publish');
     const original=state.stripe;
-    state.stripe=vi.fn(async(...args:any[])=>args[0].startsWith('subscriptions?')
+    state.stripe=vi.fn(async(...args:any[])=>args[0].startsWith('checkout/sessions?customer_details')
+      ? {data:[{id:'cs_paid',status:'complete',customer:'cus_paid',metadata:{app:'aibarber-app',user_id:U}}]}
+      : args[0].startsWith('subscriptions?')
       ? {data:[{id:'sub_already_paid',status:'active',metadata:{app:'aibarber-app',user_id:U}}]}
       : original(...args));
     const r=await call(checkout,{tier:'website',interval:'month',publish:true,draftId:'draft',revision:1});

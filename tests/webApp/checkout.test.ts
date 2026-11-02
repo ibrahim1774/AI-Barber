@@ -16,6 +16,7 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
     if (path.startsWith('web_app_customers') && (globalThis as any).__failCustomers) throw new Error('supabase 404');
     if (path.startsWith('web_app_customers') && (init.method ?? 'GET') === 'GET') return sb.customers.slice(0, 1);
     if (path.startsWith('web_app_customers')) { if (!sb.customers.length) sb.customers.push(init.body); return null; }
+    if (path.startsWith('web_app_drafts')) return (globalThis as any).__shop === undefined ? [] : [{ shop: (globalThis as any).__shop }];
     if (path.startsWith('site_owners')) return [];
     return [];
   },
@@ -35,7 +36,7 @@ beforeEach(() => {
   vi.stubEnv('WEB_APP_CHECKOUT', '1');
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_w_m');
-  stripe.calls = []; sb.calls = []; sb.customers = []; sb.ents = []; guard.state = null; guard.err = null;
+  stripe.calls = []; sb.calls = []; sb.customers = [{ stripe_customer_id: 'cus_stored' }]; sb.ents = []; guard.state = null; guard.err = null;
   subs = []; open = []; real = {}; nextId = ['cs_new'];
   const keyed = new Map<string, any>();
   stripe.handler = (path: string, body: any, method: string, opts: any) => {
@@ -49,7 +50,7 @@ beforeEach(() => {
     throw new Error(`unexpected ${path}`);
   };
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); (globalThis as any).__shop = undefined; });
 
 const created = () => stripe.calls.filter((c) => c.path === 'checkout/sessions' && c.method === 'POST');
 
@@ -59,21 +60,68 @@ describe('POST /api/web-app/checkout', () => {
     expect((await run()).code).toBe(404);
   });
 
-  it('first click: customer created once with an idempotency key, stored, then a session is created', async () => {
+  it('first click, no customer yet: NO Stripe customer is created, customer_email is passed, nothing stored', async () => {
+    sb.customers = [];
     const r = await run();
     expect(r.code).toBe(200);
     expect(r.body).toEqual({ url: 'https://stripe.test/cs_new' });
-    const cust = stripe.calls.filter((c) => c.path === 'customers');
-    expect(cust).toHaveLength(1);
-    expect(cust[0].opts.idempotencyKey).toBe('aibarber-app:cust:u1:test');
-    expect(sb.calls.some((c) => c.path.startsWith('web_app_customers') && c.method === 'POST' && /ignore-duplicates/.test(c.prefer))).toBe(true);
+    expect(stripe.calls.some((c) => c.path === 'customers')).toBe(false);
+    expect(stripe.calls.some((c) => c.path.startsWith('subscriptions'))).toBe(false); // nothing to look up
+    const c = created()[0].body;
+    expect(c.customer).toBeUndefined();
+    expect(c.customer_email).toBe('owner@example.com');
+    expect(c.client_reference_id).toBe('u1');
+    expect(c['metadata[user_id]']).toBe('u1'); expect(c['metadata[app]']).toBe('aibarber-app');
+    expect(c['subscription_data[metadata][user_id]']).toBe('u1'); expect(c['subscription_data[metadata][app]']).toBe('aibarber-app');
+    expect(sb.calls.some((x) => x.path.startsWith('web_app_customers') && x.method === 'POST')).toBe(false);
   });
 
-  it('two parallel first clicks use the same customer id', async () => {
+  it('two parallel first clicks with no customer: same idempotency key, still no customer created', async () => {
+    sb.customers = [];
     const [a, b] = await Promise.all([run(), run()]);
     expect(a.code).toBe(200); expect(b.code).toBe(200);
-    const custs = new Set(created().map((c) => c.body.customer));
-    expect(custs.size).toBe(1);
+    expect(new Set(created().map((c) => c.opts.idempotencyKey)).size).toBe(1);
+    expect(stripe.calls.some((c) => c.path === 'customers')).toBe(false);
+  });
+
+  it('no customer but a just-paid session (webhook not landed): its customer is checked and the user gets 409 already_subscribed', async () => {
+    sb.customers = [];
+    const h = stripe.handler;
+    stripe.handler = (p: string, ...rest: any[]) => p.startsWith('checkout/sessions?customer_details') ? { data: [{ id: 'cs_paid', status: 'complete', customer: 'cus_new', metadata: { app: 'aibarber-app', user_id: 'u1' } }, { id: 'cs_x', status: 'complete', customer: 'cus_other', metadata: { app: 'aibarber-app', user_id: 'u2' } }] }
+      : p === 'subscriptions?customer=cus_new&status=all&limit=20' ? { data: [{ id: 'sub_p', status: 'active', metadata: { app: 'aibarber-app' } }] } : h(p, ...rest);
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body.error).toBe('already_subscribed');
+    expect(created()).toHaveLength(0);
+    expect(stripe.calls.some((c) => c.path.includes('cus_other'))).toBe(false);
+  });
+
+  it('no customer: another open tab session of this user is expired (found by email); other users and untagged are left alone', async () => {
+    sb.customers = [];
+    open = [{ id: 'cs_old', metadata: { app: 'aibarber-app', user_id: 'u1' } }, { id: 'cs_u2', metadata: { app: 'aibarber-app', user_id: 'u2' } }, { id: 'cs_n', metadata: {} }];
+    await run();
+    expect(stripe.calls.filter((c) => c.path.endsWith('/expire')).map((c) => c.path)).toEqual(['checkout/sessions/cs_old/expire']);
+  });
+
+  it('plan text: description and custom_text name Prime Barber, the shop and the plan; shop name is cleaned and capped', async () => {
+    const withShop = async (shop: any, tier = 'website') => {
+      stripe.calls = [];
+      const orig = sb.calls;
+      const r = await run({ tier, interval: 'month' }); return { r, orig };
+    };
+    const h = (globalThis as any).__shop;
+    (globalThis as any).__shop = 'Fade  Masters\n\u0007 Cuts';
+    await withShop(null);
+    let c = created()[0].body;
+    expect(c['subscription_data[description]']).toBe('Prime Barber · Fade Masters Cuts: Website hosting plan');
+    expect(c['custom_text[submit][message]']).toBe(c['subscription_data[description]']);
+    (globalThis as any).__shop = 'x'.repeat(2000);
+    await withShop(null);
+    c = created()[0].body;
+    expect(c['subscription_data[description]'].length).toBeLessThan(150);
+    (globalThis as any).__shop = undefined;
+    await withShop(null);
+    expect(created()[0].body['subscription_data[description]']).toBe('Prime Barber · your shop: Website hosting plan');
+    (globalThis as any).__shop = h;
   });
 
   it('a stored customer is reused and no customer is created', async () => {
@@ -84,6 +132,7 @@ describe('POST /api/web-app/checkout', () => {
   });
 
   it('an older user (customer only on an entitlement row) reuses it and stores it', async () => {
+    sb.customers = [];
     sb.ents = [{ stripe_customer_id: 'cus_old', status: 'canceled' }];
     await run();
     expect(stripe.calls.some((c) => c.path === 'customers')).toBe(false);
@@ -141,7 +190,7 @@ describe('POST /api/web-app/checkout', () => {
     expect(exp).toBeGreaterThanOrEqual(Math.floor(now / 1000) + 1800);
     expect(exp).toBeGreaterThanOrEqual(Math.floor(now / 1000) + 1800 + 120);
     expect(exp).toBeLessThanOrEqual(Math.floor(now / 1000) + 2400 + 120 + 1);
-    expect(c.opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:\d+$/);
+    expect(c.opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:\d+:[0-9a-f]{8}$/);
     expect(c.body['metadata[interval]']).toBe('month');
     expect(c.body['subscription_data[metadata][app]']).toBe('aibarber-app');
   });

@@ -87,3 +87,27 @@ export function rowFromSubscription(sub: any, livemode: boolean, env: Record<str
     cancel_at_period_end: !!sub.cancel_at_period_end,
   };
 }
+
+// ---- Plain-words plan text shown on Checkout, receipts, invoices and the portal ----
+export const PLAN_WORDS: Record<Tier, string> = {
+  website: 'Website hosting plan',
+  bookings: 'Site + booking plan',
+  store: 'Site, booking & store plan',
+};
+export const FALLBACK_SHOP = 'your shop';
+const MAX_SHOP_CHARS = 80; // keeps the line far below Stripe's 500 (description) and 1200 (custom_text) limits
+
+/** The shop name made safe for Stripe text: control characters stripped, whitespace collapsed, trimmed, capped; fallback when empty. */
+export function cleanShopName(raw: unknown): string {
+  const s = typeof raw === 'string' ? raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  return (s.length > MAX_SHOP_CHARS ? s.slice(0, MAX_SHOP_CHARS).trim() : s) || FALLBACK_SHOP;
+}
+
+/** "Prime Barber · {Shop}: {plan in words}". */
+export const planDescription = (tier: Tier, shopName: unknown): string => `Prime Barber · ${cleanShopName(shopName)}: ${PLAN_WORDS[tier]}`;
+
+/** The shop name already written in one of our descriptions (null for anything else or the fallback). */
+export function shopFromDescription(desc: unknown): string | null {
+  const m = typeof desc === 'string' ? /^Prime Barber · (.+): [^:]+$/.exec(desc) : null;
+  return m && m[1] !== FALLBACK_SHOP ? m[1] : null;
+}

@@ -1,10 +1,10 @@
-import { planIntent, submitIntent, publicationFrom, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
+import { draftPath, planIntent, submitIntent, publicationFrom, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
 // 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
 // Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers etc.) must be applied BEFORE turning on ANY web-app
 // flag (WEB_APP_CHECKOUT, and WEB_APP_ENTITLEMENTS too: delete-account reads web_app_customers). Until then checkout fails closed
 // with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
-import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, priceIdFor } from '../../lib/webApp/stripeCore.js';
+import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, planDescription, priceIdFor } from '../../lib/webApp/stripeCore.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
@@ -43,34 +43,55 @@ export default async function handler(req: any, res: any) {
       if (typeof draftId !== 'string' || !Number.isSafeInteger(revision)) return res.status(400).json({ error: 'client_outdated' }); // a cached pre-draft client
       plan = await planIntent(caller.id, draftId, revision, 'checkout:publish', null, publicationFrom(req.body?.publication)); // 409 draft_changed | 400 invalid_snapshot, mapped below
     }
-    // One Stripe customer per user and mode, known BEFORE any webhook lands.
-    const customer = await customerFor(caller.id, mode, caller.email, uid, rows);
-    // Stripe is the authority on "already paying" (the webhook may not have landed yet).
-    const subs = await stripeCall(`subscriptions?customer=${encodeURIComponent(customer)}&status=all&limit=20`, null, 'GET');
-    const ours: any[] = (subs?.data ?? []).filter((x: any) => x?.metadata?.app === WEB_APP_TAG);
-    if (ours.some((x) => isEntitledStatus(String(x.status)) || x.status === 'unpaid' || x.status === 'paused')) return res.status(409).json({ error: 'already_subscribed' });
-    // An incomplete subscription is a payment still being confirmed (3DS, slow card) for a while; after an hour it is abandoned
-    // (Stripe expires it itself at 23 h) and must not lock the user out. Ignored, never cancelled: no Stripe write.
-    const stale = Math.floor(Date.now() / 1000) - 3600;
-    if (ours.some((x) => x.status === 'incomplete' && Number(x.created) > stale)) return res.status(409).json({ error: 'payment_processing' });
+    // A customer we already know (stored, or from an older entitlement row) is reused. A first-time user has NONE: Stripe creates
+    // the customer itself only when the subscription checkout is paid, so someone who never pays leaves no customer behind.
+    // (The row read still fails closed with 502 when migration 024 is missing.)
+    const customer = await knownCustomer(mode, uid, rows);
+    // Customers whose subscriptions decide "already paying". A first-time user has none stored, but may have just paid a session whose
+    // webhook has not landed: that session names the customer Stripe created.
+    const toCheck = new Set<string>(customer ? [customer] : []);
+    if (!customer && caller.email) {
+      try {
+        const mine = await stripeCall(`checkout/sessions?customer_details[email]=${encodeURIComponent(caller.email)}&limit=20`, null, 'GET');
+        for (const o of mine?.data ?? []) {
+          if (o?.metadata?.app !== WEB_APP_TAG || o?.metadata?.user_id !== caller.id || o.status !== 'complete') continue;
+          const c = typeof o.customer === 'string' ? o.customer : o.customer?.id;
+          if (c) toCheck.add(c);
+        }
+      } catch (e: any) { console.error('[web-app checkout] recent-payment lookup failed:', e?.message || e); } // best effort; the duplicate handler is the backstop
+    }
+    for (const c of toCheck) {
+      // Stripe is the authority on "already paying" (the webhook may not have landed yet).
+      const subs = await stripeCall(`subscriptions?customer=${encodeURIComponent(c)}&status=all&limit=20`, null, 'GET');
+      const ours: any[] = (subs?.data ?? []).filter((x: any) => x?.metadata?.app === WEB_APP_TAG);
+      if (ours.some((x) => isEntitledStatus(String(x.status)) || x.status === 'unpaid' || x.status === 'paused')) return res.status(409).json({ error: 'already_subscribed' });
+      // An incomplete subscription is a payment still being confirmed (3DS, slow card) for a while; after an hour it is abandoned
+      // (Stripe expires it itself at 23 h) and must not lock the user out. Ignored, never cancelled: no Stripe write.
+      const stale = Math.floor(Date.now() / 1000) - 3600;
+      if (ours.some((x) => x.status === 'incomplete' && Number(x.created) > stale)) return res.status(409).json({ error: 'payment_processing' });
+    }
 
     // Existing Stripe billing is checked before superseding any recoverable publish submission.
+    const shopName = (await sbRest(`${draftPath(caller.id, mode)}&select=shop:site_data->>shopName&limit=1`).catch(() => null))?.[0]?.shop;
+    const description = planDescription(tier, shopName);
     const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, ...(plan ? { intent_id: plan.id } : {}) };
     const nowMs = Date.now();
     const window = Math.floor(nowMs / 600_000);
     // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (32-42 min ahead; Stripe's minimum is 30).
     const sessionBody = {
       mode: 'subscription',
-      customer,
+      ...(customer ? { customer } : caller.email ? { customer_email: caller.email } : {}),
       'line_items[0][price]': price,
       'line_items[0][quantity]': '1',
       client_reference_id: caller.id,
       success_url: `${APP_ORIGIN()}/app/edit?paid=1`,
       cancel_url: `${APP_ORIGIN()}/app/edit?paid=0`,
+      'subscription_data[description]': description,
+      'custom_text[submit][message]': description,
       expires_at: String((window + 1) * 600 + 1800 + 120),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
     };
-    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}`;
+    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}:${digest([description]).slice(0, 8)}`;
     // Stripe replays the FIRST response for a repeated key, so that response can be stale: always read the session's real status.
     const createOrReplay = async (k: string) => {
       const made = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: k });
@@ -103,9 +124,10 @@ export default async function handler(req: any, res: any) {
     }
     // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
     try {
-      const open = await stripeCall(`checkout/sessions?customer=${encodeURIComponent(customer)}&status=open&limit=10`, null, 'GET');
+      if (!customer && !caller.email) throw new Error('no customer or email to look sessions up by');
+      const open = await stripeCall(customer ? `checkout/sessions?customer=${encodeURIComponent(customer)}&status=open&limit=10` : `checkout/sessions?customer_details[email]=${encodeURIComponent(caller.email ?? '')}&status=open&limit=10`, null, 'GET');
       for (const o of open?.data ?? []) {
-        if (o?.id === session.id || o?.metadata?.app !== WEB_APP_TAG) continue;
+        if (o?.id === session.id || o?.metadata?.app !== WEB_APP_TAG || (!customer && o?.metadata?.user_id !== caller.id)) continue;
         await stripeCall(`checkout/sessions/${encodeURIComponent(o.id)}/expire`, {}, 'POST').catch((e: any) => console.error('[web-app checkout] expire failed:', e?.message || e));
       }
     } catch (e: any) { console.error('[web-app checkout] open-session cleanup failed:', e?.message || e); }
@@ -117,13 +139,13 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-/** The user's one Stripe customer in this mode: the stored one, else one from an older entitlement row, else create it (idempotently) and store it. */
-async function customerFor(userId: string, mode: 'live' | 'test', email: string | null, uid: string, entRows: any[]): Promise<string> {
+/** The user's stored Stripe customer in this mode, else one from an older entitlement row (stored for next time); undefined for a first-time user. Never creates one. */
+async function knownCustomer(mode: 'live' | 'test', uid: string, entRows: any[]): Promise<string | undefined> {
   const read = async (): Promise<string | undefined> => (await sbRest(`web_app_customers?user_id=eq.${uid}&environment=eq.${mode}&select=stripe_customer_id&limit=1`))?.[0]?.stripe_customer_id;
   const stored = await read();
   if (stored) return stored;
   const legacy: string | undefined = (entRows.find((r) => isEntitledStatus(r.status)) ?? entRows[0])?.stripe_customer_id;
-  const id: string = legacy ?? (await stripeCall('customers', { ...(email ? { email } : {}), 'metadata[app]': WEB_APP_TAG, 'metadata[user_id]': userId }, 'POST', { idempotencyKey: `aibarber-app:cust:${userId}:${mode}` })).id;
-  await sbRest('web_app_customers?on_conflict=user_id,environment', { method: 'POST', body: { user_id: userId, environment: mode, stripe_customer_id: id }, prefer: 'resolution=ignore-duplicates,return=minimal' });
-  return (await read()) ?? id; // a lost race converges on whichever row won
+  if (!legacy) return undefined;
+  await sbRest('web_app_customers?on_conflict=user_id,environment', { method: 'POST', body: { user_id: decodeURIComponent(uid), environment: mode, stripe_customer_id: legacy }, prefer: 'resolution=ignore-duplicates,return=minimal' });
+  return (await read()) ?? legacy; // a lost race converges on whichever row won
 }

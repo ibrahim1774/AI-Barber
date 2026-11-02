@@ -104,7 +104,9 @@ export function liveJobDeps(): JobDeps {
       if (!subId) {
         // The customer may have completed an earlier tab as a newer tab was opened. One paid hosting plan covers
         // the latest explicit publish submission; never require another charge for this race.
-        const customer = (await sbRest(`web_app_customers?user_id=eq.${enc(job.user_id)}&environment=eq.${job.environment}&select=stripe_customer_id&limit=1`))?.[0]?.stripe_customer_id;
+        // A first-time payer has no stored customer until the webhook lands; the entitlement row (also written by this check) names it too.
+        const customer = (await sbRest(`web_app_customers?user_id=eq.${enc(job.user_id)}&environment=eq.${job.environment}&select=stripe_customer_id&limit=1`))?.[0]?.stripe_customer_id
+          ?? (await sbRest(`web_app_entitlements?user_id=eq.${enc(job.user_id)}&environment=eq.${job.environment}&select=stripe_customer_id&order=created_at.desc&limit=1`))?.[0]?.stripe_customer_id;
         if (!customer) return false;
         const subs = await stripeCall(`subscriptions?customer=${enc(customer)}&status=all&limit=20`, null, 'GET');
         subId = (subs?.data ?? []).find((s: any) => s.metadata?.app === 'aibarber-app' && s.metadata?.user_id === job.user_id && isEntitledStatus(s.status))?.id;

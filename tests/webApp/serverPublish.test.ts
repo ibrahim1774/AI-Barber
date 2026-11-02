@@ -300,7 +300,7 @@ describe('S5 checkout snapshot links', () => {
     expect((await call(checkout, { tier: 'website', interval: 'month' })).code).toBe(200);
     const w1 = Math.floor(Date.now() / 600_000);
     const ok = [w0, w1].map(w => `aibarber-app:cs:${U}:website:month:${w}`);
-    expect(ok).toContain(keys()[0]);
+    expect(ok).toContain(keys()[0].replace(/:[0-9a-f]{8}$/, '')); // the trailing 8 hex chars hash the plan text
   });
   it('reports logo-folder on a refused checkout', async () => {
     await save(withBook());
