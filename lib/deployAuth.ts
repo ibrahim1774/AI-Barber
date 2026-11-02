@@ -44,6 +44,7 @@ import { supabasePurchases, type PurchaseRow } from './ios/purchases.js';
 import { withTimeout } from './ios/timeout.js';
 import { normEmail, supabaseSiteOwners, webOwnerDecision, type SiteOwnerStore } from './siteOwners.js';
 import { isPayFirstPlan } from './payFirst.js';
+import { slugLabels } from './ios/siteAddress.js';
 
 export const CHECKOUT_PROOF_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -304,7 +305,7 @@ async function authorizeWebUser(
     }
     const rawStamp = await withTimeout(deps.storedStamp(shopSlug), ms, 'stored copy read');
     const stamp = originOf(rawStamp);
-    const urls = [`https://${shopSlug}.vercel.app`, ...(stamp ? [stamp] : [])];
+    const urls = [...slugLabels(shopSlug).map((l) => `https://${l}.vercel.app`), ...(stamp ? [stamp] : [])];
     const claimants = await withTimeout(deps.webClaimants([...new Set(urls)]), ms, 'sites claim lookup');
     const mine = claimants.includes(user.id);
     // Review fix round 1 (finding 11): `sites` rows are user-writable, so a co-claim is no proof.
@@ -393,7 +394,7 @@ export async function authorizeSiteOwner(
       }
     }
     const stamp = originOf(await withTimeout(deps.storedStamp(slug), ms, 'stored copy read'));
-    const urls = [...new Set([`https://${slug}.vercel.app`, ...(stamp ? [stamp] : [])])];
+    const urls = [...new Set([...slugLabels(slug).map((l) => `https://${l}.vercel.app`), ...(stamp ? [stamp] : [])])];
     const claimants = await withTimeout(deps.webClaimants(urls), ms, 'sites claim lookup');
     if (claimants.length > 0 && claimants.every((c) => c === user!.id)) {
       return { ok: true, target: slug, row: null, actor: 'web-user', userId: user.id };

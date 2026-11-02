@@ -10,6 +10,7 @@ import type { WebSiteRow } from './publishFlow.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 import { alertOwner, iosOverlapEmail, sendMail } from './emails.js';
 import { contactFor } from './dunning.js';
+import { siteUrlOf as siteUrlOfSlug } from '../ios/siteAddress.js';
 
 export interface WebSweepDeps {
   /** Published, not removed, not taken down, in this environment; least recently checked first. */
@@ -223,7 +224,7 @@ export function liveIosOverlapDeps(mode: 'live' | 'test'): IosOverlapDeps {
     async mailCustomer(row) {
       const { email, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
       if (!email) return false;
-      await sendMail(email, iosOverlapEmail({ email, firstName, siteUrl: row.site_slug ? `https://${row.site_slug}.vercel.app` : null, tier: row.tier }));
+      await sendMail(email, iosOverlapEmail({ email, firstName, siteUrl: row.site_slug ? siteUrlOfSlug(row.site_slug) : null, tier: row.tier }));
       return true;
     },
     mailOwner: (row, state, note) => alertOwner('AI Barber web: subscriber also has an App Store plan', [`user: ${row.user_id}`, `web subscription: ${row.stripe_subscription_id} (${row.tier})`, `site: ${row.site_slug ?? '(none)'}`, `App Store state: ${state}`, note]),

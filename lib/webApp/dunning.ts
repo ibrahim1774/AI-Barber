@@ -4,12 +4,13 @@
 import { keyMode, rowFromSubscription } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { failedPaymentEmail, sendMail } from './emails.js';
+import { siteUrlOf as siteUrlOfSlug } from '../ios/siteAddress.js';
 
 export const REMIND_EVERY_MS = 47 * 3600_000; // "every 2 days", with slack for the 10-minute cron
 export const MAX_REMINDERS = 8;
 const enc = encodeURIComponent;
 
-const siteUrlOf = (slug: string | null) => (slug ? `https://${slug}.vercel.app` : null);
+const siteUrlOf = (slug: string | null) => (slug ? siteUrlOfSlug(slug) : null);
 
 /** Account email + first name: the Supabase user's, else the Stripe customer's. */
 export async function contactFor(userId: string | null, customerId: string): Promise<{ email: string | null; firstName: string | null }> {

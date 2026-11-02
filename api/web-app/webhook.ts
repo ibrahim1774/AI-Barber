@@ -9,11 +9,12 @@ import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
 import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { siteUrlOf as siteUrlOfSlug } from '../../lib/ios/siteAddress.js';
 
 export const config = { api: { bodyParser: false } };
 
 const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted']);
-const siteUrlOf = (slug: string | null) => (slug ? `https://${slug}.vercel.app` : null);
+const siteUrlOf = (slug: string | null) => (slug ? siteUrlOfSlug(slug) : null);
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
