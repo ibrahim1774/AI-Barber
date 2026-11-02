@@ -208,7 +208,8 @@ describe('authorizeDeploy: web sites', () => {
     const d = deps({ users, claims: { [url(S)]: [OWNER] } });
     const r = await authorizeDeploy({ siteId: S + '-zzz', authorization: 'Bearer other-jwt' }, d);
     expect(r).toEqual({ ok: false, status: 403, error: 'not-authorized' });
-    expect(d.webClaimants).toHaveBeenCalledWith([url(S)]);
+    // Also the truncated address Vercel serves for a slug this long (35 chars).
+    expect(d.webClaimants).toHaveBeenCalledWith([url(S), url(S.slice(0, 35))]);
     // The owner, same siteId: the target is the canonical slug, the one deployed to.
     expect(await authorizeDeploy({ siteId: S + '-zzz', authorization: 'Bearer owner-jwt' }, d))
       .toMatchObject({ ok: true, target: S });

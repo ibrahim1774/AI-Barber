@@ -29,19 +29,21 @@ describe('chooseSlug', () => {
     expect(isTaken).toHaveBeenCalledTimes(6); // base + 5 suffixed
   });
   it('truncates long names and trims trailing dash', async () => {
-    const name = 'a'.repeat(39) + ' b' + 'c'.repeat(20); // slug dash lands at index 39
+    const name = 'a'.repeat(35) + ' b' + 'c'.repeat(20); // slug dash lands at index 35 (the Vercel label cap)
     const s = await chooseSlug(name, 'Production', never);
-    expect(s).toBe('a'.repeat(39));
+    expect(s).toBe('a'.repeat(35));
+    const name2 = 'a'.repeat(34) + ' b' + 'c'.repeat(20); // dash lands at index 34, kept chars end in it
+    expect(await chooseSlug(name2, 'Production', never)).toBe('a'.repeat(34));
     expect(s.endsWith('-')).toBe(false);
   });
-  it('longest sandbox slug with suffix is exactly 50 chars (deployToVercel cuts at 50)', async () => {
+  it('longest sandbox slug with suffix is exactly 35 chars (what Vercel serves as <slug>.vercel.app)', async () => {
     const s = await chooseSlug('x'.repeat(100), 'Sandbox', async (c) => !c.endsWith('-qqqq'), () => 'qqqq');
     expect(s.startsWith('ios-test-')).toBe(true);
-    expect(s.length).toBe(50);
+    expect(s.length).toBe(35);
   });
-  it('longest production slug with suffix stays within 50 chars', async () => {
+  it('longest production slug with suffix stays within 35 chars', async () => {
     const s = await chooseSlug('x'.repeat(100), 'Production', async (c) => !c.endsWith('-qqqq'), () => 'qqqq');
-    expect(s.length).toBeLessThanOrEqual(50);
+    expect(s.length).toBeLessThanOrEqual(35);
   });
   it('default rand yields 4 lowercase base36 chars', async () => {
     const isTaken = async (s: string) => s === 'fresh-cuts';

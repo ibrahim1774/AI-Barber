@@ -21,7 +21,13 @@ describe('isReservedSlug', () => {
 
 describe('chooseSlug never binds a reserved base', () => {
   const never = async () => false;
-  it.each([['ios drafts', 'ios-drafts'], ['AB Products', 'ab-products'], [UUID, UUID], ['Pending Sites', 'pending-sites']])('%j', async (name, bad) => {
+  it('a UUID-shaped name is not bound even though the cap cuts it short', async () => {
+    const s = await chooseSlug(UUID, 'Production', never, () => 'zz12');
+    expect(s).toBe(`${UUID.slice(0, 30)}-zz12`);
+    expect(s.length).toBeLessThanOrEqual(35);
+    expect(isReservedSlug(s)).toBe(false);
+  });
+  it.each([['ios drafts', 'ios-drafts'], ['AB Products', 'ab-products'], ['Pending Sites', 'pending-sites']])('%j', async (name, bad) => {
     const s = await chooseSlug(name, 'Production', never, () => 'zz12');
     expect(s).toBe(`${bad}-zz12`);
     expect(isReservedSlug(s)).toBe(false);
