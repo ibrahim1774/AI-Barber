@@ -2,12 +2,26 @@ import { waitUntil } from '@vercel/functions';
 import { liveWebPublishDeps, runWebPublish, type WebPublishResult } from './publishFlow.js';
 import { enc, draftPath, leaseId, modeOf, readDraft, reliabilityOn, type Intent } from './reliability.js';
 import { sbRest, stripeCall } from './webAppServer.js';
+import { alertOwner } from './emails.js';
 import { isEntitledStatus, rowFromSubscription } from './stripeCore.js';
 
 /** A failing job is retried with backoff, then parked (cancelled, with an alert in the logs) so it cannot be polled forever. */
 export const MAX_JOB_ATTEMPTS = 20;
 /** A checkout that never got a payable session, or was never paid, is abandoned after this long. */
 export const ABANDON_AFTER_MS = 3_600_000;
+const isPaidJob = (j: Pick<Intent, 'requires_payment' | 'stripe_subscription_id'>) => !!j.requires_payment || !!j.stripe_subscription_id;
+/** Best effort, once per transition (callers pass only rows their guarded PATCH actually changed). Never throws. */
+export async function alertStopped(job: Intent, reason: 'publish_gave_up' | 'publish_refused', result: unknown): Promise<void> {
+  if (!isPaidJob(job)) return;
+  try {
+    await alertOwner('AI Barber web: paid publish stopped', [
+      `reason: ${reason}`, `environment: ${job.environment}`, `user: ${job.user_id}`, `intent: ${job.id}`, `revision: ${job.revision}`,
+      `attempts: ${job.attempts}`, `subscription: ${job.stripe_subscription_id ?? '(none)'}`, `session: ${job.stripe_session_id ?? '(none)'}`,
+      `result: ${JSON.stringify(result ?? null).slice(0, 500)}`,
+      'The barber sees "Tap Publish to try again". If they do not, check the deploy logs and contact them.',
+    ]);
+  } catch (e: any) { console.error('[web publish worker] alert failed:', e?.message || e); }
+}
 export interface JobDeps {
   claim(id: string, token: string): Promise<Intent | null>;
   current(job: Intent, token: string): Promise<boolean>;
@@ -54,8 +68,9 @@ export function liveJobDeps(): JobDeps {
       if (job.attempts >= MAX_JOB_ATTEMPTS) {
         // Every claim counts as an attempt (a crash or timeout never reaches finish), so a job that keeps killing the worker is parked here.
         console.error('[web publish worker] giving up after', job.attempts, 'attempts:', job.id);
-        await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,running)`, { method: 'PATCH', body: { status: 'cancelled', result: { error: 'publish_gave_up' } } });
+        const parked = await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,running)`, { method: 'PATCH', body: { status: 'cancelled', result: { error: 'publish_gave_up' } }, prefer: 'return=representation' });
         await sbRest(`${draftPath(job.user_id)}&publish_lease=eq.${token}`, { method: 'PATCH', body: { publish_lease: null, lease_until: null } });
+        if (parked?.length) await alertStopped(job, 'publish_gave_up', { error: 'publish_gave_up' });
         return null;
       }
       try {
@@ -138,8 +153,13 @@ export function liveJobDeps(): JobDeps {
         console.error('[web publish worker] giving up after', job.attempts, 'attempts:', job.id);
         status = 'cancelled'; result = { ...(typeof result === 'object' && result ? result : {}), error: 'publish_gave_up' };
       }
-      await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.running&worker_token=eq.${token}`, { method: 'PATCH', body: { status, result,
-        next_attempt_at: new Date(Date.now() + Math.min(900_000, 10_000 * 2 ** Math.min(job.attempts, 6))).toISOString() } });
+      const rows = await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=eq.running&worker_token=eq.${token}`, { method: 'PATCH', body: { status, result,
+        next_attempt_at: new Date(Date.now() + Math.min(900_000, 10_000 * 2 ** Math.min(job.attempts, 6))).toISOString() }, prefer: 'return=representation' });
+      if (rows?.length) {
+        const code = Number((result as any)?.status);
+        if (status === 'cancelled') await alertStopped(job, 'publish_gave_up', result);
+        else if (status === 'superseded' && job.requires_payment && code >= 400 && code < 500) await alertStopped(job, 'publish_refused', result);
+      }
     },
     async release(job, token) {
       await sbRest(`${draftPath(job.user_id)}&publish_lease=eq.${token}`, { method: 'PATCH', body: { publish_lease: null, lease_until: null } });
@@ -163,7 +183,8 @@ export async function sweepJobs() {
     const paid = await liveJobDeps().paid(j).catch(() => true);
     await sbRest(`web_app_publish_intents?id=eq.${j.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: paid ? { status: 'queued' } : { status: 'cancelled' } }).catch(() => {});
   }
-  await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.failed&attempts=gte.${MAX_JOB_ATTEMPTS}`, { method: 'PATCH', body: { status: 'cancelled' } }).catch(() => {});
+  const parkedRows: Intent[] = (await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.failed&attempts=gte.${MAX_JOB_ATTEMPTS}`, { method: 'PATCH', body: { status: 'cancelled', result: { error: 'publish_gave_up' } }, prefer: 'return=representation' }).catch(() => null)) ?? [];
+  for (const r of parkedRows) await alertStopped(r, 'publish_gave_up', { error: 'publish_gave_up' });
   const due = `environment=eq.${env}&next_attempt_at=lte.${enc(nowIso)}`;
   const LIMIT = 10, RESERVED_POLLS = 3;
   // Payment polling keeps a reserved slice of the batch, so stuck publish jobs can never starve it; real work uses the rest.

@@ -171,3 +171,61 @@ describe('S1 legacy client compatibility', () => {
     expect(runWebPublish).toHaveBeenCalledTimes(1);
   });
 });
+
+const SUBJECT = 'AI Barber web: paid publish stopped';
+describe('S2 owner alert when a paid publish stops', () => {
+  it('claim park alerts once', async () => {
+    const { job, deps } = await setup();
+    await db.query("update web_app_publish_intents set status='running', attempts=20, stripe_subscription_id='sub_x', next_attempt_at=now()-interval '1 minute' where id=$1", [job.id]);
+    await runJob(job.id, deps); await runJob(job.id, deps);
+    const row = (await intents())[0];
+    expect(row.status).toBe('cancelled'); expect(row.result.error).toBe('publish_gave_up');
+    expect(alertOwner).toHaveBeenCalledTimes(1);
+    const [subject, lines] = vi.mocked(alertOwner).mock.calls[0];
+    expect(subject).toBe(SUBJECT);
+    expect(lines.some(l => l.includes(job.id))).toBe(true);
+  });
+  it('finish parks at the cap and alerts once', async () => {
+    const { job, deps } = await setup();
+    await db.query("update web_app_publish_intents set attempts=19, stripe_subscription_id='sub_x' where id=$1", [job.id]);
+    deps.publish = vi.fn(async () => ({ status: 502, body: { error: 'publish-failed' } }));
+    await runJob(job.id, deps);
+    expect((await intents())[0].status).toBe('cancelled');
+    expect(alertOwner).toHaveBeenCalledTimes(1);
+  });
+  it('housekeeping park records publish_gave_up and alerts once', async () => {
+    await save(); const job = await prepareIntent(U, 'draft', 1, 'publish');
+    await db.query("update web_app_publish_intents set status='failed', attempts=20, requires_payment=true, next_attempt_at=now()+interval '1 hour' where id=$1", [job.id]);
+    await sweepJobs(); await sweepJobs();
+    const row = (await intents())[0];
+    expect(row.status).toBe('cancelled'); expect(row.result.error).toBe('publish_gave_up');
+    expect(alertOwner).toHaveBeenCalledTimes(1);
+  });
+  it('a paid checkout job refused with 4xx alerts publish_refused', async () => {
+    await save();
+    expect((await call(checkout, { tier: 'website', interval: 'month', publish: true, draftId: 'draft', revision: 1 })).code).toBe(200);
+    const job = (await intents())[0];
+    expect(job.requires_payment).toBe(true);
+    await db.query("update web_app_publish_intents set status='queued', stripe_subscription_id='sub_x' where id=$1", [job.id]);
+    const deps = liveJobDeps(); deps.paid = async () => true;
+    deps.publish = vi.fn(async () => ({ status: 409, body: { error: 'slug-owned' } }));
+    await runJob(job.id, deps);
+    expect((await intents())[0].status).toBe('superseded');
+    expect(alertOwner).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(alertOwner).mock.calls[0][1]).toContain('reason: publish_refused');
+  });
+  it('an unpaid abandoned checkout never alerts', async () => {
+    await save(); await prepareIntent(U, 'draft', 1, 'checkout:publish');
+    await db.query("update web_app_publish_intents set created_at=now()-interval '2 hours', next_attempt_at=now()-interval '1 minute'");
+    await sweepJobs();
+    expect((await intents())[0].status).toBe('cancelled');
+    expect(alertOwner).not.toHaveBeenCalled();
+  });
+  it('an alert failure never changes the parked state', async () => {
+    vi.mocked(alertOwner).mockRejectedValueOnce(new Error('resend 429'));
+    const { job, deps } = await setup();
+    await db.query("update web_app_publish_intents set status='running', attempts=20, stripe_subscription_id='sub_x' where id=$1", [job.id]);
+    await expect(runJob(job.id, deps)).resolves.toBeUndefined();
+    expect((await intents())[0].status).toBe('cancelled');
+  });
+});
