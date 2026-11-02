@@ -16,6 +16,7 @@ import { siteConfigFile, siteVercelConfig, SITE_CONFIG_FILE, type SiteSubpages }
 import { stripMarkersText } from './render/markers.js';
 import { REPORT_SLUG_PLACEHOLDER } from './render/shell.js';
 import { assertSiteFilePath, type SiteFile } from './render/pages.js';
+import { pickPublicAlias, siteUrlOf } from './ios/siteAddress.js';
 
 export type { SiteFile };
 
@@ -139,13 +140,9 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
   // it 404s or sends customers to the wrong site. The alias list is
   // the only source of truth for URLs that actually resolve to THIS
   // project.
-  const aliases: string[] = Array.isArray(data?.alias) ? data.alias : [];
-  const matchingAliases = aliases
-    .filter((a) => typeof a === 'string' && a.toLowerCase().includes(actualProjectName.toLowerCase()))
-    .sort((a, b) => a.length - b.length);
-  const deploymentUrl = matchingAliases[0]
-    ? `https://${matchingAliases[0]}`
-    : `https://${actualProjectName}.vercel.app`;
+  // pickPublicAlias also accepts the truncated alias Vercel serves for a long project name; the
+  // fallback uses the same truncation instead of the dead full-name address.
+  const deploymentUrl = pickPublicAlias(data?.alias, actualProjectName) || siteUrlOf(actualProjectName);
 
   console.log(`[Vercel Deploy] Success: ${deploymentUrl} (requested slug: ${sanitizedProjectName}, actual project: ${actualProjectName})`);
 
@@ -191,11 +188,7 @@ async function resolveBestAlias(
     });
     if (!resp.ok) return null;
     const data = await resp.json() as { alias?: unknown };
-    const aliases: string[] = Array.isArray(data?.alias) ? (data.alias as string[]) : [];
-    const matching = aliases
-      .filter((a) => typeof a === 'string' && a.toLowerCase().includes(projectName.toLowerCase()))
-      .sort((a, b) => a.length - b.length);
-    return matching[0] ? `https://${matching[0]}` : null;
+    return pickPublicAlias(data?.alias, projectName);
   } catch (e: any) {
     console.warn('[Vercel Deploy] resolveBestAlias failed (keeping fallback):', e?.message || e);
     return null;

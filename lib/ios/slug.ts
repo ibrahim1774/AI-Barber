@@ -1,14 +1,16 @@
 import { randomBytes } from 'node:crypto';
 import { slugify } from '../publishSite.js';
 import { isReservedSlug } from './reservedSlugs.js';
+import { VERCEL_LABEL_MAX } from './siteAddress.js';
 
 const SANDBOX_PREFIX = 'ios-test-';
 const MAX_SUFFIX_TRIES = 5;
-// deployToVercel cuts project names at 50 chars, so every final slug (prefix +
-// base + "-xxxx") must be <= 50 or the deploy would land on a different,
-// unchecked project name. The base budget shrinks by the sandbox prefix length.
-const MAX_BASE = 40;
-const MAX_SLUG = 50 - 5;
+// Vercel serves `<slug>.vercel.app` only for the first VERCEL_LABEL_MAX chars of a project name
+// (a longer name gets a truncated alias, never its full address), so every NEW slug (prefix +
+// base, or prefix + base + "-xxxx") stays within that. deployToVercel's own 50-char cut is then
+// never reached. Existing, longer slugs keep working: nothing here renames them.
+const SUFFIX_LEN = 5; // "-xxxx"
+const MAX_SLUG = VERCEL_LABEL_MAX;
 
 function defaultRand(): string {
   const bytes = randomBytes(4);
@@ -25,13 +27,16 @@ export async function chooseSlug(
   rand: () => string = defaultRand,
 ): Promise<string> {
   const prefix = env === 'Sandbox' ? SANDBOX_PREFIX : '';
-  const room = Math.min(MAX_BASE, MAX_SLUG - prefix.length);
-  const base = slugify(shopName).substring(0, room).replace(/-+$/, '') || 'barbershop';
+  const room = MAX_SLUG - prefix.length;
+  const full = slugify(shopName) || 'barbershop';
+  const base = full.substring(0, room).replace(/-+$/, '') || 'barbershop';
   const first = prefix + base;
   // A reserved base (bucket folder name, UUID) is treated as taken, so it only ever gets a suffixed slug.
-  if (!isReservedSlug(first) && !(await isTaken(first))) return first;
+  // Checked on the untruncated name too: a UUID-shaped name must not slip through by being cut short.
+  if (!isReservedSlug(first) && !isReservedSlug(prefix + full) && !(await isTaken(first))) return first;
   for (let i = 0; i < MAX_SUFFIX_TRIES; i++) {
-    const candidate = `${first}-${rand()}`;
+    // The suffixed form must fit too: trim the base, not the suffix (which keeps it unique).
+    const candidate = `${first.slice(0, MAX_SLUG - SUFFIX_LEN).replace(/-+$/, '')}-${rand()}`;
     if (!isReservedSlug(candidate) && !(await isTaken(candidate))) return candidate;
   }
   throw new Error('slug-exhausted');
