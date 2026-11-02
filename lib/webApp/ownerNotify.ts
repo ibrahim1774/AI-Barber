@@ -175,6 +175,7 @@ export async function sendOwnerEmail(ownerId: string, event: OwnerEvent, deps: O
     const { email, firstName } = await deps.contact(ownerId);
     if (!email) { console.warn('[web-app owner notify] skipped: no owner email', { kind: event?.kind }); return 'skipped'; }
     await deps.send(email, ownerEmailFor(event, firstName));
+    console.info('[web-app owner notify] sent', { kind: event?.kind });
     return 'sent';
   } catch (e: any) {
     console.error('[web-app owner notify] failed:', event?.kind, e?.message || e);
@@ -194,7 +195,8 @@ export async function maybeEmailOwner(
 ): Promise<void> {
   try {
     if (!(await isWebShop(shop, hasWebPlan))) return;
-    await send(shop.owner_id, event);
+    const outcome = await send(shop.owner_id, event);
+    console.info('[web-app owner notify] handed off', { kind: event.kind, outcome: typeof outcome === 'string' ? outcome : 'n/a' });
   } catch (e: any) {
     console.error('[web-app owner notify] hook failed:', e?.message || e);
   }
