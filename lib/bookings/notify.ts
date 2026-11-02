@@ -4,7 +4,7 @@ import { sendEmail as liveSendEmail, escapeHtml, type EmailMessage, type EmailRe
 import { pushToUsers, type PushMessage, type PushTokenStore } from './push.js';
 import { customerAppointmentIcs } from './ics.js';
 import { manageUrl, bookingPageUrl, serviceDb } from './payments.js';
-import { maybeEmailOwner, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
+import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
 /**
  * Booking notifications: owner pushes (Expo) and customer emails (SMTP).
@@ -81,8 +81,10 @@ export interface NotifyDeps {
   loadContext(appointmentId: string): Promise<NotifyContext | null>;
   sendEmail(msg: EmailMessage): Promise<EmailResult>;
   push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
-  /** Web-app owners only (flag on + no ios_otid): email the shop owner. Absent = never emails the owner. */
+  /** Web-app owners only (see ownerNotify isWebShop): email the shop owner. Absent = never emails the owner. */
   emailOwner?(ownerId: string, event: OwnerEvent): Promise<unknown>;
+  /** Does the owner hold an entitled web plan in the current Stripe mode? Absent = never emails the owner. Throws on a lookup error. */
+  ownerHasWebPlan?(ownerId: string): Promise<boolean>;
   now(): number;
 }
 
@@ -256,10 +258,10 @@ const ownerEvent = (kind: 'booking_created' | 'booking_cancelled' | 'booking_res
 
 const pushRecipients = (ctx: NotifyContext) => [ctx.shop.owner_id, ctx.memberUserId].filter(Boolean) as string[];
 
-/** Additive web-app owner email; a no-op for iOS shops, flag off, or deps without emailOwner. Never throws. */
+/** Additive web-app owner email; a no-op unless isWebShop (iOS shops, flag off, no current web plan, lookup error) or deps lack emailOwner/ownerHasWebPlan. Never throws. */
 async function emailOwner(ctx: NotifyContext, deps: NotifyDeps, event: OwnerEvent): Promise<void> {
   if (!deps.emailOwner) return;
-  await maybeEmailOwner(ctx.shop, event, deps.emailOwner);
+  await maybeEmailOwner(ctx.shop, event, deps.emailOwner, deps.ownerHasWebPlan);
 }
 
 async function emailCustomer(ctx: NotifyContext, deps: NotifyDeps, build: () => EmailMessage): Promise<EmailResult> {
@@ -473,6 +475,7 @@ export function liveNotifyDeps(db: SupabaseClient = serviceDb()): NotifyDeps {
     sendEmail: (msg) => liveSendEmail(msg),
     push: (userIds, msg) => pushToUsers(userIds, msg, store),
     emailOwner: (ownerId, event) => sendOwnerEmail(ownerId, event),
+    ownerHasWebPlan: (ownerId) => ownerHasWebPlan(ownerId),
     now: () => Date.now(),
   };
 }

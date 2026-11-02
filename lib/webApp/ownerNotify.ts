@@ -1,9 +1,12 @@
 // Email notifications to WEB-APP shop owners (barbers): the web counterpart of the iOS owner push.
 // iOS shops (ios_otid set) keep getting Expo pushes only; this module is additive and only runs for a
-// shop with no iOS link while WEB_APP_ENTITLEMENTS=1. Everything here swallows its own errors: a mail
-// problem must never fail or delay a booking/order flow. No password is ever included.
+// web shop (see isWebShop: flag on, no iOS link AND a current-mode, entitled web_app_entitlements row).
+// A shop with neither an iOS link nor a web plan (pre-web-app shops) never gets these emails.
+// Everything here swallows its own errors: a mail problem must never fail or delay a booking/order
+// flow. No password is ever included.
 import { render, firstOf, esc, signInLink, sendMail, type Mail } from './emails.js';
-import { APP_ORIGIN, webAppEntitlementsOn } from './webAppServer.js';
+import { APP_ORIGIN, webAppEntitlementsOn, sbRest } from './webAppServer.js';
+import { isEntitledStatus, keyMode } from './stripeCore.js';
 
 export type OwnerEvent =
   | { kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled'; customerName: string | null; service: string; whenShort: string; whenLong: string }
@@ -17,8 +20,70 @@ export interface OwnerNotifyDeps {
   send(to: string, mail: Mail): Promise<void>;
 }
 
-/** A web-app shop: the flag is on and the shop has no iOS link (same test as lib/webApp/entitlementGate.ts gateRow). */
-export const isWebShop = (shop: { ios_otid?: string | null }): boolean => webAppEntitlementsOn() && !shop.ios_otid;
+/** The Stripe mode the web app runs in (from STRIPE_WEBAPP_SECRET_KEY), or null when unset/unknown. */
+const currentMode = () => keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+
+export interface WebPlanRow { environment: string | null; status: string | null }
+
+/**
+ * Pure: does this owner hold a web plan in `mode`? Only rows of the current Stripe mode count, and only
+ * entitled statuses (active, trialing, past_due: same set as the lapse sweeper and gateRow). canceled,
+ * unpaid, incomplete, invalid_price ... do not.
+ */
+export function hasCurrentWebPlan(rows: WebPlanRow[], mode: 'live' | 'test' | null): boolean {
+  if (!mode) return false;
+  return rows.some((r) => r.environment === mode && isEntitledStatus(String(r.status ?? '')));
+}
+
+/** Live lookup of the owner's web plan (service role). Filters in code, not only in the query. Throws on a lookup error. */
+export async function ownerHasWebPlan(ownerId: string, rest: typeof sbRest = sbRest): Promise<boolean> {
+  const mode = currentMode();
+  if (!mode) return false;
+  const rows = await rest(`web_app_entitlements?user_id=eq.${encodeURIComponent(ownerId)}&environment=eq.${mode}&select=environment,status`);
+  if (rows != null && !Array.isArray(rows)) throw new Error('web_app_entitlements lookup returned a non-array');
+  return hasCurrentWebPlan((rows ?? []) as WebPlanRow[], mode);
+}
+
+export type WebPlanLookup = (ownerId: string) => Promise<boolean>;
+
+/**
+ * A web-app shop, for any behaviour change keyed on "web shop" (owner emails, Stripe return URL):
+ * no iOS link, WEB_APP_ENTITLEMENTS=1, a known Stripe mode, AND the owner has an entitled
+ * web_app_entitlements row in that mode. Fails closed: no lookup given, or a lookup error => false.
+ * An iOS-linked shop is decided before any lookup, so it never touches the database.
+ */
+export async function isWebShop(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup): Promise<boolean> {
+  if (shop.ios_otid) return false;
+  if (!webAppEntitlementsOn()) return false;
+  if (!currentMode()) return false;
+  if (!hasWebPlan) return false;
+  try {
+    return (await hasWebPlan(shop.owner_id)) === true;
+  } catch (e: any) {
+    console.error('[web-app owner notify] web plan lookup failed, treating as not a web shop:', e?.message || e);
+    return false;
+  }
+}
+
+/**
+ * The origin a Stripe Connect onboarding should return to: the web app for a web shop (isWebShop),
+ * null (the iOS stripe-return page) for everyone else. Fails closed to null on any lookup error.
+ * `shopOtidOf` returns the owner's ab_shops.ios_otid (null when unlinked or no shop) and throws on error.
+ */
+export async function webReturnBaseOf(
+  userId: string,
+  shopOtidOf: (userId: string) => Promise<string | null>,
+  hasWebPlan: WebPlanLookup,
+): Promise<string | null> {
+  try {
+    if (!webAppEntitlementsOn()) return null;
+    const ios_otid = await shopOtidOf(userId);
+    return (await isWebShop({ owner_id: userId, ios_otid }, hasWebPlan)) ? APP_ORIGIN() : null;
+  } catch (e: any) {
+    console.error('[web-app owner notify] return-base lookup failed, using the iOS return page:', e?.message || e);
+    return null;
+  }
+}
 
 // Header-safe: collapse whitespace/control characters (a customer name must never inject a header line).
 const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -113,16 +178,17 @@ export async function sendOwnerEmail(ownerId: string, event: OwnerEvent, deps: O
 }
 
 /**
- * Hook used by the booking/store notify paths: sends only for a web shop with the flag on, else does nothing.
- * `send` is injectable for tests; production passes nothing and uses Resend.
+ * Hook used by the booking/store notify paths: sends only for a web shop (isWebShop), else does nothing.
+ * `hasWebPlan` must be passed (live deps pass ownerHasWebPlan); without it nothing is sent (fail closed).
  */
 export async function maybeEmailOwner(
   shop: { owner_id: string; ios_otid?: string | null },
   event: OwnerEvent,
-  send: (ownerId: string, e: OwnerEvent) => Promise<unknown> = (id, e) => sendOwnerEmail(id, e),
+  send: (ownerId: string, e: OwnerEvent) => Promise<unknown>,
+  hasWebPlan: WebPlanLookup | undefined,
 ): Promise<void> {
   try {
-    if (!isWebShop(shop)) return;
+    if (!(await isWebShop(shop, hasWebPlan))) return;
     await send(shop.owner_id, event);
   } catch (e: any) {
     console.error('[web-app owner notify] hook failed:', e?.message || e);

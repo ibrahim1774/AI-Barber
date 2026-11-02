@@ -6,6 +6,8 @@ import { STORE_APP } from '../store/constants.js';
 import type { NotifyEvent } from './notify.js';
 import type { OrderWebhookDeps } from '../store/webhook.js';
 import type { StoreNotifyEvent } from '../store/notify.js';
+import { hasCurrentWebPlan, webReturnBaseOf, type WebPlanRow } from '../webApp/ownerNotify.js';
+import { keyMode } from '../webApp/stripeCore.js';
 import { bookingManageUrl, bookingPageUrl as shopBookingPageUrl, type SiteBased } from '../customerUrls.js';
 
 /**
@@ -559,12 +561,23 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
       return (data as OwnerShopRow) ?? null;
     },
     async webReturnBase(userId) {
-      if (process.env.WEB_APP_ENTITLEMENTS !== '1') return null;
-      // A shop with an iOS link keeps the iOS return page; only web-subscription owners go back to the web app.
-      const { data: shop } = await db.from('ab_shops').select('ios_otid').eq('owner_id', userId).maybeSingle();
-      if (shop?.ios_otid) return null; // linked to an iOS purchase: always the iOS return page
-      const { data } = await db.from('web_app_entitlements').select('stripe_subscription_id').eq('user_id', userId).limit(1);
-      return data?.length ? (process.env.WEB_APP_ORIGIN || 'https://www.aibarber.org') : null;
+      // Same predicate as the owner emails (ownerNotify isWebShop): no iOS link AND an entitled web plan in the
+      // current Stripe mode. iOS-linked shops, shops with neither, and any lookup error keep the iOS return page.
+      return webReturnBaseOf(
+        userId,
+        async (uid) => {
+          const { data, error } = await db.from('ab_shops').select('ios_otid').eq('owner_id', uid).maybeSingle();
+          if (error) dbFail('webReturnBase(shop)', error);
+          return (data as { ios_otid: string | null } | null)?.ios_otid ?? null;
+        },
+        async (uid) => {
+          const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+          if (!mode) return false;
+          const { data, error } = await db.from('web_app_entitlements').select('environment, status').eq('user_id', uid).eq('environment', mode);
+          if (error) dbFail('webReturnBase(entitlements)', error);
+          return hasCurrentWebPlan((data ?? []) as WebPlanRow[], mode);
+        },
+      );
     },
     async saveAccountId(shopId, accountId) {
       const { data, error } = await db.from('ab_shops').update({ stripe_account_id: accountId })

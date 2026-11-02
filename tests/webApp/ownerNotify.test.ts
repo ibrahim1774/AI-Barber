@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { notify, type NotifyContext, type NotifyDeps } from '../../lib/bookings/notify.js';
 import { notifyOrder, type OrderNotifyContext, type OrderNotifyDeps } from '../../lib/store/notify.js';
-import { ownerEmailFor, sendOwnerEmail, type OwnerNotifyDeps } from '../../lib/webApp/ownerNotify.js';
+import { ownerEmailFor, sendOwnerEmail, ownerHasWebPlan, hasCurrentWebPlan, isWebShop, type OwnerNotifyDeps } from '../../lib/webApp/ownerNotify.js';
 
 const bctx = (over: Partial<NotifyContext['appt']> = {}, shopOver: Partial<NotifyContext['shop']> = {}): NotifyContext => ({
   appt: {
@@ -16,7 +16,7 @@ const bctx = (over: Partial<NotifyContext['appt']> = {}, shopOver: Partial<Notif
 function bdeps(c: NotifyContext) {
   return {
     loadContext: vi.fn(async () => c), sendEmail: vi.fn(async () => 'sent' as const), push: vi.fn(async () => ({})),
-    emailOwner: vi.fn(async (_id: string, _e: any): Promise<unknown> => 'sent'), now: () => Date.UTC(2026, 9, 21, 12),
+    emailOwner: vi.fn(async (_id: string, _e: any): Promise<unknown> => 'sent'), ownerHasWebPlan: vi.fn(async (_id: string) => true), now: () => Date.UTC(2026, 9, 21, 12),
   };
 }
 const octx = (shopOver: Partial<OrderNotifyContext['shop']> = {}, over: Partial<OrderNotifyContext['order']> = {}): OrderNotifyContext => ({
@@ -32,13 +32,13 @@ const octx = (shopOver: Partial<OrderNotifyContext['shop']> = {}, over: Partial<
 function odeps(c: OrderNotifyContext) {
   return {
     loadContext: vi.fn(async () => c), sendEmail: vi.fn(async () => 'sent' as const), push: vi.fn(async () => ({})),
-    emailOwner: vi.fn(async (_id: string, _e: any): Promise<unknown> => 'sent'), now: () => 0,
+    emailOwner: vi.fn(async (_id: string, _e: any): Promise<unknown> => 'sent'), ownerHasWebPlan: vi.fn(async (_id: string) => true), now: () => 0,
   };
 }
 
 beforeEach(() => { vi.spyOn(console, 'warn').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
-const flagOn = () => vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
+const flagOn = () => { vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_unit'); };
 
 describe('owner email: bookings', () => {
   it('flag off: no owner email, push unchanged', async () => {
@@ -161,5 +161,112 @@ describe('ownerEmailFor / sendOwnerEmail', () => {
     expect(await sendOwnerEmail('u', ev, { contact: async () => ({ email: null, firstName: null }), send })).toBe('skipped');
     expect(await sendOwnerEmail('u', ev, { contact: async () => { throw new Error('x'); }, send })).toBe('failed');
     expect(await sendOwnerEmail('u', ev, { ...ok, send: async () => { throw new Error('resend 500'); } })).toBe('failed');
+  });
+});
+
+// Go-live gate (D6.4): existing shops with no ios_otid and no web plan must never start getting owner emails.
+describe('web shop gate: only an entitled web plan in the current Stripe mode', () => {
+  const live = (rows: Array<{ environment: string | null; status: string | null }>) => vi.fn(async (_path: string) => rows);
+  const viaLookup = (rows: Array<{ environment: string | null; status: string | null }>) => {
+    const rest = live(rows);
+    return { rest, lookup: (id: string) => ownerHasWebPlan(id, rest as any) };
+  };
+  it('no ios_otid and no entitlement row: no owner email (booking + store)', async () => {
+    flagOn();
+    const { rest, lookup } = viaLookup([]);
+    const d = bdeps(bctx()); d.ownerHasWebPlan.mockImplementation(lookup);
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+    const o = odeps(octx()); o.ownerHasWebPlan.mockImplementation(lookup);
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, o as OrderNotifyDeps);
+    expect(rest).toHaveBeenCalled();
+    expect(String(rest.mock.calls[0][0])).toContain('user_id=eq.owner-1');
+    expect(d.emailOwner).not.toHaveBeenCalled();
+    expect(o.emailOwner).not.toHaveBeenCalled();
+    expect(d.push).toHaveBeenCalledTimes(1);
+    expect(o.push).toHaveBeenCalledTimes(1);
+  });
+  it('active live entitlement while the key is live: owner email', async () => {
+    flagOn();
+    const d = bdeps(bctx()); d.ownerHasWebPlan.mockImplementation(viaLookup([{ environment: 'live', status: 'active' }]).lookup);
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+    expect(d.emailOwner).toHaveBeenCalledTimes(1);
+    const o = odeps(octx()); o.ownerHasWebPlan.mockImplementation(viaLookup([{ environment: 'live', status: 'trialing' }]).lookup);
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, o as OrderNotifyDeps);
+    expect(o.emailOwner).toHaveBeenCalledTimes(1);
+  });
+  it('past_due live entitlement still counts (grace while Stripe retries)', async () => {
+    flagOn();
+    const d = bdeps(bctx()); d.ownerHasWebPlan.mockImplementation(viaLookup([{ environment: 'live', status: 'past_due' }]).lookup);
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+    expect(d.emailOwner).toHaveBeenCalledTimes(1);
+  });
+  it('test-mode row while the key is live: no owner email', async () => {
+    flagOn();
+    const d = bdeps(bctx()); d.ownerHasWebPlan.mockImplementation(viaLookup([{ environment: 'test', status: 'active' }]).lookup);
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+    expect(d.emailOwner).not.toHaveBeenCalled();
+  });
+  it('canceled / unpaid / incomplete / invalid_price live rows: no owner email', async () => {
+    flagOn();
+    for (const status of ['canceled', 'unpaid', 'incomplete', 'incomplete_expired', 'invalid_price', null]) {
+      const d = bdeps(bctx()); d.ownerHasWebPlan.mockImplementation(viaLookup([{ environment: 'live', status }]).lookup);
+      await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+      expect(d.emailOwner, String(status)).not.toHaveBeenCalled();
+    }
+  });
+  it('entitlement lookup error: no owner email, logged, flow unaffected', async () => {
+    flagOn();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = bdeps(bctx()); d.ownerHasWebPlan.mockRejectedValue(new Error('supabase 500'));
+    await expect(notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps)).resolves.toBeUndefined();
+    const o = odeps(octx()); o.ownerHasWebPlan.mockImplementation((id: string) => ownerHasWebPlan(id, (async () => { throw new Error('supabase 503'); }) as any));
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, o as OrderNotifyDeps);
+    expect(d.emailOwner).not.toHaveBeenCalled();
+    expect(o.emailOwner).not.toHaveBeenCalled();
+    expect(d.push).toHaveBeenCalledTimes(1);
+    expect(err.mock.calls.some((c) => String(c[0]).includes('web plan lookup failed'))).toBe(true);
+  });
+  it('ios_otid set: never emails and never looks up a web plan, even with an active live row', async () => {
+    flagOn();
+    const d = bdeps(bctx({}, { ios_otid: 'otid-1' }));
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+    const o = odeps(octx({ ios_otid: 'otid-1' }));
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, o as OrderNotifyDeps);
+    expect(d.ownerHasWebPlan).not.toHaveBeenCalled();
+    expect(o.ownerHasWebPlan).not.toHaveBeenCalled();
+    expect(d.emailOwner).not.toHaveBeenCalled();
+    expect(o.emailOwner).not.toHaveBeenCalled();
+  });
+  it('no web-plan lookup wired (deps without ownerHasWebPlan): no owner email', async () => {
+    flagOn();
+    const d: any = bdeps(bctx()); delete d.ownerHasWebPlan;
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, d as NotifyDeps);
+    expect(d.emailOwner).not.toHaveBeenCalled();
+  });
+  it('Stripe key unset or unknown: not a web shop, no lookup', async () => {
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
+    for (const key of ['', 'pk_live_x']) {
+      vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', key);
+      const look = vi.fn(async () => true);
+      expect(await isWebShop({ owner_id: 'o', ios_otid: null }, look)).toBe(false);
+      expect(look).not.toHaveBeenCalled();
+    }
+  });
+  it('test key: only test rows count', async () => {
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_unit');
+    expect(await isWebShop({ owner_id: 'o' }, (id) => ownerHasWebPlan(id, live([{ environment: 'test', status: 'active' }]) as any))).toBe(true);
+    expect(await isWebShop({ owner_id: 'o' }, (id) => ownerHasWebPlan(id, live([{ environment: 'live', status: 'active' }]) as any))).toBe(false);
+  });
+  it('flag off: never a web shop even with an active live row', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_unit');
+    const look = vi.fn(async () => true);
+    expect(await isWebShop({ owner_id: 'o', ios_otid: null }, look)).toBe(false);
+    expect(look).not.toHaveBeenCalled();
+  });
+  it('hasCurrentWebPlan: mode and status filtering is done in code', () => {
+    expect(hasCurrentWebPlan([{ environment: 'live', status: 'active' }], 'live')).toBe(true);
+    expect(hasCurrentWebPlan([{ environment: 'live', status: 'active' }], null)).toBe(false);
+    expect(hasCurrentWebPlan([{ environment: 'test', status: 'active' }, { environment: 'live', status: 'canceled' }], 'live')).toBe(false);
+    expect(hasCurrentWebPlan([{ environment: 'live', status: 'canceled' }, { environment: 'live', status: 'past_due' }], 'live')).toBe(true);
   });
 });
