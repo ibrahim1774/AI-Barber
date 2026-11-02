@@ -9,6 +9,7 @@ import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
 import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
 import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
 
@@ -133,6 +134,8 @@ async function handleFailedPayment(event: any, mode: 'live' | 'test', res: any) 
 
 /** Idempotent: first customer per (user, mode) wins; later ones (a duplicate payment) keep their entitlement rows only. Throws on a DB error so Stripe retries. */
 async function recordCustomer(userId: string, customerId: string, mode: 'live' | 'test', tag: boolean) {
+  // A deleted account must not get a new web_app_customers row (a payment completing after the delete would otherwise recreate one).
+  if (!(await userExists(userId))) return;
   await sbRest('web_app_customers?on_conflict=user_id,environment', { method: 'POST', body: { user_id: userId, environment: mode, stripe_customer_id: customerId }, prefer: 'resolution=ignore-duplicates,return=minimal' });
   if (!tag) return;
   // Checkout never copies metadata onto the customer it creates. Best effort, never fails the webhook.

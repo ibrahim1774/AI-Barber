@@ -4,6 +4,8 @@ const st = vi.hoisted(() => ({ stripe: [] as any[], sb: [] as any[], sub: null a
 
 vi.mock('../../lib/webApp/stripeCore.js', async (orig) => ({ ...(await orig<any>()), verifyStripeSignature: () => true }));
 vi.mock('../../lib/webApp/emails.js', () => ({ sendMail: vi.fn(), welcomeEmail: vi.fn(), alertOwner: vi.fn(), duplicateRefundEmail: vi.fn() }));
+const gone = vi.hoisted(() => ({ deleted: false }));
+vi.mock('../../lib/webApp/userExists.js', () => ({ userExists: async () => !gone.deleted, emailOfUser: async () => null }));
 vi.mock('../../lib/webApp/dunning.js', () => ({ contactFor: vi.fn(async () => ({ email: null, firstName: null })), resetDunning: vi.fn(async () => {}), sendFailedPaymentIfDue: vi.fn() }));
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   webAppCors: () => false,
@@ -38,7 +40,7 @@ const mkSub = (over: any = {}) => ({ id: 'sub_1', status: 'active', customer: 'c
 beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_WEBHOOK_SECRET', 'whsec');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_w_m'); vi.stubEnv('STRIPE_WEBAPP_PRICE_BOOKINGS_MONTH', 'price_b_m');
-  st.stripe = []; st.sb = []; st.sub = mkSub(); st.subsByCustomer = {}; st.ents = []; st.shop = 'Fade Masters';
+  st.stripe = []; st.sb = []; st.sub = mkSub(); st.subsByCustomer = {}; st.ents = []; st.shop = 'Fade Masters'; gone.deleted = false;
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -70,6 +72,16 @@ describe('webhook records the customer Checkout created', () => {
     mod.stripeCall = async (p: string, ...r: any[]) => { if (p.startsWith('customers/')) throw new Error('boom'); return orig(p, ...r); };
     expect((await fire(subEvent())).code).toBe(200);
     mod.stripeCall = orig;
+  });
+});
+
+describe('deleted account', () => {
+  it('the webhook does not re-insert web_app_customers or tag the customer for a user that no longer exists, but still stores the entitlement', async () => {
+    gone.deleted = true;
+    expect((await fire(subEvent())).code).toBe(200);
+    expect(st.sb.some((c) => c.path.startsWith('web_app_customers'))).toBe(false);
+    expect(st.stripe.some((c) => c.path === 'customers/cus_new')).toBe(false);
+    expect(st.sb.some((c) => c.path.startsWith('web_app_entitlements?on_conflict'))).toBe(true);
   });
 });
 

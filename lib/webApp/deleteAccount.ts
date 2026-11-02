@@ -12,6 +12,7 @@ import { liveRemoveDeps } from '../ios/removeSiteLive.js';
 import { purge, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
 import { WEB_APP_TAG, isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
+import { emailOfUser } from './userExists.js';
 
 const WEB = 'web:';
 const enc = encodeURIComponent;
@@ -23,6 +24,24 @@ type EntRow = { stripe_subscription_id: string; stripe_customer_id?: string | nu
 const missing = (e: any) => e?.status === 404 || e?.code === 'resource_missing';
 
 /**
+ * A first-time payer has no stored customer until the webhook lands. Stripe still knows their Checkout sessions (found by the
+ * account email, filtered to this user): COMPLETED ones name the customer Stripe created; OPEN ones are still payable.
+ * Throws on a Stripe error so the delete is retried rather than leaving billing behind. No email = nothing to look up.
+ */
+export async function sessionsOfUser(userId: string, lookupEmail: (id: string) => Promise<string | null> = emailOfUser): Promise<{ customers: string[]; open: string[] }> {
+  const email = await lookupEmail(userId);
+  if (!email) return { customers: [], open: [] };
+  const list = await stripeCall(`checkout/sessions?customer_details[email]=${enc(email)}&limit=100`, null, 'GET');
+  const customers = new Set<string>(); const open: string[] = [];
+  for (const o of list?.data ?? []) {
+    if (o?.metadata?.app !== WEB_APP_TAG || o?.metadata?.user_id !== userId) continue;
+    if (o.status === 'complete') { const c = typeof o.customer === 'string' ? o.customer : o.customer?.id; if (c) customers.add(c); }
+    else if (o.status === 'open' && typeof o.id === 'string') open.push(o.id);
+  }
+  return { customers: [...customers], open };
+}
+
+/**
  * Which of the user's entitled web subscriptions this deployment may cancel (its own Stripe mode only).
  *  - same mode as the key: cancel
  *  - a TEST row under a live key: skip (test money; the live key cannot touch it)
@@ -31,7 +50,7 @@ const missing = (e: any) => e?.status === 404 || e?.code === 'resource_missing';
  * Also lists the tagged subscriptions of the stored Stripe customer(s) in this mode, so one that was paid but whose webhook has
  * not landed (no row yet) is cancelled too.
  */
-export async function planWebCancellations(userId: string, listForCustomer: (customerId: string) => Promise<any[]> = defaultList): Promise<string[]> {
+export async function planWebCancellations(userId: string, listForCustomer: (customerId: string) => Promise<any[]> = defaultList, discover: typeof sessionsOfUser = sessionsOfUser): Promise<string[]> {
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
   if (!mode) throw new Error('STRIPE_WEBAPP_SECRET_KEY missing or unrecognised');
   const rows: EntRow[] = (await sbRest(`web_app_entitlements?user_id=eq.${enc(userId)}&select=stripe_subscription_id,stripe_customer_id,status,environment`)) ?? [];
@@ -42,6 +61,7 @@ export async function planWebCancellations(userId: string, listForCustomer: (cus
   const ids = new Set(entitled.filter((r) => r.environment === mode).map((r) => r.stripe_subscription_id));
   const stored: Array<{ stripe_customer_id: string }> = (await sbRest(`web_app_customers?user_id=eq.${enc(userId)}&environment=eq.${mode}&select=stripe_customer_id`)) ?? [];
   const customers = new Set([...stored.map((c) => c.stripe_customer_id), ...rows.filter((r) => r.environment === mode).map((r) => r.stripe_customer_id)].filter((c): c is string => !!c));
+  for (const c of (await discover(userId)).customers) customers.add(c);
   for (const c of customers) {
     for (const sub of await listForCustomer(c)) {
       if (sub?.metadata?.app === WEB_APP_TAG && typeof sub.id === 'string' && (isEntitledStatus(String(sub.status)) || sub.status === 'unpaid' || sub.status === 'paused' || sub.status === 'incomplete')) ids.add(sub.id);
@@ -60,8 +80,12 @@ export async function cancelWebSubscriptions(
   cancel: (subId: string) => Promise<void> = (id) => stripeCall(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
   statusOf: (subId: string) => Promise<string> = async (id) => String((await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status),
   listForCustomer?: (customerId: string) => Promise<any[]>,
+  discover: typeof sessionsOfUser = sessionsOfUser,
+  expire: (sessionId: string) => Promise<unknown> = (id) => stripeCall(`checkout/sessions/${enc(id)}/expire`, {}, 'POST'),
 ): Promise<string[]> {
-  const ids = await planWebCancellations(userId, listForCustomer); // refusal happens here, before anything is cancelled
+  const ids = await planWebCancellations(userId, listForCustomer, discover); // refusal happens here, before anything is cancelled
+  // Nobody may pay for a deleted account mid-delete: expire the user's still-open sessions (best effort; an already-expired one is fine).
+  for (const sid of (await discover(userId)).open) await Promise.resolve(expire(sid)).catch((e: any) => console.error('[web-app delete] expire failed:', e?.message || e));
   const done: string[] = [];
   for (const id of ids) {
     try { await cancel(id); }
