@@ -12,6 +12,7 @@ import { liveRemoveDeps } from '../ios/removeSiteLive.js';
 import { purge, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
 import { WEB_APP_TAG, isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
+import { forgetSession, storedSessionId } from './checkoutSessions.js';
 import { emailOfUser } from './userExists.js';
 
 const WEB = 'web:';
@@ -29,8 +30,10 @@ const missing = (e: any) => e?.status === 404 || e?.code === 'resource_missing';
  * Throws on a Stripe error so the delete is retried rather than leaving billing behind. No email = nothing to look up.
  */
 export async function sessionsOfUser(userId: string, lookupEmail: (id: string) => Promise<string | null> = emailOfUser): Promise<{ customers: string[]; open: string[] }> {
+  const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+  const stored = mode ? await storedSessionId(userId, mode) : null; // found by id, so it works without an email
   const email = await lookupEmail(userId);
-  if (!email) return { customers: [], open: [] };
+  if (!email) return { customers: [], open: stored ? [stored] : [] };
   const list = await stripeCall(`checkout/sessions?customer_details[email]=${enc(email)}&limit=100`, null, 'GET');
   const customers = new Set<string>(); const open: string[] = [];
   for (const o of list?.data ?? []) {
@@ -38,6 +41,7 @@ export async function sessionsOfUser(userId: string, lookupEmail: (id: string) =
     if (o.status === 'complete') { const c = typeof o.customer === 'string' ? o.customer : o.customer?.id; if (c) customers.add(c); }
     else if (o.status === 'open' && typeof o.id === 'string') open.push(o.id);
   }
+  if (stored && !open.includes(stored)) open.push(stored);
   return { customers: [...customers], open };
 }
 
@@ -105,6 +109,8 @@ export async function cancelWebSubscriptions(
 /** Cancel the web subscriptions, and only AFTER that succeeded forget the user's stored Stripe customers (web_app_customers). */
 export async function cancelThenForgetCustomers(userId: string, cancel?: Parameters<typeof cancelWebSubscriptions>[1]): Promise<string[]> {
   const done = await cancelWebSubscriptions(userId, cancel);
+  const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+  if (mode) await forgetSession(userId, mode);
   await sbRest(`web_app_customers?user_id=eq.${enc(userId)}`, { method: 'DELETE' });
   return done;
 }

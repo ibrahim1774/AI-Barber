@@ -6,6 +6,7 @@ import { draftPath, planIntent, submitIntent, publicationFrom, reliabilityOn, en
 // with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
 import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, planDescription, priceIdFor } from '../../lib/webApp/stripeCore.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
+import { expireSession, rememberSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
@@ -122,6 +123,10 @@ export default async function handler(req: any, res: any) {
         return res.status(409).json({ error: 'draft_changed' });
       }
     }
+    // The previously stored open session is expired by id (works without an email), then this one is stored.
+    const previous = await storedSessionId(caller.id, mode);
+    if (previous && previous !== session.id) await expireSession(previous);
+    await rememberSession(caller.id, mode, session.id);
     // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
     try {
       if (!customer && !caller.email) throw new Error('no customer or email to look sessions up by');

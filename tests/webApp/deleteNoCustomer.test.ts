@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('../../lib/webApp/webAppServer.js', () => ({ sbRest: vi.fn(async () => []), stripeCall: vi.fn() }));
+const stored = vi.hoisted(() => ({ id: null as string | null }));
+vi.mock('../../lib/webApp/webAppServer.js', () => ({ sbRest: vi.fn(async (p: string) => p.startsWith('web_app_checkout_sessions') ? (stored.id ? [{ stripe_session_id: stored.id }] : []) : []), stripeCall: vi.fn() }));
 vi.mock('../../lib/ios/deleteAccount.js', () => ({ liveDeleteDeps: vi.fn() }));
 vi.mock('../../lib/ios/removeSiteLive.js', () => ({ liveRemoveDeps: vi.fn() }));
 
@@ -17,7 +18,7 @@ const listing = () => ({ data: [
   mk({ id: 'cs_exp', status: 'expired' }),
 ] });
 
-beforeEach(() => { vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); (stripeCall as any).mockReset(); (stripeCall as any).mockImplementation(async (p: string) => p.startsWith('checkout/sessions?') ? listing() : { data: [] }); });
+beforeEach(() => { stored.id = null; vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); (stripeCall as any).mockReset(); (stripeCall as any).mockImplementation(async (p: string) => p.startsWith('checkout/sessions?') ? listing() : { data: [] }); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('delete account for a first-time payer (no stored customer, no entitlement row)', () => {
@@ -46,6 +47,20 @@ describe('delete account for a first-time payer (no stored customer, no entitlem
   it('a Stripe error in the session lookup throws, so the delete retries instead of orphaning billing', async () => {
     (stripeCall as any).mockRejectedValue(new Error('stripe down'));
     await expect(sessionsOfUser('u1', async () => 'a@example.com')).rejects.toThrow('stripe down');
+  });
+});
+
+describe('stored open session', () => {
+  it('is expired by id even when the account has no email', async () => {
+    stored.id = 'cs_stored';
+    expect(await sessionsOfUser('u1', async () => null)).toEqual({ customers: [], open: ['cs_stored'] });
+    const expire = vi.fn(async () => ({}));
+    await cancelWebSubscriptions('u1', vi.fn(async () => {}), undefined, async () => [], (id) => sessionsOfUser(id, async () => null), expire);
+    expect(expire).toHaveBeenCalledWith('cs_stored');
+  });
+  it('is not listed twice when the email lookup also finds it', async () => {
+    stored.id = 'cs_open';
+    expect((await sessionsOfUser('u1', async () => 'a@example.com')).open).toEqual(['cs_open']);
   });
 });
 

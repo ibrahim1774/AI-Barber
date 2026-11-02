@@ -16,6 +16,7 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
     if (path.startsWith('web_app_customers') && (globalThis as any).__failCustomers) throw new Error('supabase 404');
     if (path.startsWith('web_app_customers') && (init.method ?? 'GET') === 'GET') return sb.customers.slice(0, 1);
     if (path.startsWith('web_app_customers')) { if (!sb.customers.length) sb.customers.push(init.body); return null; }
+    if (path.startsWith('web_app_checkout_sessions')) { if ((globalThis as any).__csFail) throw new Error('relation does not exist'); if ((init.method ?? 'GET') === 'GET') return (globalThis as any).__cs ? [{ stripe_session_id: (globalThis as any).__cs }] : []; (globalThis as any).__csSaved = init.body; return null; }
     if (path.startsWith('web_app_drafts')) return (globalThis as any).__shop === undefined ? [] : [{ shop: (globalThis as any).__shop }];
     if (path.startsWith('site_owners')) return [];
     return [];
@@ -50,7 +51,7 @@ beforeEach(() => {
     throw new Error(`unexpected ${path}`);
   };
 });
-afterEach(() => { vi.unstubAllEnvs(); (globalThis as any).__shop = undefined; });
+afterEach(() => { vi.unstubAllEnvs(); (globalThis as any).__shop = undefined; (globalThis as any).__cs = undefined; (globalThis as any).__csFail = false; (globalThis as any).__csSaved = undefined; });
 
 const created = () => stripe.calls.filter((c) => c.path === 'checkout/sessions' && c.method === 'POST');
 
@@ -275,5 +276,29 @@ describe('POST /api/web-app/checkout', () => {
     const r = await run();
     expect(r.code).toBe(503); expect(r.body.error).toBe('try_again');
     expect(stripe.calls).toHaveLength(0);
+  });
+
+  it('stores the new open session id; a previously stored one is expired by id (no email needed, no listing)', async () => {
+    sb.customers = [];
+    (globalThis as any).__cs = 'cs_prev';
+    const h = stripe.handler;
+    stripe.handler = (p: string, ...r: any[]) => p.startsWith('checkout/sessions?') ? (() => { throw new Error('must not list'); })() : h(p, ...r);
+    const noEmail = vi.fn();
+    const r = await run();
+    expect(r.code).toBe(200);
+    expect(stripe.calls.filter((c) => c.path.endsWith('/expire')).map((c) => c.path)).toContain('checkout/sessions/cs_prev/expire');
+    expect((globalThis as any).__csSaved).toMatchObject({ user_id: 'u1', environment: 'test', stripe_session_id: 'cs_new' });
+    void noEmail;
+  });
+
+  it('the stored session is not expired when it is the one just returned (idempotent replay)', async () => {
+    (globalThis as any).__cs = 'cs_new';
+    await run();
+    expect(stripe.calls.some((c) => c.path === 'checkout/sessions/cs_new/expire')).toBe(false);
+  });
+
+  it('fail-soft: web_app_checkout_sessions missing (migration 026 not applied) never blocks checkout', async () => {
+    (globalThis as any).__csFail = true;
+    expect((await run()).code).toBe(200);
   });
 });

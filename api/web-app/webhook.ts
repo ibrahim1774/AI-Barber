@@ -9,6 +9,7 @@ import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
 import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
 import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
@@ -60,7 +61,12 @@ export default async function handler(req: any, res: any) {
     // The customer now exists (Checkout created it on payment): remember it for this user and mode, and tag it.
     if (row.user_id && row.status !== 'invalid_price') {
       await recordCustomer(row.user_id, row.stripe_customer_id, mode, event.type !== 'customer.subscription.deleted');
-      if (isEntitledStatus(row.status)) await syncDescription(sub, row.tier, row.user_id, mode);
+      if (isEntitledStatus(row.status)) {
+        await syncDescription(sub, row.tier, row.user_id, mode);
+        // Paid: the stored open session (a second tab) must not stay payable. Best effort.
+        const open = await storedSessionId(row.user_id, mode);
+        if (open) { await expireSession(open); await forgetSession(row.user_id, mode); }
+      }
     }
     if (reliabilityOn() && row.user_id && isEntitledStatus(row.status) && typeof sub.metadata?.intent_id === 'string') {
       const jobs = await sbRest(`web_app_publish_intents?id=eq.${enc(sub.metadata.intent_id)}&user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&status=in.(awaiting_payment,queued,failed)`, {

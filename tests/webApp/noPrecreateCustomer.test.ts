@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const st = vi.hoisted(() => ({ stripe: [] as any[], sb: [] as any[], sub: null as any, subsByCustomer: {} as Record<string, any[]>, ents: [] as any[], shop: undefined as any, event: null as any }));
+const st = vi.hoisted(() => ({ stripe: [] as any[], sb: [] as any[], sub: null as any, subsByCustomer: {} as Record<string, any[]>, ents: [] as any[], shop: undefined as any, event: null as any, openSession: null as string | null }));
 
 vi.mock('../../lib/webApp/stripeCore.js', async (orig) => ({ ...(await orig<any>()), verifyStripeSignature: () => true }));
 vi.mock('../../lib/webApp/emails.js', () => ({ sendMail: vi.fn(), welcomeEmail: vi.fn(), alertOwner: vi.fn(), duplicateRefundEmail: vi.fn() }));
@@ -17,11 +17,12 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
     if (path.startsWith('subscriptions/') && method === 'GET') return st.sub;
     if (path.startsWith('subscriptions?customer=')) return { data: st.subsByCustomer[decodeURIComponent(path.split('=')[1].split('&')[0])] ?? [] };
     if (path.startsWith('subscriptions/') && method === 'POST') return {};
-    if (path.startsWith('customers/')) return {};
+    if (path.startsWith('customers/') || path.endsWith('/expire')) return {};
     throw new Error('unexpected ' + path);
   },
   sbRest: async (path: string, init: any = {}) => {
     st.sb.push({ path, ...init });
+    if (path.startsWith('web_app_checkout_sessions')) return (init.method ?? 'GET') === 'GET' && st.openSession ? [{ stripe_session_id: st.openSession }] : [];
     if (path.startsWith('web_app_drafts')) return st.shop === undefined ? [] : [{ shop: st.shop }];
     if (path.startsWith('web_app_entitlements?user_id=')) return st.ents;
     if (path.startsWith('web_app_customers?user_id=')) return [];
@@ -40,7 +41,7 @@ const mkSub = (over: any = {}) => ({ id: 'sub_1', status: 'active', customer: 'c
 beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_WEBHOOK_SECRET', 'whsec');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_w_m'); vi.stubEnv('STRIPE_WEBAPP_PRICE_BOOKINGS_MONTH', 'price_b_m');
-  st.stripe = []; st.sb = []; st.sub = mkSub(); st.subsByCustomer = {}; st.ents = []; st.shop = 'Fade Masters'; gone.deleted = false;
+  st.stripe = []; st.sb = []; st.sub = mkSub(); st.subsByCustomer = {}; st.ents = []; st.shop = 'Fade Masters'; gone.deleted = false; st.openSession = null;
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -72,6 +73,19 @@ describe('webhook records the customer Checkout created', () => {
     mod.stripeCall = async (p: string, ...r: any[]) => { if (p.startsWith('customers/')) throw new Error('boom'); return orig(p, ...r); };
     expect((await fire(subEvent())).code).toBe(200);
     mod.stripeCall = orig;
+  });
+});
+
+describe('paid: the stored open session is closed', () => {
+  it('expires the stored open session and forgets it once the subscription is entitled', async () => {
+    st.openSession = 'cs_tab2';
+    await fire(subEvent());
+    expect(st.stripe.some((c) => c.path === 'checkout/sessions/cs_tab2/expire')).toBe(true);
+    expect(st.sb.some((c) => c.path.startsWith('web_app_checkout_sessions') && c.method === 'DELETE')).toBe(true);
+  });
+  it('nothing stored: no expire call', async () => {
+    await fire(subEvent());
+    expect(st.stripe.some((c) => c.path.endsWith('/expire'))).toBe(false);
   });
 });
 
