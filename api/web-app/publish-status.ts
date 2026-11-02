@@ -18,7 +18,7 @@ export default async function handler(req: any, res: any) {
     const draft = await readDraft(user.id);
     res.setHeader('Cache-Control', 'no-store');
     if (!draft?.latest_intent_id) return res.status(200).json({ intent: null });
-    const job = (await sbRest(`web_app_publish_intents?id=eq.${enc(draft.latest_intent_id)}&user_id=eq.${enc(user.id)}&environment=eq.${modeOf()}&select=id,status,revision,result,next_attempt_at&limit=1`))?.[0];
+    const job = (await sbRest(`web_app_publish_intents?id=eq.${enc(draft.latest_intent_id)}&user_id=eq.${enc(user.id)}&environment=eq.${modeOf()}&select=id,status,revision,result,requires_payment,next_attempt_at&limit=1`))?.[0];
     if (req.method === 'POST' && job && ['failed','queued'].includes(job.status) && !draft.suspended) {
       if (!(await retryStore.hit(`publish-status:${user.id}`, RETRY_POSTS_PER_MINUTE, 60_000, Date.now()))) {
         res.setHeader('Retry-After', '60');

@@ -229,3 +229,16 @@ describe('S2 owner alert when a paid publish stops', () => {
     expect((await intents())[0].status).toBe('cancelled');
   });
 });
+
+describe('S3 publish-status exposes whether the job was paid', () => {
+  it('publish-status shows a parked paid job with its reason', async () => {
+    await save();
+    expect((await call(checkout, { tier: 'website', interval: 'month', publish: true, draftId: 'draft', revision: 1 })).code).toBe(200);
+    await db.query(`update web_app_publish_intents set status='cancelled', result='{"error":"publish_gave_up"}'`);
+    const r = await call(status, undefined, 'GET');
+    expect(r.body.intent.status).toBe('cancelled');
+    expect(r.body.intent.result.error).toBe('publish_gave_up');
+    expect(r.body.intent.requires_payment).toBe(true);
+    expect('next_attempt_at' in r.body.intent).toBe(false);
+  });
+});
