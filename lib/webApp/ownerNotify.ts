@@ -38,7 +38,7 @@ export function hasCurrentWebPlan(rows: WebPlanRow[], mode: 'live' | 'test' | nu
 /** Live lookup of the owner's web plan (service role). Filters in code, not only in the query. Throws on a lookup error. */
 export async function ownerHasWebPlan(ownerId: string, rest: typeof sbRest = sbRest): Promise<boolean> {
   const mode = currentMode();
-  if (!mode) return false;
+  if (!mode) { console.warn('[web-app owner notify] plan lookup: Stripe mode unknown, treating as no plan', { kind: 'ownerHasWebPlan' }); return false; }
   const rows = await rest(`web_app_entitlements?user_id=eq.${encodeURIComponent(ownerId)}&environment=eq.${mode}&select=environment,status`);
   if (rows != null && !Array.isArray(rows)) throw new Error('web_app_entitlements lookup returned a non-array');
   return hasCurrentWebPlan((rows ?? []) as WebPlanRow[], mode);
@@ -158,8 +158,9 @@ async function liveContact(ownerId: string): Promise<OwnerContact> {
   const r = await fetch(`${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(ownerId)}`, {
     headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY as string, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
   });
-  if (!r.ok) return { email: null, firstName: null };
+  if (!r.ok) { console.warn('[web-app owner notify] owner contact lookup failed, no email sent', { status: r.status, kind: 'liveContact' }); return { email: null, firstName: null }; }
   const u: any = await r.json().catch(() => null);
+  if (!u?.email) console.warn('[web-app owner notify] owner has no email address, no email sent', { kind: 'liveContact' });
   const m = u?.user_metadata ?? {};
   const name = m.first_name || m.given_name || m.full_name || m.name || null;
   const first = typeof name === 'string' ? firstOf(name) : '';
@@ -172,7 +173,7 @@ export const liveOwnerNotifyDeps: OwnerNotifyDeps = { contact: liveContact, send
 export async function sendOwnerEmail(ownerId: string, event: OwnerEvent, deps: OwnerNotifyDeps = liveOwnerNotifyDeps): Promise<'sent' | 'skipped' | 'failed'> {
   try {
     const { email, firstName } = await deps.contact(ownerId);
-    if (!email) return 'skipped';
+    if (!email) { console.warn('[web-app owner notify] skipped: no owner email', { kind: event?.kind }); return 'skipped'; }
     await deps.send(email, ownerEmailFor(event, firstName));
     return 'sent';
   } catch (e: any) {
