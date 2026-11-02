@@ -138,159 +138,159 @@ export default async function handler(req: any, res: any) {
       // exactly, which is the point — the two pages are sold as one offer.
       unitAmount = '8600';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isYearlyBooksy) {
       // /booksy yearly: flat $59/yr (≈51% off $10/mo × 12).
       unitAmount = '5900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isYearlyFree) {
       // /free-barber yearly: flat $49/yr (≈42% off $7/mo × 12).
       unitAmount = '4900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthlyBooksy) {
       // /booksy monthly: $10/mo.
       unitAmount = '1000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isMonthlyFree) {
       // /free-barber monthly: $7/mo.
       unitAmount = '700';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearlyBooking) {
       // /booking yearly: $59/yr.
       unitAmount = '5900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthlyBooking) {
       // /booking monthly: $10/mo.
       unitAmount = '1000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearlyGenerate) {
       // /generate yearly: $59/yr.
       unitAmount = '5900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthlyGenerate) {
       // /generate monthly: $10/mo.
       unitAmount = '1000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearlyHome2) {
       // /home-2 yearly: $99/yr (≈57% off $19/mo × 12).
       unitAmount = '9900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthlyHome2) {
       // /home-2 monthly: $19/mo.
       unitAmount = '1900';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearly9) {
       // /9 yearly: $86/yr (20% off $9/mo x 12 = $108).
       unitAmount = '8600';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthlyCustom15) {
       // /custom-15: standard $15/mo hosting under its own slug so the
       // pay-first funnel is separable in Stripe/admin/pixels. (Was
       // $10/mo as /custom-10 until 2026-08-21.)
       unitAmount = '1500';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isMonthly9) {
       // /9 monthly: $9/mo.
       unitAmount = '900';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearly7) {
       // /7 yearly: $67/yr (20% off $7/mo x 12 = $84).
       unitAmount = '6700';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthly7) {
       // /7 monthly: $7/mo.
       unitAmount = '700';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearly15) {
       // /15 yearly: $144/yr (20% off $15/mo × 12 — matches the homepage).
       unitAmount = '14400';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthly15) {
       // /15 monthly: $15/mo.
       unitAmount = '1500';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearly20) {
       // /20 yearly: $192/yr (20% off $20/mo × 12).
       unitAmount = '19200';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isMonthly20) {
       // /20 monthly: $20/mo.
       unitAmount = '2000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isMonthlyBargen) {
       // /barber-generate monthly: $15/mo.
       unitAmount = '1500';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     } else if (isYearlyBargen) {
       // /barber-generate yearly: $144/yr (20% off $15/mo × 12).
       unitAmount = '14400';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting';
+      productName = 'Prime Barber — Yearly Website Hosting';
     } else if (isCustomBargen) {
       // /barber-generate custom build: $29/mo.
       unitAmount = '2900';
       interval = 'month';
-      productName = 'aibarber.org — Website Hosting (Custom)';
+      productName = 'Prime Barber — Website Hosting (Custom)';
     } else if (isCustom15) {
       // /7 + /9 custom design: $19/mo (slug kept from the old /15 test;
       // /15 now upsells the standard $29 custom25).
       unitAmount = '1900';
       interval = 'month';
-      productName = 'aibarber.org — Website Hosting (Custom)';
+      productName = 'Prime Barber — Website Hosting (Custom)';
     } else if (isCustomBooksy) {
       unitAmount = '2900';
       interval = 'month';
-      productName = 'aibarber.org — Website Hosting (Custom)';
+      productName = 'Prime Barber — Website Hosting (Custom)';
     } else if (isYearlyCustomHome) {
       // Homepage custom 20+ page site, yearly: $199/yr (owner, 2026-09-13).
       unitAmount = '19900';
       interval = 'year';
-      productName = 'aibarber.org — Website Hosting (Custom, Yearly)';
+      productName = 'Prime Barber — Website Hosting (Custom, Yearly)';
     } else if (isCustomHome) {
       // Homepage custom 20+ page site: $20/mo (owner, 2026-09-13; was $19).
       unitAmount = '2000';
       interval = 'month';
-      productName = 'aibarber.org — Website Hosting (Custom)';
+      productName = 'Prime Barber — Website Hosting (Custom)';
     } else if (isCustom || isCustom25 || isCustomDesignPage || isCustomDesign29) {
       unitAmount = '2900';
       interval = 'month';
-      productName = 'aibarber.org — Website Hosting (Custom)';
+      productName = 'Prime Barber — Website Hosting (Custom)';
     } else if (isPrimeBarber) {
       unitAmount = '2000';
       interval = 'month';
-      productName = 'aibarber.org — Custom Website Platform (PrimeBarber)';
+      productName = 'Prime Barber — Custom Website Platform (PrimeBarber)';
     } else if (isPrimeBarberYearly) {
       // 20% off $20/mo × 12 = $192 → $192/yr.
       unitAmount = '19200';
       interval = 'year';
-      productName = 'aibarber.org — Custom Website Platform (PrimeBarber, Yearly)';
+      productName = 'Prime Barber — Custom Website Platform (PrimeBarber, Yearly)';
     } else {
       // Standard (home page) monthly: $9/mo (owner call 2026-09-21,
       // down from $10). Doubles as the fallback for an unrecognised
       // slug — 'monthly' is the only one the client actually sends here.
       unitAmount = '900';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting';
+      productName = 'Prime Barber — Monthly Website Hosting';
     }
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;

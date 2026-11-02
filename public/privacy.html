@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Privacy Policy · Prime Barber</title>
-<meta name="description" content="How Prime Barber (aibarber.org and the Prime Barber iOS app) collects, uses and deletes your information." />
+<meta name="description" content="How Prime Barber (primebarber.org and the Prime Barber iOS app) collects, uses and deletes your information." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;900&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -38,7 +38,7 @@
     var a=document.querySelectorAll('a[href]');
     for(var i=0;i<a.length;i++){
       var h=a[i].getAttribute('href');
-      if(h==='/'||/^https?:\/\/(www\.)?aibarber\.org\/?$/.test(h)){
+      if(h==='/'||/^https?:\/\/(www\.)?(aibarber|primebarber)\.org\/?$/.test(h)){
         var s=document.createElement('span');s.className=a[i].className;s.innerHTML=a[i].innerHTML;a[i].parentNode.replaceChild(s,a[i]);
       }else if(h==='/privacy'||h==='/terms'||h==='/support'){a[i].setAttribute('href',h+'?app=1');}
     }
@@ -53,7 +53,7 @@
   <h1>Privacy Policy</h1>
   <p class="sub">What Prime Barber collects, why, who helps us run it, and how to get your information removed.</p>
 
-  <p>Prime Barber builds and hosts websites for barbershops. It is run by Davoxa ("we", "us"). This policy covers the Prime Barber website at <a href="https://www.aibarber.org">aibarber.org</a> and the Prime Barber iOS app (together, "Prime Barber"). It does not cover the websites of the barbershops we host, other than what we describe below.</p>
+  <p>Prime Barber builds and hosts websites for barbershops. It is run by Davoxa ("we", "us"). This policy covers the Prime Barber website at <a href="https://www.primebarber.org">primebarber.org</a> and the Prime Barber iOS app (together, "Prime Barber"). It does not cover the websites of the barbershops we host, other than what we describe below.</p>
 
   <h2>What we collect</h2>
   <ul>
@@ -85,7 +85,7 @@
     <li><strong>Supabase</strong> stores accounts, saved site data and your clients' bookings and orders.</li>
     <li><strong>Supabase Auth</strong> (our login provider) sends account emails such as password resets, from support@davoxa.com.</li>
     <li><strong>Google Cloud Storage</strong> stores uploaded and imported images and the files used to build your site.</li>
-    <li><strong>Vercel</strong> hosts aibarber.org and the websites we publish for you. If you buy a custom domain through us, it is registered through Vercel.</li>
+    <li><strong>Vercel</strong> hosts primebarber.org and the websites we publish for you. If you buy a custom domain through us, it is registered through Vercel.</li>
     <li>On the website, a draft of your site may also be saved in your own browser so you don't lose your work.</li>
   </ul>
   <p><strong>Published websites are public by design.</strong> Anything you put on your published site, including shop details, photos and reviews, can be seen by anyone on the internet.</p>
@@ -96,7 +96,7 @@
   <h2>Analytics and advertising</h2>
   <p>We use the following tools. Each receives information about how you use Prime Barber, and some help us measure whether our ads work.</p>
   <ul>
-    <li><strong>On aibarber.org:</strong> Meta Pixel and Meta Conversions API, TikTok Pixel and TikTok Events API, Microsoft Clarity (session recordings and heatmaps), and Triple Whale (marketing attribution). When you submit a form or make a purchase, we may share your email address or phone number with Meta and TikTok in hashed (scrambled) form so they can match the event to an ad.</li>
+    <li><strong>On primebarber.org:</strong> Meta Pixel and Meta Conversions API, TikTok Pixel and TikTok Events API, Microsoft Clarity (session recordings and heatmaps), and Triple Whale (marketing attribution). When you submit a form or make a purchase, we may share your email address or phone number with Meta and TikTok in hashed (scrambled) form so they can match the event to an ad.</li>
     <li><strong>On the websites we publish for you:</strong> Microsoft Clarity, so we can see how the sites perform.</li>
     <li><strong>In the iOS app:</strong> PostHog (product analytics), AppsFlyer (install and ad attribution), Superwall (to show plans) and RevenueCat (to record subscription status). On iOS, the app asks for your permission before using your device's advertising identifier. If you decline, we do not use it.</li>
   </ul>
@@ -105,7 +105,7 @@
   <h2>Payments and messages</h2>
   <ul>
     <li><strong>In the iOS app,</strong> subscriptions are processed by Apple through your Apple ID.</li>
-    <li><strong>On aibarber.org,</strong> payments are processed by Stripe.</li>
+    <li><strong>On primebarber.org,</strong> payments are processed by Stripe.</li>
     <li><strong>Card payments from your clients</strong> are processed by Stripe Connect. Stripe collects your payout and identity details when you set up payouts, and your clients' card details when they pay. We receive the payment confirmation, not the card details.</li>
     <li><strong>Push notifications</strong> in the app (new bookings and orders, for example) are delivered through Expo's push service and Apple's Push Notification service, which receive your device's push token and the notification text.</li>
   </ul>

@@ -38,7 +38,7 @@
     var a=document.querySelectorAll('a[href]');
     for(var i=0;i<a.length;i++){
       var h=a[i].getAttribute('href');
-      if(h==='/'||/^https?:\/\/(www\.)?aibarber\.org\/?$/.test(h)){
+      if(h==='/'||/^https?:\/\/(www\.)?(aibarber|primebarber)\.org\/?$/.test(h)){
         var s=document.createElement('span');s.className=a[i].className;s.innerHTML=a[i].innerHTML;a[i].parentNode.replaceChild(s,a[i]);
       }else if(h==='/privacy'||h==='/terms'||h==='/support'){a[i].setAttribute('href',h+'?app=1');}
     }
@@ -51,7 +51,7 @@
   <a class="brand" href="/">Prime Barber</a>
   <span class="eyebrow">Support</span>
   <h1>Prime Barber Support</h1>
-  <p class="sub">Prime Barber builds, publishes and hosts a website for your barbershop, on the web at aibarber.org and in the Prime Barber iPhone app.</p>
+  <p class="sub">Prime Barber builds, publishes and hosts a website for your barbershop, on the web at primebarber.org and in the Prime Barber iPhone app.</p>
 
   <h2>Contact us</h2>
   <p>Email <a href="mailto:support@davoxa.com">support@davoxa.com</a>. We reply within 2 business days. If your question is about a published site, include the shop name or the site's web address.</p>
@@ -65,7 +65,7 @@
   <h2>Cancel a subscription</h2>
   <ul>
     <li><strong>Bought in the app:</strong> on your iPhone, open <strong>Settings → your name (Apple ID) → Subscriptions → Prime Barber</strong> and tap Cancel Subscription. Apple handles app billing and refunds.</li>
-    <li class="web-only"><strong>Bought on aibarber.org:</strong> email <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the email you used at checkout and we will cancel it.</li>
+    <li class="web-only"><strong>Bought on primebarber.org:</strong> email <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the email you used at checkout and we will cancel it.</li>
   </ul>
   <p>Cancelling stops future charges. It does not delete your site by itself; to remove it, use Delete account or Take my website offline in the app.</p>
 

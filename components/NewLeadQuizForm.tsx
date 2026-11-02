@@ -309,7 +309,7 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
             B
           </span>
           <span className="text-[12px] font-semibold uppercase tracking-[0.22em] text-white/85">
-            aibarber<span style={{ color: accent }}>.org</span>
+            primebarber<span style={{ color: accent }}>.org</span>
           </span>
         </div>
         {onSignIn && (
@@ -329,7 +329,7 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
           className="mb-3 text-[10px] font-bold uppercase tracking-[0.32em] md:text-[11px]"
           style={{ color: accent }}
         >
-          aibarber.org
+          primebarber.org
         </p>
         <h1
           className="leading-[1.05] tracking-tight text-white"

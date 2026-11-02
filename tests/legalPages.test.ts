@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-// The product is named Prime Barber; aibarber.org stays as the domain.
+// The product is named Prime Barber; the customer-facing domain is primebarber.org (the in-app link detector still accepts aibarber.org).
 describe.each(['support', 'privacy', 'terms'])('public/%s.html', (page) => {
   const html = readFileSync(join(process.cwd(), 'public', `${page}.html`), 'utf8')
 
@@ -15,8 +15,8 @@ describe.each(['support', 'privacy', 'terms'])('public/%s.html', (page) => {
     expect(html).not.toMatch(/AI Barber/i)
   })
 
-  it('keeps aibarber.org links', () => {
-    expect(html).toContain('aibarber.org')
+  it('links to primebarber.org and still recognises aibarber.org home links', () => {
+    expect(html).toContain('primebarber.org')
   })
 })
 
@@ -55,8 +55,8 @@ describe('policy pages (Apple audit rows 2, 4, 6, 8)', () => {
     expect(html).toContain('class="home-link"')
     expect(html.indexOf('<script>')).toBeLessThan(html.indexOf('<body>'))
   })
-  it('terms and support mark the aibarber.org purchase text web-only', () => {
-    expect(terms).toContain('<li class="web-only"><strong>On aibarber.org,</strong>')
-    expect(support).toContain('<li class="web-only"><strong>Bought on aibarber.org:</strong>')
+  it('terms and support mark the primebarber.org purchase text web-only', () => {
+    expect(terms).toContain('<li class="web-only"><strong>On primebarber.org,</strong>')
+    expect(support).toContain('<li class="web-only"><strong>Bought on primebarber.org:</strong>')
   })
 })

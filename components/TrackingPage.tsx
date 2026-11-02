@@ -460,7 +460,7 @@ export default function TrackingPage() {
       <div style={{ maxWidth: 1240, margin: '0 auto' }}>
         <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           <div>
-            <p style={{ fontSize: 10, letterSpacing: '0.3em', color: GOLD, textTransform: 'uppercase' }}>aibarber.org</p>
+            <p style={{ fontSize: 10, letterSpacing: '0.3em', color: GOLD, textTransform: 'uppercase' }}>primebarber.org</p>
             <h1 style={{ fontSize: 22, fontWeight: 800, marginTop: 3 }}>Ads Tracking</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

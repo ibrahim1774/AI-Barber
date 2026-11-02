@@ -818,7 +818,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             <div className="mt-5 md:mt-8 flex items-center justify-center gap-3 md:gap-4">
               <div className="h-[1px] flex-1 bg-white/10"></div>
               <p className="text-white/30 text-[7px] md:text-[9px] uppercase tracking-[3px] md:tracking-[5px] whitespace-nowrap">
-                Premium Builder • AIBarber
+                Premium Builder • Prime Barber
               </p>
               <div className="h-[1px] flex-1 bg-white/10"></div>
             </div>

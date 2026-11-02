@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Terms of Service · Prime Barber</title>
-<meta name="description" content="The terms for using Prime Barber at aibarber.org and in the Prime Barber iOS app." />
+<meta name="description" content="The terms for using Prime Barber at primebarber.org and in the Prime Barber iOS app." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;900&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -38,7 +38,7 @@
     var a=document.querySelectorAll('a[href]');
     for(var i=0;i<a.length;i++){
       var h=a[i].getAttribute('href');
-      if(h==='/'||/^https?:\/\/(www\.)?aibarber\.org\/?$/.test(h)){
+      if(h==='/'||/^https?:\/\/(www\.)?(aibarber|primebarber)\.org\/?$/.test(h)){
         var s=document.createElement('span');s.className=a[i].className;s.innerHTML=a[i].innerHTML;a[i].parentNode.replaceChild(s,a[i]);
       }else if(h==='/privacy'||h==='/terms'||h==='/support'){a[i].setAttribute('href',h+'?app=1');}
     }
@@ -53,7 +53,7 @@
   <h1>Terms of Service</h1>
   <p class="sub">The rules for using Prime Barber, in plain English.</p>
 
-  <p>These terms are an agreement between you and Davoxa ("we", "us") for your use of Prime Barber, including the website at <a href="https://www.aibarber.org">aibarber.org</a> and the Prime Barber iOS app. By using Prime Barber you agree to these terms and to our <a href="/privacy">Privacy Policy</a>. If you use Prime Barber for a business, you confirm you are allowed to accept these terms for that business.</p>
+  <p>These terms are an agreement between you and Davoxa ("we", "us") for your use of Prime Barber, including the website at <a href="https://www.primebarber.org">primebarber.org</a> and the Prime Barber iOS app. By using Prime Barber you agree to these terms and to our <a href="/privacy">Privacy Policy</a>. If you use Prime Barber for a business, you confirm you are allowed to accept these terms for that business.</p>
 
   <h2>What Prime Barber is</h2>
   <p>Prime Barber builds a website for your barbershop from details you enter or import from a booking link or Google Business listing. You can edit the site, publish it to the web, and keep it hosted with a paid subscription.</p>
@@ -65,7 +65,7 @@
   <ul>
     <li><strong>In the iOS app,</strong> hosting is $19.99 per month or $191.99 per year (US prices; prices in other countries are shown in the App Store). Payment is charged to your Apple ID when you confirm the purchase. Your subscription renews automatically at the end of each period unless you cancel at least 24 hours before it ends. You can manage or cancel it in your Apple ID settings (Settings → your name → Subscriptions). Refunds are handled by Apple under Apple's policies.</li>
     <li>When clients pay you by card, Prime Barber keeps 2% of each payment and Stripe charges its own processing fee.</li>
-    <li class="web-only"><strong>On aibarber.org,</strong> plans and prices are shown at checkout, and payments are processed by Stripe. Subscriptions renew automatically until you cancel. To cancel a web subscription, email <a href="mailto:support@davoxa.com">support@davoxa.com</a>.</li>
+    <li class="web-only"><strong>On primebarber.org,</strong> plans and prices are shown at checkout, and payments are processed by Stripe. Subscriptions renew automatically until you cancel. To cancel a web subscription, email <a href="mailto:support@davoxa.com">support@davoxa.com</a>.</li>
     <li><strong>One subscription covers one website.</strong> If you want more than one site, each needs its own subscription.</li>
   </ul>
   <p>We may change prices for future billing periods. If we do, you will be told before the new price applies, and you can cancel before it does.</p>

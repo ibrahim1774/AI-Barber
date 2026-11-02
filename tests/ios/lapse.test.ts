@@ -40,7 +40,7 @@ describe('offlineHtml', () => {
     expect(html).toContain('This website is no longer available');
     expect(html).toContain('<meta name="robots" content="noindex">');
     expect(html).toContain('name="viewport"');
-    expect(html).toContain('href="https://www.aibarber.org"');
+    expect(html).toContain('href="https://www.primebarber.org"');
     expect(html).toContain('Built with Prime Barber');
     expect(html).toContain('#0d0d0d');
     expect(html).toContain('#f4a100');
