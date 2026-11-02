@@ -32,6 +32,14 @@ export function accountRow(d: Draft) {
   return { id: d.draft_id, site_data: d.site_data, updated_at: d.updated_at, deployed_url: d.deployed_url, revision: d.revision, webBinding: d.published_binding ?? null };
 }
 
+/** Only the two link fields a browser decides; anything else is ignored. Absent = the browser decided "no link". */
+export function publicationFrom(v: unknown): { bookingUrl?: string; shopUrl?: string } | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const s = (x: unknown) => (typeof x === 'string' && x.trim() && x.length <= 2048 ? x.trim() : undefined);
+  return { bookingUrl: s(o.bookingUrl), shopUrl: s(o.shopUrl) };
+}
+
 const publishLike = (purpose: string) => purpose === 'publish' || purpose === 'checkout:publish';
 export interface IntentPlan { uid: string; draft: Draft; snapshot: any; id: string; purpose: string; baseVersion: number | null; republish?: boolean }
 
@@ -41,8 +49,10 @@ export async function planIntent(uid: string, draftId: unknown, revision: unknow
   if (!d || d.draft_id !== draftId || d.revision !== revision || (d.suspended && !(d.suspension_reason === 'offline' && publishLike(purpose)))) throw Object.assign(new Error('draft_changed'), { status: 409 });
   // Only derived links/team may differ from the acknowledged editor draft. Text and images come from that revision
   // (publish.ts also passes the browser's staff list, bookingUrl and shopUrl; all of it is validated below).
-  const snapshot = publication ? { ...d.site_data, bookingUrl: publication.bookingUrl, shopUrl: publication.shopUrl, staff: publication.staff ?? d.site_data.staff } : d.site_data;
-  try { validateWebSnapshot(snapshot); } catch { throw Object.assign(new Error('invalid_snapshot'), { status: 400 }); }
+  const snapshot: any = publication ? { ...d.site_data, bookingUrl: publication.bookingUrl, shopUrl: publication.shopUrl, staff: publication.staff ?? d.site_data.staff } : d.site_data;
+  if (publication) for (const k of ['bookingUrl', 'shopUrl'] as const) if (snapshot[k] == null) delete snapshot[k];
+  try { validateWebSnapshot(snapshot); }
+  catch (e: any) { throw Object.assign(new Error('invalid_snapshot'), { status: 400, reason: e?.message === 'logo-folder' ? 'logo-folder' : 'invalid_snapshot' }); }
   const id = digest([uid, d.environment, d.draft_id, d.revision, purpose, baseVersion, digest(snapshot)]);
   return { uid, draft: d, snapshot, id, purpose, baseVersion, republish };
 }

@@ -252,3 +252,61 @@ describe('S4 revived submission starts a fresh abandon clock', () => {
     expect((await intents())[0].status).toBe('awaiting_payment');
   });
 });
+
+describe('S5 checkout snapshot links', () => {
+  const BOOK = 'https://www.aibarber.org/book/test-cuts';
+  const withBook = () => ({ ...site(), bookingUrl: BOOK, shopUrl: 'https://shop.example' });
+  const checkoutWith = (extra: any = {}) => call(checkout, { tier: 'website', interval: 'month', publish: true, draftId: 'draft', revision: 1, ...extra });
+  const snap = async () => (await db.query<any>('select snapshot from web_app_publish_intents')).rows[0].snapshot;
+  it("uses the browser's own booking link instead of a built-in /book link", async () => {
+    await save(withBook());
+    expect((await checkoutWith({ publication: { bookingUrl: 'https://own.example/book' } })).code).toBe(200);
+    expect((await snap()).bookingUrl).toBe('https://own.example/book');
+  });
+  it('drops the link when the browser decided none', async () => {
+    await save(withBook());
+    expect((await checkoutWith({ publication: {} })).code).toBe(200);
+    const s = await snap();
+    expect('bookingUrl' in s).toBe(false); expect('shopUrl' in s).toBe(false);
+  });
+  it('an older drafts client without publication keeps the draft links', async () => {
+    await save(withBook());
+    expect((await checkoutWith()).code).toBe(200);
+    expect((await snap()).bookingUrl).toBe(BOOK);
+  });
+  it('ignores non-string publication values', async () => {
+    const d = { ...withBook(), staff: [{ name: 'Sam' }] };
+    await save(d);
+    expect((await checkoutWith({ publication: { bookingUrl: 5, staff: [{ name: 'x' }] } })).code).toBe(200);
+    const s = await snap();
+    expect('bookingUrl' in s).toBe(false); expect(s.staff).toEqual([{ name: 'Sam' }]);
+  });
+  const keys = () => state.stripe.mock.calls.filter((c: any[]) => c[0] === 'checkout/sessions' && c[2] === 'POST').map((c: any[]) => c[3]?.idempotencyKey);
+  it('same revision with different publication links gets a different idempotency key', async () => {
+    await save(withBook());
+    const base = state.stripe; let n = 0;
+    state.stripe = vi.fn(async (path: string, ...rest: any[]) => {
+      if (path === 'checkout/sessions') return { id: 'cs_n' + ++n };
+      const m = /^checkout\/sessions\/(cs_n\d+)$/.exec(path); if (m) return { id: m[1], status: 'open', url: 'https://checkout.stripe.com/' + m[1] };
+      if (/^checkout\/sessions\/cs_n\d+\/expire$/.test(path)) return { status: 'expired' };
+      return (base as any)(path, ...rest);
+    });
+    expect((await checkoutWith({ publication: { bookingUrl: 'https://a.example' } })).code).toBe(200);
+    expect((await checkoutWith({ publication: { bookingUrl: 'https://b.example' } })).code).toBe(200);
+    const k = keys(); expect(k).toHaveLength(2); expect(k[0]).not.toBe(k[1]);
+  });
+  it('upgrade checkout key is unchanged', async () => {
+    const w0 = Math.floor(Date.now() / 600_000);
+    expect((await call(checkout, { tier: 'website', interval: 'month' })).code).toBe(200);
+    const w1 = Math.floor(Date.now() / 600_000);
+    const ok = [w0, w1].map(w => `aibarber-app:cs:${U}:website:month:${w}`);
+    expect(ok).toContain(keys()[0]);
+  });
+  it('reports logo-folder on a refused checkout', async () => {
+    await save(withBook());
+    vi.mocked(validateWebSnapshot).mockImplementationOnce(() => { throw new Error('logo-folder'); });
+    const r = await checkoutWith();
+    expect(r.code).toBe(400); expect(r.body.error).toBe('invalid_draft'); expect(r.body.reason).toBe('logo-folder');
+    expect(keys()).toHaveLength(0);
+  });
+});

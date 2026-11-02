@@ -1,4 +1,4 @@
-import { planIntent, submitIntent, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
+import { planIntent, submitIntent, publicationFrom, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
 // 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
 // Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers etc.) must be applied BEFORE turning on ANY web-app
@@ -41,7 +41,7 @@ export default async function handler(req: any, res: any) {
     let plan: IntentPlan | null = null;
     if (reliabilityOn() && publish === true) {
       if (typeof draftId !== 'string' || !Number.isSafeInteger(revision)) return res.status(400).json({ error: 'client_outdated' }); // a cached pre-draft client
-      plan = await planIntent(caller.id, draftId, revision, 'checkout:publish'); // 409 draft_changed | 400 invalid_snapshot, mapped below
+      plan = await planIntent(caller.id, draftId, revision, 'checkout:publish', null, publicationFrom(req.body?.publication)); // 409 draft_changed | 400 invalid_snapshot, mapped below
     }
     // One Stripe customer per user and mode, known BEFORE any webhook lands.
     const customer = await customerFor(caller.id, mode, caller.email, uid, rows);
@@ -70,7 +70,7 @@ export default async function handler(req: any, res: any) {
       expires_at: String((window + 1) * 600 + 1800 + 120),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
     };
-    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${plan ? ':' + digest([draftId, revision, true]).slice(0,24) : ''}`;
+    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}`;
     // Stripe replays the FIRST response for a repeated key, so that response can be stale: always read the session's real status.
     const createOrReplay = async (k: string) => {
       const made = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: k });
@@ -112,7 +112,8 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ url: session.url });
   } catch (e: any) {
     console.error('[web-app checkout]', e.message);
-    return res.status(e?.status === 409 || e?.status === 400 ? e.status : 502).json({ error: e?.status === 409 ? 'draft_changed' : e?.status === 400 ? 'invalid_draft' : 'checkout_failed' });
+    if (e?.status === 400) return res.status(400).json({ error: 'invalid_draft', reason: e?.reason ?? 'invalid_snapshot' });
+    return res.status(e?.status === 409 ? 409 : 502).json({ error: e?.status === 409 ? 'draft_changed' : 'checkout_failed' });
   }
 }
 
