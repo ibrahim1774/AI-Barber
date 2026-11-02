@@ -310,3 +310,32 @@ describe('S5 checkout snapshot links', () => {
     expect(keys()).toHaveLength(0);
   });
 });
+
+describe('S6 first draft inherits a published web binding', () => {
+  const site1 = (extra = '') => db.query(`insert into web_app_sites(slug,stripe_subscription_id,user_id,environment,published_at,taken_down_at,removed_at) values('test-cuts','sub_x',$1,'test',now(),${extra ? 'now()' : 'null'},null)`, [U]);
+  it('first draft of a legacy-published account carries its live binding', async () => {
+    await site1(); await entitle();
+    await save();
+    const d = await readDraft(U);
+    expect(d?.deployed_url).toBe('https://test-cuts.vercel.app');
+    expect(d?.published_binding.slug).toBe('test-cuts');
+    const body = { draftId: 'draft', revision: 1, siteData: site() };
+    // A repeated POST for the same revision deploys once (the S9 pattern): the second gets the stored result.
+    expect((await call(publishApi, body)).code).toBe(200);
+    expect((await call(publishApi, body)).code).toBe(200);
+    expect(vi.mocked(runWebPublish)).toHaveBeenCalledTimes(1);
+  });
+  it('no binding for a taken-down site', async () => {
+    await site1('down'); await save();
+    expect((await readDraft(U))?.deployed_url).toBeNull();
+  });
+  it('later saves never touch the binding', async () => {
+    await site1(); await save();
+    const before = await readDraft(U);
+    await save({ ...site(), phone: 'rev2' }, 1);
+    const after = await readDraft(U);
+    expect(after?.revision).toBe(2);
+    expect(after?.published_binding).toEqual(before?.published_binding);
+    expect(after?.deployed_url).toBe(before?.deployed_url);
+  });
+});

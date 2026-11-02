@@ -1,4 +1,4 @@
-import { accountRow, digest, draftPath, modeOf, readDraft, reliabilityOn } from '../../lib/webApp/reliability.js';
+import { accountRow, digest, draftPath, modeOf, publishedBinding, readDraft, reliabilityOn } from '../../lib/webApp/reliability.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { MAX_BODY_BYTES, hasDataUrl, validSiteData } from '../../lib/ios/siteShape.js';
@@ -37,6 +37,10 @@ export default async function handler(req: any, res: any) {
     let written: any[];
     if (previous) written = await sbRest(`${draftPath(user.id)}&revision=eq.${expectedRevision}`, { method: 'PATCH', body: row, prefer: 'return=representation' });
     else {
+      // The first server draft of an account that already has a live web site (published before drafts existed) inherits that binding.
+      // A failed lookup must never block saving: the draft is then simply created unbound, as before.
+      const live = await publishedBinding(user.id).catch((e: any) => { console.error('[web draft] binding lookup failed:', e?.message || e); return null; });
+      if (live) { (row as any).deployed_url = live.deployedUrl; (row as any).published_binding = live.binding; }
       written = await sbRest('web_app_drafts?on_conflict=user_id,environment', { method: 'POST', body: row, prefer: 'resolution=ignore-duplicates,return=representation' });
     }
     if (!written?.length) { const current = await readDraft(user.id); return res.status(409).json({ error: 'draft_changed', draft: current ? accountRow(current) : null }); }

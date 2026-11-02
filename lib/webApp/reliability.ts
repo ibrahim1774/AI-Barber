@@ -28,6 +28,11 @@ export const draftPath = (uid: string, mode = modeOf()) => `web_app_drafts?user_
 export async function readDraft(uid: string): Promise<Draft | null> {
   return (await sbRest(`${draftPath(uid)}&select=*&limit=1`))?.[0] ?? null;
 }
+/** The account's live web site in this mode, from the server's own binding table (never from the browser). */
+export async function publishedBinding(uid: string, mode = modeOf()): Promise<{ deployedUrl: string; binding: { slug: string; transactionId: string; publishedRevision: null } } | null> {
+  const b = (await sbRest(`web_app_sites?user_id=eq.${enc(uid)}&environment=eq.${mode}&published_at=not.is.null&removed_at=is.null&taken_down_at=is.null&select=slug,stripe_subscription_id&order=created_at.desc&limit=1`))?.[0];
+  return b ? { deployedUrl: `https://${b.slug}.vercel.app`, binding: { slug: b.slug, transactionId: 'web:' + b.stripe_subscription_id, publishedRevision: null } } : null;
+}
 export function accountRow(d: Draft) {
   return { id: d.draft_id, site_data: d.site_data, updated_at: d.updated_at, deployed_url: d.deployed_url, revision: d.revision, webBinding: d.published_binding ?? null };
 }
