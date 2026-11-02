@@ -64,7 +64,7 @@ describe('webhook records the customer Checkout created', () => {
     expect((await fire({ type: 'checkout.session.completed', livemode: false, data: { object: { mode: 'subscription', subscription: 'sub_1', metadata: {} } } })).body).toEqual({ ignored: true });
     expect(st.sb).toHaveLength(0);
   });
-  it('a failed customer tag never fails the webhook, a failed DB upsert does (Stripe retries)', async () => {
+  it('a failed customer tag never fails the webhook', async () => {
     const mod: any = await import('../../lib/webApp/webAppServer.js');
     const orig = mod.stripeCall;
     mod.stripeCall = async (p: string, ...r: any[]) => { if (p.startsWith('customers/')) throw new Error('boom'); return orig(p, ...r); };
