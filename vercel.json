@@ -50,6 +50,10 @@
       "destination": "https://prime-barber-web.vercel.app/app/"
     },
     {
+      "source": "/app/",
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
       "source": "/app/:path*",
       "destination": "https://prime-barber-web.vercel.app/app/:path*"
     },
@@ -197,5 +201,30 @@
     "api/web-app/publish-status.ts": {
       "maxDuration": 300
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/app",
+      "permanent": false,
+      "missing": [
+        {
+          "type": "query",
+          "key": "stripe_session"
+        },
+        {
+          "type": "query",
+          "key": "payment"
+        },
+        {
+          "type": "query",
+          "key": "stripe_cancelled"
+        },
+        {
+          "type": "query",
+          "key": "session_id"
+        }
+      ]
+    }
+  ]
 }
