@@ -55,12 +55,12 @@ export async function submitIntent(plan: IntentPlan): Promise<Intent> {
   if (publishLike(purpose)) {
     // A revived row starts a fresh attempt budget and does not carry an old refusal.
     await sbRest(`web_app_publish_intents?id=eq.${enc(id)}&user_id=eq.${enc(uid)}&environment=eq.${d.environment}&status=in.(cancelled,superseded)`, {
-      method: 'PATCH', body: { attempts: 0, result: null, worker_token: null },
+      method: 'PATCH', body: { attempts: 0, result: null, worker_token: null, created_at: new Date().toISOString() },
     });
     if (purpose === 'checkout:publish' || plan.republish || d.deployed_url == null) {
       // The RPC only revives cancelled/superseded rows. A `live` row for the same content is history: re-queue it as a fresh submission.
       const old = await sbRest(`web_app_publish_intents?id=eq.${enc(id)}&user_id=eq.${enc(uid)}&environment=eq.${d.environment}&status=eq.live`, {
-        method: 'PATCH', body: { status: 'superseded', stripe_session_id: null, stripe_subscription_id: null, result: null, attempts: 0, worker_token: null }, prefer: 'return=representation',
+        method: 'PATCH', body: { status: 'superseded', stripe_session_id: null, stripe_subscription_id: null, result: null, attempts: 0, worker_token: null, created_at: new Date().toISOString() }, prefer: 'return=representation',
       });
       demoted = old?.[0] ?? null;
     }

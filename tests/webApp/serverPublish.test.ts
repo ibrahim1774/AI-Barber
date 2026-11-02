@@ -242,3 +242,13 @@ describe('S3 publish-status exposes whether the job was paid', () => {
     expect('next_attempt_at' in r.body.intent).toBe(false);
   });
 });
+
+describe('S4 revived submission starts a fresh abandon clock', () => {
+  it('a revived checkout row cannot be abandon-cancelled before its session is linked', async () => {
+    await save(); const a = await prepareIntent(U, 'draft', 1, 'checkout:publish');
+    await db.query("update web_app_publish_intents set status='cancelled', created_at=now()-interval '2 hours' where id=$1", [a.id]);
+    await prepareIntent(U, 'draft', 1, 'checkout:publish');
+    await sweepJobs();
+    expect((await intents())[0].status).toBe('awaiting_payment');
+  });
+});
