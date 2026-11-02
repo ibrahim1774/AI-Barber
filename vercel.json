@@ -195,6 +195,46 @@
   },
   "redirects": [
     {
+      "source": "/:path((?!api/|_ab/|assets/|book/|book$|shop/|shop$|stripe-return|learn-clips|google6479dff46419de0d\\.html|edit|admin).+)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.aibarber.org"
+        }
+      ],
+      "destination": "https://www.primebarber.org/:path",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.aibarber.org"
+        }
+      ],
+      "missing": [
+        {
+          "type": "query",
+          "key": "stripe_session"
+        },
+        {
+          "type": "query",
+          "key": "payment"
+        },
+        {
+          "type": "query",
+          "key": "stripe_cancelled"
+        },
+        {
+          "type": "query",
+          "key": "session_id"
+        }
+      ],
+      "destination": "https://www.primebarber.org/app",
+      "permanent": false
+    },
+    {
       "source": "/",
       "destination": "/app",
       "permanent": false,
