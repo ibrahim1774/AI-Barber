@@ -35,6 +35,8 @@ export interface TransferDeps {
   emailOf?(userId: string): Promise<string | null>;
   /** Legacy unlinked purchase with a bound slug: who owns the shop/site (see ownership.ts). */
   bindingOwner?(row: import('./purchases.js').PurchaseRow): Promise<BindingOwner>;
+  /** The address to show for a slug (the stamped URL when known). Absent: the computed one. */
+  siteUrlFor?(slug: string): Promise<string>;
   /** Per-caller write limit. Throws -> fail CLOSED (503). */
   allow(callerId: string): Promise<boolean>;
   /** Clock (ms). */
@@ -244,7 +246,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       const sum = deps.shopSummary ? await deps.shopSummary(otid) : { hasShop: false };
       return {
         status: 409,
-        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, hasShop: sum.hasShop, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
+        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, hasShop: sum.hasShop, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: deps.siteUrlFor ? await deps.siteUrlFor(row.site_slug) : siteUrlOf(row.site_slug) } : {}) },
       };
     }
 

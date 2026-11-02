@@ -11,6 +11,7 @@ import { liveVercelDomains } from './vercelDomains.js';
 import { projectFor, releaseDomainsForRemoval } from './domainFlow.js';
 import type { RemoveSiteDeps } from './removeSite.js';
 import { isReservedSlug } from './reservedSlugs.js';
+import { slugLabels } from './siteAddress.js';
 
 /** The object path of one of OUR bucket's public URLs, else null (foreign hosts are never touched). */
 export function ourObjectPath(url: unknown, bucketName: string): string | null {
@@ -164,13 +165,15 @@ export function liveRemoveDeps(): RemoveSiteDeps {
 
 /** The ids of `sites` rows whose live URL is this slug's site (`https://<slug>.<host>`), never any other. */
 export function siteRowIdsForSlug(rows: Array<{ id: unknown; deployed_url?: unknown }>, slug: string): string[] {
-  const want = slug.toLowerCase();
+  // The caller's rows only (user-scoped query), so also matching the truncated alias a long slug's site is
+  // stored under cannot reach another account's rows.
+  const want = new Set(slugLabels(slug.toLowerCase()));
   const ids: string[] = [];
   for (const r of rows) {
     if (typeof r.id !== 'string' || typeof r.deployed_url !== 'string') continue;
     const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/?#:]+)/i.exec(r.deployed_url.trim());
     const host = m ? m[1].toLowerCase() : '';
-    if (host && host.split('.')[0] === want) ids.push(r.id);
+    if (host && want.has(host.split('.')[0])) ids.push(r.id);
   }
   return ids;
 }

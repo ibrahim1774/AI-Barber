@@ -4,13 +4,13 @@
 import { keyMode, rowFromSubscription } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { failedPaymentEmail, sendMail } from './emails.js';
-import { siteUrlOf as siteUrlOfSlug } from '../ios/siteAddress.js';
+import { stampedSiteUrl } from '../ios/siteUrlFor.js';
 
 export const REMIND_EVERY_MS = 47 * 3600_000; // "every 2 days", with slack for the 10-minute cron
 export const MAX_REMINDERS = 8;
 const enc = encodeURIComponent;
 
-const siteUrlOf = (slug: string | null) => (slug ? siteUrlOfSlug(slug) : null);
+const siteUrlOf = (slug: string | null) => (slug ? stampedSiteUrl(slug) : Promise.resolve(null));
 
 /** Account email + first name: the Supabase user's, else the Stripe customer's. */
 export async function contactFor(userId: string | null, customerId: string): Promise<{ email: string | null; firstName: string | null }> {
@@ -81,7 +81,7 @@ export async function sendFailedPaymentIfDue(subId: string, mode: 'live' | 'test
     const { email, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
     if (!email) throw new Error('no email address');
     const updateUrl = await updateUrlFor(sub, eventInvoiceUrl);
-    await sendMail(email, failedPaymentEmail({ email, firstName, siteUrl: siteUrlOf(row.site_slug), tier: row.tier, updateUrl, reminder: count }));
+    await sendMail(email, failedPaymentEmail({ email, firstName, siteUrl: await siteUrlOf(row.site_slug), tier: row.tier, updateUrl, reminder: count }));
     return true;
   } catch (e: any) {
     console.error('[web-app dunning]', e?.message || e);

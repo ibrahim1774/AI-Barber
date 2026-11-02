@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { PurchaseRow } from './purchases.js';
-import { siteUrlOf, slugLabels } from './siteAddress.js';
+import { siteUrlOf } from './siteAddress.js';
 
 // Apple ID vs account ownership (2026-10-26): a subscription is linked to the account
 // (ios_purchases.user_id) that made the first verified purchase or Restore. It follows the Apple ID:
@@ -81,9 +81,10 @@ export async function liveBindingOwner(row: Pick<PurchaseRow, 'original_transact
   if (error) throw new Error(`ab_shops ownership lookup failed: ${error.message}`);
   if (shop) return (shop as any).owner_id ?? null;
   if (!row.site_slug) return null;
-  // A long slug's site lives at Vercel's truncated alias, older rows at the full (dead) form: look up both.
-  const forms = slugLabels(row.site_slug).flatMap((l) => [`https://${l}.vercel.app`, `https://${l}.vercel.app/`]);
-  const { data: sites, error: sErr } = await db.from('sites').select('user_id').in('deployed_url', forms);
+  // Full slug URL only. A computed truncated address for a long slug could be another customer's site, so it
+  // is never ownership evidence (a long slug's row at Vercel's truncated alias simply is not found: fail-safe).
+  const u = `https://${row.site_slug}.vercel.app`;
+  const { data: sites, error: sErr } = await db.from('sites').select('user_id').in('deployed_url', [u, `${u}/`]);
   if (sErr) throw new Error(`sites ownership lookup failed: ${sErr.message}`);
   const owners = [...new Set((sites || []).map((r: any) => r.user_id).filter(Boolean))];
   return owners.length === 0 ? null : owners.length === 1 ? (owners[0] as string) : 'ambiguous';

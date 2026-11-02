@@ -511,6 +511,9 @@ export async function publishSite(
 
   // Idempotency gate. Both the webhook and the sweeper can land on the same
   // site, and Stripe retries webhooks — none of that should mean two deploys.
+  // Deliberately the full-slug URL, not siteUrlOf(): for a long slug the truncated alias could belong to
+  // another project, and alreadyLive() would then see that project's page and mark this customer live.
+  // With the full form a long-slug site just fails the check and redeploys once (cheap, safe).
   const candidate = pending.deployedUrl || `https://${safe}.vercel.app`;
   if (!opts.force && (await alreadyLive(candidate))) {
     console.log(`[Publish] ${safe} already live at ${candidate} — nothing to do`);

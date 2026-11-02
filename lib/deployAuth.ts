@@ -44,7 +44,6 @@ import { supabasePurchases, type PurchaseRow } from './ios/purchases.js';
 import { withTimeout } from './ios/timeout.js';
 import { normEmail, supabaseSiteOwners, webOwnerDecision, type SiteOwnerStore } from './siteOwners.js';
 import { isPayFirstPlan } from './payFirst.js';
-import { slugLabels } from './ios/siteAddress.js';
 
 export const CHECKOUT_PROOF_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -164,6 +163,10 @@ const unavailable: DeployAuthResult = { ok: false, status: 503, error: 'temporar
 export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDeps): Promise<DeployAuthResult> {
   const shopSlug = slugify(String(input.siteId ?? ''));
   if (!shopSlug) return { ok: false, status: 400, error: 'bad-request' };
+  // vercelAppLabel maps a stored URL back to a slug by its first label, so a long-slug site stored at
+  // Vercel's truncated alias would not round-trip. Accepted (long-name review, must-fix 3): a read-only
+  // check found no production ios_purchases.site_slug or web_app_sites.slug longer than 35 characters,
+  // and it fails closed (403) anyway.
   const label = vercelAppLabel(input.deployedUrl);
   const ms = deps.lookupTimeoutMs ?? LOOKUP_TIMEOUT_MS;
   const token = bearerOf(input.authorization);
@@ -305,7 +308,10 @@ async function authorizeWebUser(
     }
     const rawStamp = await withTimeout(deps.storedStamp(shopSlug), ms, 'stored copy read');
     const stamp = originOf(rawStamp);
-    const urls = [...slugLabels(shopSlug).map((l) => `https://${l}.vercel.app`), ...(stamp ? [stamp] : [])];
+    // Claims rest on the full slug URL and the stamp (the URL the deploy really resolved) only. A computed
+    // truncated address for a long slug is a guess that can belong to another customer's project, so it
+    // must never count as evidence (long-name review, must-fix 1).
+    const urls = [`https://${shopSlug}.vercel.app`, ...(stamp ? [stamp] : [])];
     const claimants = await withTimeout(deps.webClaimants([...new Set(urls)]), ms, 'sites claim lookup');
     const mine = claimants.includes(user.id);
     // Review fix round 1 (finding 11): `sites` rows are user-writable, so a co-claim is no proof.
@@ -394,7 +400,8 @@ export async function authorizeSiteOwner(
       }
     }
     const stamp = originOf(await withTimeout(deps.storedStamp(slug), ms, 'stored copy read'));
-    const urls = [...new Set([...slugLabels(slug).map((l) => `https://${l}.vercel.app`), ...(stamp ? [stamp] : [])])];
+    // Full slug URL + stamp only; never a computed truncated address (see authorizeWebUser).
+    const urls = [...new Set([`https://${slug}.vercel.app`, ...(stamp ? [stamp] : [])])];
     const claimants = await withTimeout(deps.webClaimants(urls), ms, 'sites claim lookup');
     if (claimants.length > 0 && claimants.every((c) => c === user!.id)) {
       return { ok: true, target: slug, row: null, actor: 'web-user', userId: user.id };

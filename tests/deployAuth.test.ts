@@ -208,8 +208,8 @@ describe('authorizeDeploy: web sites', () => {
     const d = deps({ users, claims: { [url(S)]: [OWNER] } });
     const r = await authorizeDeploy({ siteId: S + '-zzz', authorization: 'Bearer other-jwt' }, d);
     expect(r).toEqual({ ok: false, status: 403, error: 'not-authorized' });
-    // Also the truncated address Vercel serves for a slug this long (35 chars).
-    expect(d.webClaimants).toHaveBeenCalledWith([url(S), url(S.slice(0, 35))]);
+    // Claims use the full slug URL only: a computed truncated address is never evidence.
+    expect(d.webClaimants).toHaveBeenCalledWith([url(S)]);
     // The owner, same siteId: the target is the canonical slug, the one deployed to.
     expect(await authorizeDeploy({ siteId: S + '-zzz', authorization: 'Bearer owner-jwt' }, d))
       .toMatchObject({ ok: true, target: S });
@@ -380,5 +380,43 @@ describe('a website domain checkout is never deploy proof', () => {
     const d = deps({ sessions: { [SESSION]: paid('fresh-cuts', { app: 'aibarber-domain' }) } });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, d)).ok).toBe(false);
+  });
+});
+
+describe('long slugs sharing a truncated Vercel address (long-name review, must-fix 1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const A = 'masterkutz-upscale-barbershop-lounge-1504-palm-bay';
+  const V = 'masterkutz-upscale-barbershop-lounge-2200-main-st';
+  const L = 'masterkutz-upscale-barbershop-loung';
+  const stampA = 'https://masterkutz-upscale-barbershop-lounge-1504-client-sites-f087a1f8.vercel.app';
+  // V holds the clean alias L, so V's owner's `sites` row stores https://L.vercel.app.
+  const world = (extra: Partial<World> = {}): World => ({ users, claims: { [url(L)]: [OTHER], [stampA]: [OWNER], ...extra.claims }, stamps: { [A]: stampA }, ...extra });
+
+  it('V\'s owner cannot deploy over A through the shared truncated address', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = deps(world());
+    expect(await authorizeDeploy({ siteId: A, authorization: 'Bearer other-jwt' }, d)).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+    expect(d.webClaimants).toHaveBeenCalledWith([url(A), stampA]);
+  });
+  it('A\'s own owner is not locked out by V\'s claim', async () => {
+    const d = deps(world());
+    expect(await authorizeDeploy({ siteId: A, authorization: 'Bearer owner-jwt' }, d)).toMatchObject({ ok: true, target: A });
+  });
+  it('authorizeSiteOwner: V\'s owner is refused on A, A\'s owner passes', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = deps(world());
+    expect((await authorizeSiteOwner({ siteId: A, authorization: 'Bearer other-jwt' }, d)).ok).toBe(false);
+    expect(await authorizeSiteOwner({ siteId: A, authorization: 'Bearer owner-jwt' }, d)).toMatchObject({ ok: true, target: A });
+    expect(d.webClaimants).toHaveBeenCalledWith([url(A), stampA]);
+    expect(V).not.toBe(A);
+  });
+  it('short slugs: the claim lookup is exactly [full, stamp]', async () => {
+    const stamp = 'https://fresh-cuts-client-sites-f087a1f8.vercel.app';
+    const d = deps({ users, stamps: { 'fresh-cuts': stamp }, claims: { [url('fresh-cuts')]: [OWNER] } });
+    await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, d);
+    expect(d.webClaimants).toHaveBeenCalledWith([url('fresh-cuts'), stamp]);
+    const d2 = deps({ users, stamps: { 'fresh-cuts': stamp }, claims: { [url('fresh-cuts')]: [OWNER] } });
+    await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, d2);
+    expect(d2.webClaimants).toHaveBeenCalledWith([url('fresh-cuts'), stamp]);
   });
 });

@@ -31,6 +31,25 @@ describe('pickPublicAlias', () => {
   });
 });
 
+// Real production alias[] lists (Vercel read, 2026-11-02). The per-deploy hash URL is never in alias[].
+const T = '-client-sites-f087a1f8.vercel.app';
+const REAL: Array<[string, string, string[]]> = [
+  ['premier-lawn-solutions-llc-business', 'premier-lawn-solutions-llc-business', ['premier-lawn-solutions-llc-business.vercel.app', `premier-lawn-solutions-llc-business${T}`]],
+  ['jay-ultimate-dreadlocs-beauty-care-saloon', 'jay-ultimate-dreadlocs-beauty-care', ['jay-ultimate-dreadlocs-beauty-care.vercel.app', `jay-ultimate-dreadlocs-beauty-care-saloon${T}`]],
+  ['dennymo-the-barber-prestige-barber-lounge', 'dennymo-the-barber-prestige-barber', ['dennymo-the-barber-prestige-barber.vercel.app', `dennymo-the-barber-prestige-barber-lounge${T}`]],
+  ['greenline-landscape-snow-removal-ltd-business', 'greenline-landscape-snow-removal-lt', ['greenline-landscape-snow-removal-lt.vercel.app', `greenline-landscape-snow-removal-ltd-bus${T}`]],
+  ['ios-test-the-original-downtown-gentlemens-bar', 'ios-test-the-original-downtown-gent', ['ios-test-the-original-downtown-gent.vercel.app', `ios-test-the-original-downtown-gentlemens-b${T}`]],
+  ['masterkutz-upscale-barbershop-lounge-1504-palm-bay', 'masterkutz-upscale-barbershop-loung', ['masterkutz-upscale-barbershop-loung.vercel.app', `masterkutz-upscale-barbershop-lounge-1504-${T}`]],
+];
+describe('real production alias lists', () => {
+  it.each(REAL)('%s -> clean alias, and publicLabel agrees', (name, label, aliases) => {
+    expect(pickPublicAlias(aliases, name)).toBe(`https://${label}.vercel.app`);
+    expect(pickPublicAlias([...aliases].reverse(), name)).toBe(`https://${label}.vercel.app`);
+    expect(publicLabel(name)).toBe(label);
+    expect(siteUrlOf(name)).toBe(`https://${label}.vercel.app`);
+  });
+});
+
 describe('site address helpers', () => {
   it('short slugs are untouched', () => {
     expect(siteUrlOf('fresh-cuts')).toBe('https://fresh-cuts.vercel.app');

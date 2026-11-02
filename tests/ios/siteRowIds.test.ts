@@ -13,4 +13,16 @@ describe('siteRowIdsForSlug', () => {
     ];
     expect(siteRowIdsForSlug(rows, 'Fade-Lab')).toEqual(['a', 'b']);
   });
+  it('also matches the truncated address a long slug\'s site is stored under, and nothing else', () => {
+    const LONG = 'ios-test-the-original-downtown-gentlemens-bar';
+    const rows = [
+      { id: 'a', deployed_url: 'https://ios-test-the-original-downtown-gent.vercel.app' },
+      { id: 'b', deployed_url: `https://${LONG}.vercel.app/` },
+      { id: 'c', deployed_url: 'https://ios-test-the-original-downtown-gent-2.vercel.app' },
+      { id: 'd', deployed_url: 'https://ios-test-the-original.vercel.app' },
+    ];
+    expect(siteRowIdsForSlug(rows, LONG)).toEqual(['a', 'b']);
+    // A short slug never matches a longer neighbour's truncated form.
+    expect(siteRowIdsForSlug(rows, 'ios-test')).toEqual([]);
+  });
 });

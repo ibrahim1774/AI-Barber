@@ -1,7 +1,8 @@
 import { Storage } from '@google-cloud/storage';
+import { publicLabel, VERCEL_LABEL_MAX } from '../lib/ios/siteAddress.js';
 import { supabasePurchases } from '../lib/ios/purchases.js';
 import { draftOwnFolder, logoProblem } from '../lib/logoUrl.js';
-import { isPreconditionFailed, readPendingSite, readPendingVersioned, slugify, type VersionedPending } from '../lib/publishSite.js';
+import { bucket, isPreconditionFailed, readPendingSite, readPendingVersioned, slugify, type VersionedPending } from '../lib/publishSite.js';
 
 // Server-side persistence for the pendingSite payload that drives
 // post-payment deployment. Mirrors the localStorage write in
@@ -45,12 +46,24 @@ export interface SavePendingDeps {
    * Absent (older fakes): isPublished and unconditional writes.
    */
   readVersioned?(slug: string): Promise<VersionedPending>;
+  /**
+   * Another stored copy whose slug shares this long slug's public (truncated) Vercel address? Asked only for a NEW
+   * slug longer than VERCEL_LABEL_MAX, never for an existing site (those are never renamed). Fails open.
+   */
+  longNameClash?(slug: string): Promise<boolean>;
 }
 
 const liveDeps: SavePendingDeps = {
   isAppSlug: async (slug) => (await supabasePurchases().findBySlug(slug)) != null,
   isPublished: async (slug) => !!(await readPendingSite(slug))?.deployedUrl,
   readVersioned: readPendingVersioned,
+  async longNameClash(slug) {
+    const [files] = await bucket().getFiles({ prefix: `pending-sites/${publicLabel(slug)}`, maxResults: 50 });
+    return files.some((f) => {
+      const other = f.name.replace(/^pending-sites\//, '').replace(/\.json$/, '');
+      return other !== slug && other.length > VERCEL_LABEL_MAX && publicLabel(other) === publicLabel(slug);
+    });
+  },
 };
 
 export default function handler(req: any, res: any) {
@@ -105,6 +118,16 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
         const v = await deps.readVersioned(safeSiteId);
         published = !!v.pending?.deployedUrl;
         generation = v.generation;
+        // A brand-new long slug must not share Vercel's truncated address with another long slug (the second
+        // project's clean alias would not exist, and the first's would be mistaken for it). Existing sites keep
+        // their slug; a failed check lets the save through.
+        if (req.method === 'POST' && v.generation === 0 && safeSiteId.length > VERCEL_LABEL_MAX && deps.longNameClash) {
+          const clash = await deps.longNameClash(safeSiteId).catch((e: any) => { console.warn(`[save-pending-site] ${safeSiteId}: long-name clash check failed (allowing):`, e?.message || e); return false; });
+          if (clash) {
+            console.warn(`[save-pending-site] POST refused: ${safeSiteId} shares its public address with another site`);
+            return res.status(409).json({ ok: false, error: 'slug-taken' });
+          }
+        }
       } else {
         published = await deps.isPublished(safeSiteId);
       }

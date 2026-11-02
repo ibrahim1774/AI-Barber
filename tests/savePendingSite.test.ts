@@ -166,4 +166,22 @@ describe('api/save-pending-site: the shop logo', () => {
       expect(store.size).toBe(0);
     }
   });
+
+  it('a NEW long slug sharing another long slug\'s truncated address → 409 slug-taken; short and existing slugs unaffected', async () => {
+    const A = 'masterkutz-upscale-barbershop-lounge-1504-palm-bay';
+    const body = { siteId: A, data: { siteId: A, siteData: {} } };
+    const clash = vi.fn(async () => true);
+    const d = (g: number) => ({ ...deps(), readVersioned: async () => ({ pending: null, generation: g }), longNameClash: clash });
+    expect(await call({ method: 'POST', body }, d(0))).toMatchObject({ statusCode: 409, body: { error: 'slug-taken' } });
+    expect(store.size).toBe(0);
+    // An existing copy (generation > 0) is never renamed or refused for this.
+    expect((await call({ method: 'POST', body }, d(5))).statusCode).toBe(200);
+    // A short slug never asks.
+    clash.mockClear();
+    expect((await call({ method: 'POST', body: { siteId: 'web-shop', data: { siteId: 'web-shop', siteData: {} } } }, d(0))).statusCode).toBe(200);
+    expect(clash).not.toHaveBeenCalled();
+    // A failed check lets the save through.
+    const bad = { ...d(0), longNameClash: async () => { throw new Error('gcs'); } };
+    expect((await call({ method: 'POST', body }, bad)).statusCode).toBe(200);
+  });
 });

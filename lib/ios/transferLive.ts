@@ -7,6 +7,7 @@ import { lazyDefaultVerifier, verifyDeviceTransaction } from './appleVerify.js';
 import { liveBindingOwner, liveEmailOf } from './ownership.js';
 import { liveUserOf } from './publishFlow.js';
 import { siteRowIdsForSlug } from './removeSiteLive.js';
+import { stampedSiteUrl } from './siteUrlFor.js';
 import { supabasePurchases } from './purchases.js';
 import { finishPendingMoves, liveMoveIntents } from './moveIntent.js';
 import type { TransferDeps } from './transfer.js';
@@ -79,6 +80,7 @@ export function liveTransferDeps(): TransferDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    siteUrlFor: stampedSiteUrl,
     allow: (callerId) => transferLimiter.allow(callerId, 'write'),
     now: () => Date.now(),
     async shopSummary(otid) {

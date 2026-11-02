@@ -230,6 +230,9 @@ export default async function handler(req: any, res: any) {
     // collided project names, so the slug URL can 404 or belong to a
     // stranger's project — and it's also what a never-deployed site
     // looks like. One request settles which case this is.
+    // Deliberately the full-slug URL, not siteUrlOf(): a long slug's truncated alias could serve another
+    // customer's page (OURS_MARKER is generic to the template), which would report this site as published
+    // or stamp the stranger's URL. The full form just reports a long-slug site as not published.
     const candidateUrl = pending.deployedUrl || `https://${siteId}.vercel.app`;
     const page = await fetchPage(candidateUrl);
 
