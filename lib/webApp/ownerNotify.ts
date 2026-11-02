@@ -54,11 +54,15 @@ export type WebPlanLookup = (ownerId: string) => Promise<boolean>;
  */
 export async function isWebShop(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup): Promise<boolean> {
   if (shop.ios_otid) return false;
-  if (!webAppEntitlementsOn()) return false;
-  if (!currentMode()) return false;
-  if (!hasWebPlan) return false;
+  // Every drop below is for a shop with no iOS link, i.e. one that would be a web shop if the gate passed. They used to be silent,
+  // so a missing owner email left no trace at all (e2e 2026-11-02, "New booking" mail never arrived, no log line). Say why.
+  const skip = (why: string) => { console.warn(`[web-app owner notify] not a web shop (${why}), owner ${shop.owner_id} gets no email`); return false; };
+  if (!webAppEntitlementsOn()) return skip('WEB_APP_ENTITLEMENTS is off');
+  if (!currentMode()) return skip('Stripe mode unknown');
+  if (!hasWebPlan) return skip('no plan lookup');
   try {
-    return (await hasWebPlan(shop.owner_id)) === true;
+    if ((await hasWebPlan(shop.owner_id)) === true) return true;
+    return skip('no entitled web plan in this Stripe mode');
   } catch (e: any) {
     console.error('[web-app owner notify] web plan lookup failed, treating as not a web shop:', e?.message || e);
     return false;

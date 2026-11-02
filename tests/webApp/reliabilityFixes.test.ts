@@ -246,6 +246,23 @@ describe('S3: publish.ts passes refusals through', () => {
   });
 });
 
+describe('draft size cap', () => {
+  const big = (bytes: number) => ({ ...site(), about: { ...(site() as any).about, description: ['x'.repeat(bytes)] } });
+  it('a draft over 1 MB is refused with 413 and nothing is written', async () => {
+    const r = await save(big(1024 * 1024 + 1) as any);
+    expect(r.code).toBe(413); expect(r.body).toEqual({ error: 'draft_too_large', maxBytes: 1024 * 1024 });
+    expect((await db.query('select count(*)::int n from web_app_drafts')).rows[0].n).toBe(0);
+  });
+  it('a 2 MB draft (the e2e case) is refused too', async () => {
+    expect((await save(big(2 * 1024 * 1024) as any)).code).toBe(413);
+  });
+  it('a normal draft and one just under the cap still save', async () => {
+    expect((await save()).code).toBe(200);
+    const r = await save(big(1024 * 1024 - 4096) as any, 1);
+    expect(r.code).toBe(200);
+  });
+});
+
 describe('S4: draft requirement only for publish', () => {
   it('an upgrade checkout with no saved draft is not blocked when reliability is on', async () => {
     const r = await call(checkout, { tier: 'website', interval: 'month' });

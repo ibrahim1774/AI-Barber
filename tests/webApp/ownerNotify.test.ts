@@ -270,3 +270,45 @@ describe('web shop gate: only an entitled web plan in the current Stripe mode', 
     expect(hasCurrentWebPlan([{ environment: 'live', status: 'canceled' }, { environment: 'live', status: 'past_due' }], 'live')).toBe(true);
   });
 });
+
+// e2e 2026-11-02: a web shop's "New booking" owner email never arrived while "New order" did, and nothing was logged.
+describe('booking and order owner emails take the same gate, and a drop says why', () => {
+  it('one web shop, one plan lookup: booking_created and order_created both email the owner', async () => {
+    flagOn();
+    const b = bdeps(bctx());
+    const o = odeps(octx());
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, b as NotifyDeps);
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, o as OrderNotifyDeps);
+    expect(b.emailOwner).toHaveBeenCalledTimes(1);
+    expect(o.emailOwner).toHaveBeenCalledTimes(1);
+    expect(b.ownerHasWebPlan).toHaveBeenCalledWith('owner-1');
+    expect(o.ownerHasWebPlan).toHaveBeenCalledWith('owner-1');
+  });
+  it('the real recipient lookup (auth account email) is the same for both, with no ios_purchases or site_owners row involved', async () => {
+    flagOn();
+    const send = vi.fn(async (_to: string, _m: unknown) => {});
+    const real: OwnerNotifyDeps = { contact: async (id) => ({ email: id === 'owner-1' ? 'web-owner@example.com' : null, firstName: 'Web' }), send };
+    const wire = (d: any) => ({ ...d, emailOwner: (id: string, e: any) => sendOwnerEmail(id, e, real) });
+    await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, wire(bdeps(bctx())) as NotifyDeps);
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, wire(odeps(octx())) as OrderNotifyDeps);
+    expect(send.mock.calls.map((c) => [c[0], (c[1] as any).subject.split(':')[0]])).toEqual([
+      ['web-owner@example.com', 'New booking'], ['web-owner@example.com', 'New order'],
+    ]);
+  });
+  it('a web-shaped shop that is dropped logs the reason (no iOS link, so it would be a web shop)', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    const shop = { owner_id: 'owner-1', ios_otid: null };
+    expect(await isWebShop(shop, async () => true)).toBe(false); // flag off
+    flagOn();
+    expect(await isWebShop(shop, async () => false)).toBe(false); // no entitled plan in this mode
+    expect(await isWebShop(shop, undefined)).toBe(false);
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
+      expect.stringContaining('WEB_APP_ENTITLEMENTS is off'),
+      expect.stringContaining('no entitled web plan'),
+      expect.stringContaining('no plan lookup'),
+    ]);
+    warn.mockClear();
+    expect(await isWebShop({ owner_id: 'o', ios_otid: 'otid-1' }, async () => true)).toBe(false); // iOS shop: silent, as before
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
