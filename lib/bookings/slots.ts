@@ -73,7 +73,7 @@ function calendarDate(date: string): DateTime {
 /**
  * Wall-clock minute `m` (may be 1440 = next local midnight) on `day` in `zone`.
  * Returns the instant, or null when that wall time does not exist (DST gap).
- * Ambiguous wall times explicitly resolve to their first occurrence, independent of the current offset.
+ * Ambiguous wall times resolve to their first occurrence (luxon's behaviour, pinned by tests).
  */
 function wallToInstant(day: DateTime, m: number, zone: string): number | null {
   const w = day.plus({ minutes: m }); // wall components, carried over midnight if needed
@@ -86,7 +86,7 @@ function wallToInstant(day: DateTime, m: number, zone: string): number | null {
   if (dt.year !== w.year || dt.month !== w.month || dt.day !== w.day || dt.hour !== w.hour || dt.minute !== w.minute) {
     return null;
   }
-  return Math.min(...dt.getPossibleOffsets().map((possible) => possible.toMillis()));
+  return dt.toMillis();
 }
 
 /**
