@@ -31,9 +31,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (input.length < 3) return res.status(200).json({ suggestions: [] });
 
   const payload: Record<string, unknown> = { input, includedRegionCodes: ['us', 'ca'] };
-  const lat = Number(body.lat);
-  const lng = Number(body.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+  // The app's own coordinates when it sends them; otherwise the visitor's approximate location from Vercel's IP
+  // geolocation headers, so shops near the person typing rank first without asking for location permission.
+  const coord = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+  const hdr = (name: string) => coord(decodeURIComponent(String(req.headers?.[name] ?? '')));
+  let lat = coord(body.lat);
+  let lng = coord(body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    lat = hdr('x-vercel-ip-latitude');
+    lng = hdr('x-vercel-ip-longitude');
+  }
+  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
     payload.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 50000 } };
   }
 

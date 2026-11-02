@@ -14,7 +14,7 @@ describe('vercel.json /app route', () => {
   it('forwards /app and /app/* to the web app project, and nothing wider', () => {
     expect(cfg.rewrites[idx('/app')].destination).toBe('https://prime-barber-web.vercel.app/app/');
     expect(cfg.rewrites[idx('/app/:path*')].destination).toBe('https://prime-barber-web.vercel.app/app/:path*');
-    expect(cfg.rewrites.filter((r) => /\/app/.test(r.source)).map((r) => r.source)).toEqual(['/app', '/app/:path*']);
+    expect(cfg.rewrites.filter((r) => /\/app/.test(r.source)).map((r) => r.source)).toEqual(['/app', '/app/', '/app/:path*']);
   });
   it('sits above the marketing catch-all and below the existing routes', () => {
     const catchAll = idx('/((?!api/|_ab/).*)');
@@ -28,8 +28,9 @@ describe('vercel.json /app route', () => {
   });
   it('keeps /app out of search results and leaves the existing asset header alone', () => {
     const h = (s: string) => cfg.headers.find((x) => x.source === s);
-    expect(h('/app')?.headers).toEqual([{ key: 'X-Robots-Tag', value: 'noindex' }]);
-    expect(h('/app/(.*)')?.headers).toEqual([{ key: 'X-Robots-Tag', value: 'noindex' }]);
+    // /app itself is the homepage's destination, so it stays indexable; inner app pages do not.
+    expect(h('/app')).toBeUndefined();
+    expect(h('/app/(.+)')?.headers).toEqual([{ key: 'X-Robots-Tag', value: 'noindex' }]);
     expect(h('/_ab/assets/(.*)')?.headers).toEqual([{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }]);
   });
   it('did not remove or reorder any other rewrite or cron', () => {

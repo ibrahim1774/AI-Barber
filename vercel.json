@@ -64,16 +64,7 @@
   ],
   "headers": [
     {
-      "source": "/app",
-      "headers": [
-        {
-          "key": "X-Robots-Tag",
-          "value": "noindex"
-        }
-      ]
-    },
-    {
-      "source": "/app/(.*)",
+      "source": "/app/(.+)",
       "headers": [
         {
           "key": "X-Robots-Tag",
