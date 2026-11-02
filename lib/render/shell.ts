@@ -106,14 +106,19 @@ export function logoImgHtml(template: TemplateId, logo: { w: number; h: number }
   return `<img src="{{logo}}"${mode === 'both' ? ' class="ab-logo-img"' : ''} alt="${mode === 'both' ? '' : alt}" width="${logo.w}" height="${logo.h}" fetchpriority="high" style="display:block;height:${size.h};width:auto;max-width:${maxW};object-fit:contain">`;
 }
 
-/** Logo and name side by side. The logo gives way first (down to 28px wide), the name wraps onto more lines and is never clipped. */
+/**
+ * Logo and name side by side. The logo gives way first (down to 28px wide), the name wraps onto more lines.
+ * Prime and euphoria never clip it. Luxe (its fixed home header must have a bounded height) clamps it to two lines with
+ * "..." and never lets it narrower than a few letters (`extra`), so a long name beside a logo and a long number cannot
+ * collapse into a one-letter column.
+ */
 const pairCss = (color: string, font: string, size: string, extra = ''): string =>
   `.ab-brand.ab-pair{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;white-space:normal;text-decoration:none;color:${color};${font}line-height:1.1}
 .ab-brand.ab-pair img{flex:0 1 auto;min-width:28px;max-width:30%}
 .ab-brand.ab-pair .ab-brand-name{min-width:0;flex:1 1 auto;overflow-wrap:break-word;line-height:1.1;font-size:${size};${extra}}
 `;
 export const PAIR_CSS: Record<TemplateId, string> = {
-  luxe: pairCss('#fff', "font-family:'Montserrat',sans-serif;font-weight:900;text-transform:uppercase;", 'clamp(13px,3.6vw,22px)', 'letter-spacing:1px;'),
+  luxe: pairCss('#fff', "font-family:'Montserrat',sans-serif;font-weight:900;text-transform:uppercase;", 'clamp(13px,3.6vw,22px)', 'letter-spacing:1px;min-width:min(5ch,16vw);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;') + '.ab-brand.ab-pair{min-width:calc(36px + min(5ch,16vw))}\n',
   prime: pairCss('var(--p-ink,#f0ece4)', "font-family:'Newsreader',Georgia,serif;", 'clamp(15px,4.2vw,22px)', 'letter-spacing:.04em;'),
   euphoria: pairCss('var(--eu-ink,#f0ece4)', "font-family:'Newsreader',Georgia,serif;", 'clamp(15px,4.2vw,22px)', 'letter-spacing:.04em;'),
 };

@@ -55,7 +55,9 @@ describe.each(['luxe', 'prime', 'euphoria'] as const)('%s header brand', (t) => 
         expect(hdr.replace(/<style>[\s\S]*?<\/style>/g, '')).not.toMatch(/line-clamp|overflow:\s*hidden/);
         const css = [...hdr.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).find((c) => c.includes('.ab-pair')) ?? '';
         expect(css).toBe(PAIR_CSS[t]);
-        expect(css).not.toMatch(/line-clamp|overflow:\s*hidden/);
+        // luxe alone clamps the pair name to two lines (its fixed home header must stay bounded; see heroClearance.test.ts)
+        if (t === 'luxe') expect(css).toMatch(/-webkit-line-clamp:2/);
+        else expect(css).not.toMatch(/line-clamp|overflow:\s*hidden/);
         expect(css).toMatch(/\.ab-brand\.ab-pair img\{[^}]*min-width:28px[^}]*max-width:30%/);
       });
     }
@@ -127,7 +129,8 @@ describe('sizes and CSS', () => {
       expect(LOGO_SIZE[t].logo.h).toMatch(/^clamp\(/);
       expect(LOGO_SIZE[t].both.h).toMatch(/^clamp\(/);
       expect(parseInt(LOGO_SIZE[t].both.h.slice(6), 10)).toBeLessThan(parseInt(LOGO_SIZE[t].logo.h.slice(6), 10));
-      expect(PAIR_CSS[t]).not.toMatch(/line-clamp|overflow:\s*hidden/);
+      if (t === 'luxe') expect(PAIR_CSS[t]).toMatch(/-webkit-line-clamp:2/);
+      else expect(PAIR_CSS[t]).not.toMatch(/line-clamp|overflow:\s*hidden/);
       expect(PAIR_CSS[t]).toContain('.ab-brand-name{min-width:0;flex:1 1 auto;overflow-wrap:break-word');
     }
   });

@@ -345,6 +345,23 @@ exports[`luxe team section > snapshot 1`] = `
     @media (max-width: 430px) { header#header .container { gap: 8px; } header#header .ab-call { gap: 6px; padding-left: 0; border-left: 0; } header#header .ab-call svg { width: 1.25rem; height: 1.25rem; } header#header .ab-call-text { font-size: 12px; letter-spacing: 0; } }
     @media (max-width: 360px) { header#header .ab-call-text { font-size: 11px; } header#header .ab-call svg { width: 1.1rem; height: 1.1rem; } }
     .ab-name { font-size: clamp(14px, 4.4vw, 18px); line-height: 1.1; overflow-wrap: anywhere; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    /* Fixed header vs hero, every width (see tests/render/heroClearance). The header is bounded: the name is at most two lines
+       and never narrower than a few letters, and the number stays on one line; when the number no longer fits beside the name,
+       only the call icon shows (the hero's Call button carries the number). #home reserves the header's tallest top-of-page
+       height (its padding + its tallest row) above the hero copy, so nothing in the hero can sit under the header. */
+    :root { --ab-head-pad: 40px; --ab-row-name: max(44px, calc(2.2 * clamp(14px, 4.4vw, 18px))); --ab-row-logo: max(44px, clamp(48px, 12.3vw, 72px)); --ab-row-pair: max(44px, clamp(40px, 10.3vw, 60px), calc(2.2 * clamp(13px, 3.6vw, 22px))); }
+    #header > .container > div:first-child > div:first-child { flex: 1 1 0; min-width: auto; max-width: max-content; }
+    #header .ab-name, #header .ab-brand-name { min-width: min(8ch, 30vw); }
+    #header .ab-pair .ab-brand-name { line-height: 1.1; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    #header .ab-call { flex-shrink: 1; min-width: 34px; height: 20px; flex-wrap: wrap; align-content: flex-start; overflow: hidden; }
+    #header .ab-call svg { flex-shrink: 0; }
+    @media (max-width: 430px) { #header .ab-call { min-width: 20px; } }
+    @media (min-width: 768px) { :root { --ab-head-pad: 64px; --ab-row-name: 72px; } #header > .container { column-gap: 24px; } #header .ab-name { font-size: 30px; line-height: 36px; } #header .ab-call { min-width: 62px; height: 28px; } }
+    @media (min-width: 1024px) { :root { --ab-row-name: 80px; } #header .ab-name { font-size: 36px; line-height: 40px; } #header .ab-call { height: 32px; } }
+    @media (min-width: 1024px) and (max-width: 1279px) { :root { --ab-row-name: 64px; } #header > .container > div:first-child { gap: 16px; } #header .ab-name { font-size: 28px; line-height: 32px; } #header .ab-call { gap: 8px; padding-left: 16px; min-width: 46px; height: 28px; } #header .ab-call-text { font-size: 18px; line-height: 28px; } }
+    :root { --ab-head-row: var(--ab-row-name); }
+    #home { height: auto; min-height: 55vh; padding-top: calc(var(--ab-head-pad) + var(--ab-head-row)); }
+    #home > .relative { padding-top: 24px; }
     section.py-12, section.py-16 {
       background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
       background-blend-mode: overlay;
