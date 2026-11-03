@@ -46,6 +46,16 @@
       "destination": "/_ab/shop.html"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
       "source": "/app",
       "destination": "https://prime-barber-web.vercel.app/app/"
     },
@@ -231,7 +241,7 @@
           "key": "session_id"
         }
       ],
-      "destination": "https://www.primebarber.org/app",
+      "destination": "https://www.primebarber.org/",
       "permanent": false
     },
     {
@@ -254,6 +264,10 @@
         {
           "type": "query",
           "key": "session_id"
+        },
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
         }
       ]
     }

@@ -43,7 +43,7 @@ describe('www.aibarber.org host redirects', () => {
   });
 
   it('redirects pages to the same path on www.primebarber.org, query kept', () => {
-    expect(redirectFor('/')).toBe('https://www.primebarber.org/app');
+    expect(redirectFor('/')).toBe('https://www.primebarber.org/');
     expect(redirectFor('/privacy')).toBe('https://www.primebarber.org/privacy');
     expect(redirectFor('/terms')).toBe('https://www.primebarber.org/terms');
     expect(redirectFor('/support')).toBe('https://www.primebarber.org/support');

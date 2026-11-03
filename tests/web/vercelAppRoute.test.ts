@@ -33,9 +33,16 @@ describe('vercel.json /app route', () => {
     expect(h('/app/(.+)')?.headers).toEqual([{ key: 'X-Robots-Tag', value: 'noindex' }]);
     expect(h('/_ab/assets/(.*)')?.headers).toEqual([{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }]);
   });
+  it('serves the app at the www.primebarber.org homepage without a redirect', () => {
+    const r = cfg.rewrites.find((x: any) => x.source === '/');
+    expect(r?.destination).toBe('https://prime-barber-web.vercel.app/app/');
+    expect(r?.has).toEqual([{ type: 'host', value: 'www.primebarber.org' }]);
+    const toApp = (cfg as any).redirects.find((x: any) => x.source === '/' && x.destination === '/app');
+    expect(toApp.missing).toContainEqual({ type: 'host', value: 'www.primebarber.org' });
+  });
   it('did not remove or reorder any other rewrite or cron', () => {
     expect(cfg.rewrites.filter((r) => !/\/app/.test(r.source)).map((r) => r.source)).toEqual([
-      '/api/(.*)', '/privacy', '/privacy/', '/terms', '/terms/', '/support', '/support/', '/stripe-return', '/stripe-return/', '/book/(.*)', '/shop/(.*)', '/((?!api/|_ab/).*)',
+      '/api/(.*)', '/privacy', '/privacy/', '/terms', '/terms/', '/support', '/support/', '/stripe-return', '/stripe-return/', '/book/(.*)', '/shop/(.*)', '/', '/((?!api/|_ab/).*)',
     ]);
   });
 });
