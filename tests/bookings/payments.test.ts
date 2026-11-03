@@ -187,6 +187,20 @@ describe('onboard / status', () => {
     expect(g.calls[0].params.get('account')).toBe('acct_old');
   });
 
+  it('OAuth-linked account (not created by the platform): onboard returns the Stripe dashboard, no unavailable audit', async () => {
+    const msg = 'You cannot create an account link for an account that was not created by your platform.';
+    for (const status of [400]) {
+      const { f } = fakeFetch({ status, body: { error: { message: msg, type: 'invalid_request_error' } } });
+      const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_oauth' })) }, f);
+      expect(await stripeOnboard('Bearer good', deps)).toEqual({ status: 200, body: { url: 'https://dashboard.stripe.com/' } });
+      expect(deps.audit).not.toHaveBeenCalled();
+    }
+    // other 400s still error as before
+    const g = fakeFetch({ status: 400, body: { error: { message: 'Invalid request' } } });
+    const deps2 = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_x' })) }, g.f);
+    expect(await stripeOnboard('Bearer good', deps2)).toEqual({ status: 502, body: { error: 'stripe-error' } });
+  });
+
   it('retries account creation once without a phone Stripe rejected', async () => {
     const { f, calls } = fakeFetch({ status: 400, body: { error: { message: 'Invalid phone', param: 'business_profile[support_phone]' } } }, { body: { id: 'acct_np' } }, { body: { url: 'L' } });
     expect(await stripeOnboard('Bearer good', mkDeps({}, f))).toEqual({ status: 200, body: { url: 'L' } });

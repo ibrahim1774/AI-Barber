@@ -452,6 +452,7 @@ export interface OwnerShopRow extends OnboardShop {
 export interface OauthLiveDeps {
   shopIdByAccount(accountId: string): Promise<string | null>;
   replaceAccountId(shopId: string, oldId: string, newId: string): Promise<boolean>;
+  hasCardHistory(shopId: string): Promise<boolean>;
 }
 
 export interface OwnerStripeDeps {
@@ -487,6 +488,13 @@ export async function ownerShop(authorization: string | string[] | undefined, de
   return { user, shop };
 }
 
+/** "You cannot create an account link for an account that was not created by your platform" (400). Matched conservatively. */
+export function isNotPlatformAccountError(e: unknown): boolean {
+  if (!(e instanceof StripeApiError) || e.status !== 400) return false;
+  const m = e.message.toLowerCase();
+  return m.includes('account link') && m.includes('platform') && /not (created|controlled|owned|managed)/.test(m);
+}
+
 export async function stripeOnboard(authorization: string | string[] | undefined, deps: OwnerStripeDeps): Promise<Reply> {
   const r = await ownerShop(authorization, deps);
   if ('status' in r) return r;
@@ -501,6 +509,9 @@ export async function stripeOnboard(authorization: string | string[] | undefined
         // 403/404 = this key can't see the stored account: revoked access OR a wrong/mixed-up key.
         // Never clear from here (only the verified deauthorized webhook clears). Tell the owner to
         // contact support and leave a durable trail.
+        // An account linked through OAuth (connect-existing) was not created by this platform, and Stripe refuses
+        // account links for it with a 400: the owner finishes in their own Stripe dashboard.
+        if (isNotPlatformAccountError(e)) return { status: 200, body: { url: 'https://dashboard.stripe.com/' } };
         if (!(e instanceof StripeApiError && (e.status === 403 || e.status === 404))) throw e;
         const detail = { accountId, status: e.status, code: e.code ?? null };
         console.error('[shop/stripe/onboard] stored connected account unavailable:', JSON.stringify({ shopId: shop.id, ...detail }));
@@ -604,6 +615,15 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
         .eq('id', shopId).eq('stripe_account_id', oldId).select('id');
       if (error) dbFail('replaceAccountId', error);
       return Array.isArray(data) && data.length > 0;
+    },
+    async hasCardHistory(shopId) {
+      for (const table of ['ab_appointments', 'ab_orders']) {
+        const { data, error } = await db.from(table).select('id').eq('shop_id', shopId)
+          .or('stripe_payment_intent_id.not.is.null,stripe_checkout_session_id.not.is.null').limit(1);
+        if (error) dbFail(`hasCardHistory(${table})`, error);
+        if (Array.isArray(data) && data.length) return true;
+      }
+      return false;
     },
     async setChargesEnabled(shopId, enabled) {
       const { error } = await db.from('ab_shops').update({ stripe_charges_enabled: enabled }).eq('id', shopId);

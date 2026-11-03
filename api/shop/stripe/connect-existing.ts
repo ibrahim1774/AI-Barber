@@ -1,5 +1,6 @@
 // POST: start "connect an existing Stripe account" (Connect OAuth). 200 { url } -> connect.stripe.com/oauth/authorize.
 // 503 { error: 'connect-existing-unavailable' } when STRIPE_CONNECT_CLIENT_ID is unset; 403 { error: 'web-only' } for non-web owners.
+// With { token } in the body it finishes a link started by oauth-return (confirm): 200 { status: 'return'|'taken' }.
 // Owner only: Authorization: Bearer <Supabase access token>.
 import { liveOwnerStripeDeps } from '../../../lib/bookings/payments.js';
 import { stripeConnectExisting } from '../../../lib/bookings/stripeOauth.js';
@@ -9,7 +10,7 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'method-not-allowed' });
   try {
-    const r = await stripeConnectExisting(req.headers?.authorization, liveOwnerStripeDeps());
+    const r = await stripeConnectExisting(req.headers?.authorization, liveOwnerStripeDeps(), typeof req.body?.token === 'string' ? { token: req.body.token } : undefined);
     return res.status(r.status).json(r.body);
   } catch (e: any) {
     console.error('[shop/stripe/connect-existing] error:', e?.message || e);

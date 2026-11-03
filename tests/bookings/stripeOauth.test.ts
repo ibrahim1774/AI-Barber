@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  signOauthState, verifyOauthState, stripeConnectExisting, stripeOauthReturn, OAUTH_STATE_TTL_MS, oauthRedirectUri, type OauthDeps,
+  signLinkToken, verifyLinkToken, LINK_TTL_MS, signOauthState, verifyOauthState, stripeConnectExisting, stripeOauthReturn, stripeConnectConfirm, OAUTH_STATE_TTL_MS, oauthRedirectUri, type OauthDeps,
 } from '../../lib/bookings/stripeOauth.js';
 
 const saved = { ...process.env };
@@ -53,6 +53,7 @@ function mk(over: Partial<OauthDeps> = {}, shopOver: any = {}, responses: Array<
     webReturnBase: vi.fn(async () => 'https://www.primebarber.org'),
     shopIdByAccount: vi.fn(async () => null),
     replaceAccountId: vi.fn(async () => true),
+    hasCardHistory: vi.fn(async () => false),
     stripe: { fetch: f as any },
     ...over,
   };
@@ -88,72 +89,129 @@ describe('connect-existing', () => {
   });
 });
 
-describe('oauth-return', () => {
-  const state = () => signOauthState(base);
-  const tok = { body: { stripe_user_id: 'acct_new' } };
-  const status = (charges: boolean) => ({ body: { charges_enabled: charges, details_submitted: charges } });
-  const go = (deps: OauthDeps, q: any = { code: 'ac_secret', state: state() }) => stripeOauthReturn(q, deps);
-  const to = (v: string) => ({ redirect: `https://www.primebarber.org/app/?stripe=${v}` });
+describe('link token', () => {
+  const l = { shopId: 'shop-1', userId: 'user-1', account: 'acct_new' };
+  it('round-trips, expires, and is not interchangeable with state', () => {
+    expect(verifyLinkToken(signLinkToken(l, 1000), 1000)).toMatchObject({ ...l, exp: 1000 + LINK_TTL_MS });
+    expect(verifyLinkToken(signLinkToken(l, 1000), 1000 + LINK_TTL_MS + 1)).toBeNull();
+    expect(verifyLinkToken(signOauthState(base))).toBeNull();
+    expect(verifyOauthState(signLinkToken(l))).toBeNull();
+    const [p, sig] = signLinkToken(l).split('.');
+    const forged = Buffer.from(JSON.stringify({ ...l, userId: 'evil', exp: 9e15 })).toString('base64url');
+    expect(verifyLinkToken(`${forged}.${sig}`)).toBeNull();
+    expect(p).toBeTruthy();
+  });
+});
 
-  it('bad or expired state: 400 text, no Stripe call', async () => {
+const tok = { body: { stripe_user_id: 'acct_new', livemode: false } };
+const st = (charges: boolean) => ({ body: { charges_enabled: charges, details_submitted: charges } });
+const deauthCalls = (calls: any[]) => calls.filter((c) => c.url === 'https://connect.stripe.com/oauth/deauthorize');
+
+describe('oauth-return (unauthenticated: never writes the shop)', () => {
+  const state = () => signOauthState(base);
+  it('bad state: 400, no Stripe call', async () => {
     const { deps, calls } = mk();
-    expect(await go(deps, { code: 'c', state: 'nope' })).toMatchObject({ status: 400 });
-    expect(await go(deps, { code: 'c' })).toMatchObject({ status: 400 });
+    expect(await stripeOauthReturn({ code: 'c', state: 'nope' }, deps)).toMatchObject({ status: 400 });
     expect(calls).toHaveLength(0);
   });
-  it('denied: redirects to refresh without exchanging', async () => {
+  it('denied: refresh without exchanging', async () => {
     const { deps, calls } = mk();
-    expect(await go(deps, { error: 'access_denied', state: state() })).toEqual(to('refresh'));
+    expect(await stripeOauthReturn({ error: 'access_denied', state: state() }, deps)).toEqual({ redirect: 'https://www.primebarber.org/app/?stripe=refresh' });
     expect(calls).toHaveLength(0);
   });
-  it('success on a shop with no account', async () => {
-    const { deps, calls } = mk({}, {}, [tok, status(true)]);
-    expect(await go(deps)).toEqual(to('return'));
-    expect(calls[0].url).toBe('https://connect.stripe.com/oauth/token');
-    expect(calls[0].init.headers.Authorization).toBe('Bearer sk_test_connect');
-    const b = new URLSearchParams(calls[0].init.body);
-    expect(b.get('grant_type')).toBe('authorization_code');
-    expect(b.get('code')).toBe('ac_secret');
-    expect(deps.saveAccountId).toHaveBeenCalledWith('shop-1', 'acct_new');
-    expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
-    expect(deps.audit).toHaveBeenCalledWith('shop-1', 'stripe_oauth_connected', { account: 'acct_new' });
-  });
-  it('taken by another shop: nothing saved', async () => {
-    const { deps } = mk({ shopIdByAccount: vi.fn(async () => 'shop-2') }, {}, [tok]);
-    expect(await go(deps)).toEqual(to('taken'));
+  it('success: exchanges, redirects with a link token, writes nothing', async () => {
+    const { deps, calls } = mk({}, {}, [tok]);
+    const r: any = await stripeOauthReturn({ code: 'ac_secret', state: state() }, deps);
+    const u = new URL(r.redirect);
+    expect(u.origin + u.pathname).toBe('https://www.primebarber.org/app/');
+    expect(verifyLinkToken(u.searchParams.get('stripe_link'))).toMatchObject({ shopId: 'shop-1', userId: 'user-1', account: 'acct_new' });
+    expect(calls).toHaveLength(1);
+    expect(new URLSearchParams(calls[0].init.body).get('code')).toBe('ac_secret');
     expect(deps.saveAccountId).not.toHaveBeenCalled();
     expect(deps.replaceAccountId).not.toHaveBeenCalled();
+    expect(deps.audit).not.toHaveBeenCalled();
   });
-  it('replaces an unfinished different account', async () => {
-    const { deps } = mk({}, { stripe_account_id: 'acct_old' }, [tok, status(false), status(true)]);
-    expect(await go(deps)).toEqual(to('return'));
-    expect(deps.replaceAccountId).toHaveBeenCalledWith('shop-1', 'acct_old', 'acct_new');
-    expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
-  });
-  it('lost the conditional replace race: taken', async () => {
-    const { deps } = mk({ replaceAccountId: vi.fn(async () => false) }, { stripe_account_id: 'acct_old' }, [tok, status(false)]);
-    expect(await go(deps)).toEqual(to('taken'));
-    expect(deps.setChargesEnabled).not.toHaveBeenCalled();
-  });
-  it('refuses to replace a charges-enabled account', async () => {
-    const { deps } = mk({}, { stripe_account_id: 'acct_old' }, [tok, status(true)]);
-    expect(await go(deps)).toEqual(to('taken'));
-    expect(deps.replaceAccountId).not.toHaveBeenCalled();
-  });
-  it('same account already stored: just refreshes status', async () => {
-    const { deps } = mk({ shopIdByAccount: vi.fn(async () => 'shop-1') }, { stripe_account_id: 'acct_new' }, [tok, status(true)]);
-    expect(await go(deps)).toEqual(to('return'));
-    expect(deps.saveAccountId).not.toHaveBeenCalled();
-    expect(deps.replaceAccountId).not.toHaveBeenCalled();
-  });
-  it('shop no longer matches the state: 400', async () => {
-    const { deps } = mk({}, { id: 'shop-9' }, [tok]);
-    expect(await go(deps)).toMatchObject({ status: 400 });
-    expect(deps.saveAccountId).not.toHaveBeenCalled();
+  it('livemode mismatch: deauthorizes and sends refresh', async () => {
+    const { deps, calls } = mk({}, {}, [{ body: { stripe_user_id: 'acct_new', livemode: true } }]);
+    expect(await stripeOauthReturn({ code: 'c', state: state() }, deps)).toEqual({ redirect: 'https://www.primebarber.org/app/?stripe=refresh' });
+    expect(deauthCalls(calls)).toHaveLength(1);
+    expect(new URLSearchParams(deauthCalls(calls)[0].init.body).get('stripe_user_id')).toBe('acct_new');
   });
   it('token exchange failure: refresh, and the code is never logged', async () => {
     const { deps } = mk({}, {}, [{ status: 400, body: { error: 'invalid_grant', error_description: 'code ac_secret used' } }]);
-    expect(await go(deps)).toEqual(to('refresh'));
+    expect(await stripeOauthReturn({ code: 'ac_secret', state: state() }, deps)).toEqual({ redirect: 'https://www.primebarber.org/app/?stripe=refresh' });
     expect(JSON.stringify((console.error as any).mock.calls)).not.toContain('ac_secret');
+  });
+});
+
+describe('confirm (owner JWT)', () => {
+  const link = (over: any = {}) => signLinkToken({ shopId: 'shop-1', userId: 'user-1', account: 'acct_new', ...over });
+  const go = (deps: OauthDeps, token: unknown = link(), auth = 'Bearer good') => stripeConnectExisting(auth, deps, { token });
+
+  it('401 without a JWT; 400 for a bad or expired token', async () => {
+    expect((await go(mk().deps, link(), 'Bearer bad')).status).toBe(401);
+    expect(await go(mk().deps, 'junk')).toEqual({ status: 400, body: { error: 'invalid-link' } });
+    expect((await stripeConnectConfirm('Bearer good', link(), mk().deps, Date.now() + LINK_TTL_MS + 5)).status).toBe(400);
+  });
+  it('wrong owner or shop: 403, deauthorizes the unlinked account, saves nothing', async () => {
+    for (const t of [link({ userId: 'user-2' }), link({ shopId: 'shop-2' })]) {
+      const { deps, calls } = mk({}, {}, []);
+      expect(await go(deps, t)).toEqual({ status: 403, body: { error: 'wrong-owner' } });
+      expect(deauthCalls(calls)).toHaveLength(1);
+      expect(deps.saveAccountId).not.toHaveBeenCalled();
+    }
+  });
+  it('wrong owner never deauthorizes an account stored on a shop', async () => {
+    const { deps, calls } = mk({ shopIdByAccount: vi.fn(async () => 'shop-7') });
+    await go(deps, link({ userId: 'user-2' }));
+    expect(deauthCalls(calls)).toHaveLength(0);
+  });
+  it('success: saves, syncs status, audits', async () => {
+    const { deps, calls } = mk({}, {}, [st(true)]);
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'return', chargesEnabled: true } });
+    expect(deps.saveAccountId).toHaveBeenCalledWith('shop-1', 'acct_new');
+    expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
+    expect(deps.audit).toHaveBeenCalledWith('shop-1', 'stripe_oauth_connected', { account: 'acct_new' });
+    expect(deauthCalls(calls)).toHaveLength(0);
+  });
+  it('same account to the same shop twice is a harmless no-op', async () => {
+    const { deps } = mk({ shopIdByAccount: vi.fn(async () => 'shop-1') }, { stripe_account_id: 'acct_new' }, [st(true)]);
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'return', chargesEnabled: true } });
+    expect(deps.saveAccountId).not.toHaveBeenCalled();
+    expect(deps.replaceAccountId).not.toHaveBeenCalled();
+    expect(deps.audit).not.toHaveBeenCalled();
+  });
+  it('taken by another shop: no save, no deauthorize (it is stored)', async () => {
+    const { deps, calls } = mk({ shopIdByAccount: vi.fn(async () => 'shop-2') });
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'taken' } });
+    expect(deps.saveAccountId).not.toHaveBeenCalled();
+    expect(deauthCalls(calls)).toHaveLength(0);
+  });
+  it('replaces an unfinished account with no card history, auditing before the swap', async () => {
+    const order: string[] = [];
+    const { deps } = mk({
+      audit: vi.fn(async () => { order.push('audit'); }),
+      replaceAccountId: vi.fn(async () => { order.push('replace'); return true; }),
+    }, { stripe_account_id: 'acct_old' }, [st(false), st(true)]);
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'return', chargesEnabled: true } });
+    expect(order.slice(0, 2)).toEqual(['audit', 'replace']);
+    expect(deps.audit).toHaveBeenCalledWith('shop-1', 'stripe_oauth_replacing', { previous: 'acct_old', account: 'acct_new' });
+  });
+  it('refuses replacing a charges-enabled account, deauthorizing the new one', async () => {
+    const { deps, calls } = mk({}, { stripe_account_id: 'acct_old' }, [st(true)]);
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'taken' } });
+    expect(deps.replaceAccountId).not.toHaveBeenCalled();
+    expect(deauthCalls(calls)).toHaveLength(1);
+  });
+  it('refuses replacing an account with payment history even when restricted', async () => {
+    const { deps, calls } = mk({ hasCardHistory: vi.fn(async () => true) }, { stripe_account_id: 'acct_old' }, [st(false)]);
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'taken' } });
+    expect(deps.replaceAccountId).not.toHaveBeenCalled();
+    expect(deps.audit).not.toHaveBeenCalled();
+    expect(deauthCalls(calls)).toHaveLength(1);
+  });
+  it('lost the conditional replace race: taken', async () => {
+    const { deps } = mk({ replaceAccountId: vi.fn(async () => false) }, { stripe_account_id: 'acct_old' }, [st(false)]);
+    expect(await go(deps)).toEqual({ status: 200, body: { status: 'taken' } });
   });
 });
