@@ -25,6 +25,16 @@ describe('sendMail', () => {
     expect(f).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
+  it('the retry reuses the same Idempotency-Key (no double send)', async () => {
+    vi.useFakeTimers();
+    const f = vi.fn().mockResolvedValueOnce(res(503, {})).mockResolvedValueOnce(res(200, { id: 'msg_3' }));
+    const p = sendMail('a@b.co', mail, f as any);
+    await vi.advanceTimersByTimeAsync(1200);
+    await p;
+    const k = (i: number) => (f.mock.calls[i][1] as any).headers['Idempotency-Key'];
+    expect(k(0)).toBeTruthy(); expect(k(1)).toBe(k(0));
+    vi.useRealTimers();
+  });
   it('still throws on a persistent error', async () => {
     const f = vi.fn(async () => res(403, {}));
     await expect(sendMail('a@b.co', mail, f as any)).rejects.toThrow('resend 403');

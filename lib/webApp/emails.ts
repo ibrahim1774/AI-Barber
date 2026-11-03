@@ -1,5 +1,6 @@
 // Welcome and failed-payment emails for the web app. Never include a password: the email carries the site
 // address, a sign-in link and a reset-password link. Table layout + inline CSS so it renders in every mail client.
+import { randomUUID } from 'node:crypto';
 import { APP_ORIGIN } from './webAppServer.js';
 
 export interface EmailInput {
@@ -106,12 +107,12 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   });
 }
 
-export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch = fetch): Promise<string> {
+export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch = fetch, idempotencyKey: string = randomUUID()): Promise<string> {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error('RESEND_API_KEY missing');
   const init = {
     method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text }),
   };
   // Resend allows ~2 requests/s per key and an order fires several mails at once: retry a 429/5xx once.
