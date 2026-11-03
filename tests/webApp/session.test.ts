@@ -20,7 +20,7 @@ const session = (rt: string, uid = 'u1') => ({ access_token: 'at-' + rt, refresh
 
 let n = 0;
 beforeEach(() => {
-  vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc');
+  vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc'); vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon');
   caller.user = { id: 'u1', email: 'a@example.com' };
   n += 1; // a distinct client ip per test keeps the in-memory rate limiter from leaking between tests
 });
@@ -36,7 +36,9 @@ describe('POST /api/web-app/session', () => {
     expect(r.code).toBe(200);
     expect(r.body).toMatchObject({ access_token: 'at-rt-new', refresh_token: 'rt-new' });
     expect(r.body.user).toBeUndefined();
-    const c = r.headers['Set-Cookie'];
+    const c = r.headers['Set-Cookie'][0];
+    expect(r.headers['Set-Cookie'][1]).toBe('pb_has=1; Secure; SameSite=Lax; Path=/; Max-Age=34560000');
+    expect((f.mock.calls[0] as any[])[1].headers.apikey).toBe('anon');
     expect(c).toContain('pb_rt=rt-new');
     for (const a of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/api/web-app/session', `Max-Age=${COOKIE_MAX_AGE}`]) expect(c).toContain(a);
     expect(COOKIE_MAX_AGE).toBe(400 * 86400);
@@ -84,7 +86,7 @@ describe('POST /api/web-app/session', () => {
 });
 
 describe('GET /api/web-app/session (restore)', () => {
-  const get = (cookie: string | undefined, extra: any = {}) => call({ method: 'GET', headers: { origin: ORIGIN, ...(cookie ? { cookie } : {}), ...ip() }, ...extra });
+  const get = (cookie: string | undefined, extra: any = {}) => call({ method: 'GET', headers: { origin: ORIGIN, 'x-pb-session': '1', 'sec-fetch-site': 'same-origin', ...(cookie ? { cookie } : {}), ...ip() }, ...extra });
 
   it('exchanges the cookie for a fresh session and re-sets the rotated cookie', async () => {
     const f = supa(200, session('rt-2')); vi.stubGlobal('fetch', f);
@@ -92,8 +94,9 @@ describe('GET /api/web-app/session (restore)', () => {
     expect(r.code).toBe(200);
     expect(r.body).toMatchObject({ access_token: 'at-rt-2', refresh_token: 'rt-2' });
     expect(JSON.parse((f.mock.calls[0] as any[])[1].body)).toEqual({ refresh_token: 'rt-1' });
-    expect(r.headers['Set-Cookie']).toContain('pb_rt=rt-2');
-    expect(r.headers['Set-Cookie']).toContain('HttpOnly');
+    expect(r.headers['Set-Cookie'][0]).toContain('pb_rt=rt-2');
+    expect(r.headers['Set-Cookie'][0]).toContain('HttpOnly');
+    expect(r.headers['Set-Cookie'][1]).toContain('pb_has=1');
     expect(r.headers['Cache-Control']).toBe('no-store');
   });
   it('401 with no cookie', async () => {
@@ -105,8 +108,9 @@ describe('GET /api/web-app/session (restore)', () => {
     vi.stubGlobal('fetch', supa(400, { error: 'invalid_grant' }));
     const r = await get('pb_rt=dead');
     expect(r.code).toBe(401);
-    expect(r.headers['Set-Cookie']).toContain('pb_rt=;');
-    expect(r.headers['Set-Cookie']).toContain('Max-Age=0');
+    expect(r.headers['Set-Cookie'][0]).toContain('pb_rt=;');
+    expect(r.headers['Set-Cookie'][0]).toContain('Max-Age=0');
+    expect(r.headers['Set-Cookie'][1]).toBe('pb_has=; Secure; SameSite=Lax; Path=/; Max-Age=0');
   });
   it('keeps the cookie through a Supabase outage', async () => {
     vi.stubGlobal('fetch', supa(503));
@@ -115,13 +119,27 @@ describe('GET /api/web-app/session (restore)', () => {
   });
   it('403 when a foreign Origin is sent, and no CORS headers are granted to it', async () => {
     const f = supa(200, session('x')); vi.stubGlobal('fetch', f);
-    const r = await get('pb_rt=rt-1', { headers: { origin: 'https://evil.example', cookie: 'pb_rt=rt-1', ...ip() } });
+    const r = await get('pb_rt=rt-1', { headers: { origin: 'https://evil.example', 'x-pb-session': '1', cookie: 'pb_rt=rt-1', ...ip() } });
     expect(r.code).toBe(403); expect(f).not.toHaveBeenCalled();
     expect(r.headers['Access-Control-Allow-Origin']).toBeUndefined();
   });
+  it('refuses a restore without the custom header, as a navigation, or from another site (no rotation)', async () => {
+    const f = supa(200, session('x')); vi.stubGlobal('fetch', f);
+    const base = { cookie: 'pb_rt=rt-1', ...ip() };
+    expect((await call({ method: 'GET', headers: base })).code).toBe(403);
+    expect((await call({ method: 'GET', headers: { ...base, 'x-pb-session': '1', 'sec-fetch-mode': 'navigate' } })).code).toBe(403);
+    const x = await call({ method: 'GET', headers: { ...base, 'x-pb-session': '1', 'sec-fetch-site': 'cross-site' } });
+    expect(x.code).toBe(403); expect(x.body).toEqual({ error: 'forbidden_request' });
+    expect(f).not.toHaveBeenCalled();
+  });
+  it('maps a Supabase 429 to 503 with Retry-After and keeps the cookie', async () => {
+    vi.stubGlobal('fetch', supa(429));
+    const r = await get('pb_rt=alive');
+    expect(r.code).toBe(503); expect(r.headers['Retry-After']).toBeDefined(); expect(r.headers['Set-Cookie']).toBeUndefined();
+  });
   it('allows a same-origin GET without an Origin header', async () => {
     vi.stubGlobal('fetch', supa(200, session('rt-2')));
-    const r = await call({ method: 'GET', headers: { cookie: 'pb_rt=rt-1', ...ip() } });
+    const r = await call({ method: 'GET', headers: { 'x-pb-session': '1', cookie: 'pb_rt=rt-1', ...ip() } });
     expect(r.code).toBe(200);
   });
 });
@@ -130,7 +148,8 @@ describe('DELETE /api/web-app/session', () => {
   it('clears the cookie', async () => {
     const r = await call({ method: 'DELETE', headers: { origin: ORIGIN, ...ip() } });
     expect(r.code).toBe(204);
-    expect(r.headers['Set-Cookie']).toMatch(/^pb_rt=; HttpOnly; Secure; SameSite=Lax; Path=\/api\/web-app\/session; Max-Age=0$/);
+    expect(r.headers['Set-Cookie'][0]).toMatch(/^pb_rt=; HttpOnly; Secure; SameSite=Lax; Path=\/api\/web-app\/session; Max-Age=0$/);
+    expect(r.headers['Set-Cookie'][1]).toContain('pb_has=;');
   });
   it('403 from a foreign origin or with none', async () => {
     expect((await call({ method: 'DELETE', headers: { origin: 'https://evil.example', ...ip() } })).code).toBe(403);
