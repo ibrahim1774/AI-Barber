@@ -8,6 +8,7 @@ import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, planDescrip
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { expireSession, rememberSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { excludedMethodParams } from '../../lib/checkoutPaymentMethods.js';
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
@@ -84,6 +85,7 @@ export default async function handler(req: any, res: any) {
       ...(customer ? { customer } : caller.email ? { customer_email: caller.email } : {}),
       'line_items[0][price]': price,
       'line_items[0][quantity]': '1',
+      ...excludedMethodParams(),
       client_reference_id: caller.id,
       success_url: `${APP_ORIGIN()}/app/edit?paid=1`,
       cancel_url: `${APP_ORIGIN()}/app/edit?paid=0`,

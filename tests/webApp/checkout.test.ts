@@ -72,6 +72,7 @@ describe('POST /api/web-app/checkout', () => {
     expect(c.customer).toBeUndefined();
     expect(c.customer_email).toBe('owner@example.com');
     expect(c.client_reference_id).toBe('u1');
+    expect(c['excluded_payment_method_types[0]']).toBe('cashapp'); // new checkouts: no Cash App Pay
     expect(c['metadata[user_id]']).toBe('u1'); expect(c['metadata[app]']).toBe('aibarber-app');
     expect(c['subscription_data[metadata][user_id]']).toBe('u1'); expect(c['subscription_data[metadata][app]']).toBe('aibarber-app');
     expect(sb.calls.some((x) => x.path.startsWith('web_app_customers') && x.method === 'POST')).toBe(false);

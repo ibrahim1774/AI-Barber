@@ -96,6 +96,7 @@ describe('create-domain-checkout: $39/year subscription, owner only, signed serv
       expect(p.get(`${prefix}[sig]`)).toBe(domainSig(SECRET, 'freshcuts.com', 'fresh-cuts'));
     }
     expect(p.get('success_url')).toMatch(/^https:\/\/www\.aibarber\.org\?domain_payment=success/);
+    expect(p.getAll('excluded_payment_method_types[0]')).toEqual(['cashapp']); // new checkouts: no Cash App Pay
   });
 
   it('a configured Stripe price id is used instead of price_data', async () => {
