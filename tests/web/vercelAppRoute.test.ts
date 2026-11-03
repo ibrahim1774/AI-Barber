@@ -33,7 +33,7 @@ describe('vercel.json /app route', () => {
     expect(h('/app/(.+)')?.headers).toEqual([{ key: 'X-Robots-Tag', value: 'noindex' }]);
     expect(h('/_ab/assets/(.*)')?.headers).toEqual([{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }]);
   });
-  it.skip("(pending: static index.html wins over the rewrite) serves the app at the www.primebarber.org homepage without a redirect', () => {
+  it.skip('(pending: static index.html wins over the rewrite) serves the app at the www.primebarber.org homepage without a redirect', () => {
     const r = cfg.rewrites.find((x: any) => x.source === '/');
     expect(r?.destination).toBe('https://prime-barber-web.vercel.app/app/');
     expect(r?.has).toEqual([{ type: 'host', value: 'www.primebarber.org' }]);
