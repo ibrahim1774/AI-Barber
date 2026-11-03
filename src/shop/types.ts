@@ -83,6 +83,8 @@ export type OrderResponse = {
     accent: string | null;
     pickupNote: string | null;
     shipsWithinDays: number | null;
+    /** The shop's IANA timezone (absent on older servers). */
+    timezone?: string | null;
     manual: ManualHandles;
   };
   canSayPaid: boolean;

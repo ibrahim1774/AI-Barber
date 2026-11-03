@@ -1,7 +1,7 @@
 // Shared pieces of the store API flows: the store gate, cart parsing and pricing, address
 // validation, response views, and the money paths shared by the owner refund and the sweeps.
 import type { GetUser } from '../bookings/auth.js';
-import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
+import { isObj, isUuid, iso, text, validZone, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
 import { entitlementActive } from '../ios/lapse.js';
 import { gateRow } from '../webApp/entitlementGate.js';
@@ -218,6 +218,7 @@ export function publicOrderView(o: OrderRow, items: OrderItemRow[], shop: ShopSt
       accent: shop.accent ?? null,
       pickupNote: shop.store_pickup_note ?? null,
       shipsWithinDays: shop.ships_within_days ?? null,
+      timezone: validZone(shop.timezone) ? shop.timezone : null,
       manual,
     },
     canSayPaid: canSayPaid(o),

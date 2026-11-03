@@ -118,6 +118,32 @@ describe('owner email: store', () => {
     await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, c as OrderNotifyDeps);
     expect(c.emailOwner).not.toHaveBeenCalled();
   });
+  it('shipping orders pass the address to the owner email; pickup and a card order not yet paid do not', async () => {
+    flagOn();
+    const addr = { name: 'Sam Lee', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' };
+    const d = odeps(octx({}, { fulfilment: 'shipping', shipping_address: addr }));
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, d as OrderNotifyDeps);
+    expect(d.emailOwner.mock.calls[0][1]).toMatchObject({ fulfilment: 'shipping', shipTo: 'Sam Lee, 1 Main St, Austin, TX 78701' });
+    expect(d.push.mock.calls[0][1].body).not.toContain('1 Main St');
+    const p = odeps(octx());
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, p as OrderNotifyDeps);
+    expect(p.emailOwner.mock.calls[0][1]).not.toHaveProperty('shipTo');
+    // Card + shipping: nothing before payment; after the webhook stores the address the email carries it.
+    const awaiting = odeps(octx({}, { fulfilment: 'shipping', shipping_address: null, payment_method: 'card', payment_status: 'awaiting' }));
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, awaiting as OrderNotifyDeps);
+    expect(awaiting.emailOwner).not.toHaveBeenCalled();
+    const paid = odeps(octx({}, { fulfilment: 'shipping', shipping_address: addr, payment_method: 'card', payment_status: 'paid', status: 'paid' }));
+    await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, paid as OrderNotifyDeps);
+    expect(paid.emailOwner.mock.calls[0][1]).toMatchObject({ shipTo: 'Sam Lee, 1 Main St, Austin, TX 78701' });
+  });
+  it('the owner email shows "Ship to" only when an address is present', () => {
+    const base = { kind: 'order_created', customerName: 'Sam', itemCount: 1, totalCents: 2400, fulfilment: 'shipping', orderLabel: '#1' } as const;
+    const withAddr = ownerEmailFor({ ...base, shipTo: 'Sam Lee, 1 Main St, Austin, TX 78701' }, null);
+    expect(withAddr.html).toContain('Ship to');
+    expect(withAddr.text).toContain('Ship to: Sam Lee, 1 Main St, Austin, TX 78701');
+    expect(ownerEmailFor({ ...base, shipTo: null }, null).text).not.toContain('Ship to');
+    expect(ownerEmailFor(base, null).text).not.toContain('Ship to');
+  });
   it('failure never throws', async () => {
     flagOn();
     const d = odeps(octx());

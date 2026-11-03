@@ -52,6 +52,9 @@ describe('shipsWithinLabel', () => {
 describe('shippedOnLabel / safeTrackingHref (customer order page)', () => {
   it('formats the shipped date and tolerates a missing or bad one', () => {
     expect(shippedOnLabel('2026-11-02T23:30:00.000Z')).toBe('Nov 2, 2026');
+    expect(shippedOnLabel('2026-11-03T03:30:00.000Z', 'America/Chicago')).toBe('Nov 2, 2026');
+    expect(shippedOnLabel('2026-11-03T03:30:00.000Z', 'Not/AZone')).toBe('Nov 3, 2026');
+    expect(shippedOnLabel('2026-11-03T03:30:00.000Z', null)).toBe('Nov 3, 2026');
     expect(shippedOnLabel(null)).toBe('');
     expect(shippedOnLabel(undefined)).toBe('');
     expect(shippedOnLabel('nope')).toBe('');

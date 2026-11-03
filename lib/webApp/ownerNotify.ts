@@ -11,7 +11,7 @@ import { isEntitledStatus, keyMode } from './stripeCore.js';
 export type OwnerEvent =
   | { kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled'; customerName: string | null; service: string; whenShort: string; whenLong: string }
   | { kind: 'customer_says_paid'; customerName: string | null; service: string; whenShort: string; whenLong: string; method: string; amountCents: number | null }
-  | { kind: 'order_created'; customerName: string | null; itemCount: number; totalCents: number; fulfilment: string; orderLabel: string }
+  | { kind: 'order_created'; customerName: string | null; itemCount: number; totalCents: number; fulfilment: string; orderLabel: string; /** One-line shipping address (shipping orders, once known). */ shipTo?: string | null }
   | { kind: 'order_says_paid'; customerName: string | null; totalCents: number; method: string; orderLabel: string };
 
 export interface OwnerContact { email: string | null; firstName: string | null }
@@ -137,7 +137,7 @@ export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_
       subject = `New order: ${money(e.totalCents)} (${e.itemCount} ${e.itemCount === 1 ? 'item' : 'items'})`;
       headline = 'New store order';
       leadText = `${name} placed order ${clean(e.orderLabel)}.`;
-      facts = [['Who', name], ['Total', money(e.totalCents)], ['Items', String(e.itemCount)], ['Type', clean(e.fulfilment)]];
+      facts = [['Who', name], ['Total', money(e.totalCents)], ['Items', String(e.itemCount)], ['Type', clean(e.fulfilment)], ...(e.shipTo?.trim() ? [['Ship to', clean(e.shipTo)] as [string, string]] : [])];
       break;
     case 'order_says_paid':
       subject = `${who(e.customerName)} says they paid ${money(e.totalCents)}`;

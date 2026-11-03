@@ -460,7 +460,7 @@ function StatusView({ api, token, checkout, fresh, onSite = false }: { api: Shop
           {formatAddress(o.shippingAddress).map((l, i) => <div key={i}>{l}</div>)}
           {!o.shippingAddress && <div className="sub">The address you entered at checkout.</div>}
           {o.status !== 'shipped' && o.status !== 'done' && shop.shipsWithinDays != null ? <div className="sub">{shipsWithinLabel(shop.shipsWithinDays)}.</div> : null}
-          {(o.status === 'shipped' || o.status === 'done') && o.shippedAt && shippedOnLabel(o.shippedAt) ? <div><strong>Shipped on {shippedOnLabel(o.shippedAt)}</strong></div> : null}
+          {(o.status === 'shipped' || o.status === 'done') && o.shippedAt && shippedOnLabel(o.shippedAt, shop.timezone) ? <div><strong>Shipped on {shippedOnLabel(o.shippedAt, shop.timezone)}</strong></div> : null}
           {o.trackingNumber && <div>Tracking number: {o.trackingNumber}</div>}
           {safeTrackingHref(o.trackingUrl) && <a className="btn ghost" href={safeTrackingHref(o.trackingUrl)!} target="_blank" rel="noopener noreferrer">Track package</a>}
         </div>

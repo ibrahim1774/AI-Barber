@@ -538,7 +538,7 @@ describe('getOrder', () => {
       },
       shop: {
         name: 'Fresh Cuts', slug: 'fresh-cuts', address: '1 Main St', phone: '555-0100', accent: '#112233',
-        pickupNote: 'Ring the bell', shipsWithinDays: 3, manual: { cashapp: '$freshcuts' },
+        pickupNote: 'Ring the bell', shipsWithinDays: 3, timezone: 'America/New_York', manual: { cashapp: '$freshcuts' },
       },
       canSayPaid: true,
       shopOpen: true,

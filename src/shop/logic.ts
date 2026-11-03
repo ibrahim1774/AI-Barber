@@ -233,11 +233,16 @@ export function sentErrorMessage(e: { status: number; code: string } | null): st
   return "Couldn't record that. Try again.";
 }
 
-/** "Nov 2, 2026" for an ISO timestamp (UTC date, so the page and the email agree); '' if unparseable. */
-export function shippedOnLabel(iso: string | null | undefined): string {
+/** "Nov 2, 2026" for an ISO timestamp in the shop's IANA timezone (UTC if missing or invalid); '' if unparseable. */
+export function shippedOnLabel(iso: string | null | undefined, timeZone?: string | null): string {
   const t = iso ? Date.parse(iso) : NaN;
   if (Number.isNaN(t)) return '';
-  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const fmt = (tz: string) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: tz });
+  try {
+    return fmt(timeZone || 'UTC');
+  } catch {
+    return fmt('UTC');
+  }
 }
 
 /** The https tracking link to open, else null (never a javascript: or http: link). */

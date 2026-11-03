@@ -111,7 +111,7 @@ const handleOf = (shop: NotifyStoreShop, m: string): string | null => {
 const UNPAID = new Set(['none', 'awaiting']);
 const PAID_CARD = new Set(['paid', 'partially_refunded', 'refunded']);
 
-function addressLine(a: Record<string, unknown> | null): string | null {
+export function addressLine(a: Record<string, unknown> | null): string | null {
   if (!a || typeof a !== 'object') return null;
   const s = (k: string) => (typeof a[k] === 'string' && (a[k] as string).trim() ? (a[k] as string).trim() : null);
   const cityLine = [s('city'), [s('state'), s('postal_code')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
@@ -269,6 +269,7 @@ export async function notifyOrder(event: StoreNotifyEvent, deps?: OrderNotifyDep
         jobs.push(emailOwner(ctx, d, {
           kind: 'order_created', customerName: o.customer_name, itemCount: ctx.items.reduce((n, i) => n + i.quantity, 0),
           totalCents: o.total_cents, fulfilment: o.fulfilment, orderLabel: orderNo(o),
+          ...(o.fulfilment === 'shipping' ? { shipTo: addressLine(o.shipping_address) } : {}),
         }));
         jobs.push(emailCustomer(ctx, d, () => orderConfirmationEmail(ctx)));
         break;
