@@ -449,6 +449,11 @@ export interface OwnerShopRow extends OnboardShop {
   stripe_charges_enabled: boolean;
 }
 
+export interface OauthLiveDeps {
+  shopIdByAccount(accountId: string): Promise<string | null>;
+  replaceAccountId(shopId: string, oldId: string, newId: string): Promise<boolean>;
+}
+
 export interface OwnerStripeDeps {
   getUser(jwt: string): Promise<{ id: string; email: string | null } | null>;
   shopForOwner(userId: string): Promise<OwnerShopRow | null>;
@@ -470,7 +475,7 @@ function bearer(authorization: string | string[] | undefined): string | null {
   return m ? m[1] : null;
 }
 
-async function ownerShop(authorization: string | string[] | undefined, deps: OwnerStripeDeps):
+export async function ownerShop(authorization: string | string[] | undefined, deps: OwnerStripeDeps):
   Promise<{ user: { id: string; email: string | null }; shop: OwnerShopRow } | Reply> {
   const jwt = bearer(authorization);
   if (!jwt) return { status: 401, body: { error: 'unauthorized' } };
@@ -548,7 +553,7 @@ function dbFail(op: string, error: { message?: string } | null): never {
   throw new Error(`bookings/payments ${op} failed: ${error?.message ?? 'unknown'}`);
 }
 
-export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStripeDeps {
+export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStripeDeps & OauthLiveDeps {
   return {
     async getUser(jwt) {
       const { data, error } = await db.auth.getUser(jwt);
@@ -588,6 +593,17 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
       const { data: cur, error: e2 } = await db.from('ab_shops').select('stripe_account_id').eq('id', shopId).single();
       if (e2) dbFail('saveAccountId(read)', e2);
       return (cur as { stripe_account_id: string }).stripe_account_id;
+    },
+    async shopIdByAccount(accountId) {
+      const { data, error } = await db.from('ab_shops').select('id').eq('stripe_account_id', accountId).limit(1);
+      if (error) dbFail('shopIdByAccount', error);
+      return (data as { id: string }[] | null)?.[0]?.id ?? null;
+    },
+    async replaceAccountId(shopId, oldId, newId) {
+      const { data, error } = await db.from('ab_shops').update({ stripe_account_id: newId, stripe_charges_enabled: false })
+        .eq('id', shopId).eq('stripe_account_id', oldId).select('id');
+      if (error) dbFail('replaceAccountId', error);
+      return Array.isArray(data) && data.length > 0;
     },
     async setChargesEnabled(shopId, enabled) {
       const { error } = await db.from('ab_shops').update({ stripe_charges_enabled: enabled }).eq('id', shopId);

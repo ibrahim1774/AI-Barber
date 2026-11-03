@@ -172,7 +172,7 @@ describe('S1 legacy client compatibility', () => {
   });
 });
 
-const SUBJECT = 'AI Barber web: paid publish stopped';
+const SUBJECT = 'Prime Barber web: paid publish stopped';
 describe('S2 owner alert when a paid publish stops', () => {
   it('claim park alerts once', async () => {
     const { job, deps } = await setup();

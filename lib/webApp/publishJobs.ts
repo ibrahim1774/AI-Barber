@@ -14,7 +14,7 @@ const isPaidJob = (j: Pick<Intent, 'requires_payment' | 'stripe_subscription_id'
 export async function alertStopped(job: Intent, reason: 'publish_gave_up' | 'publish_refused', result: unknown): Promise<void> {
   if (!isPaidJob(job)) return;
   try {
-    await alertOwner('AI Barber web: paid publish stopped', [
+    await alertOwner('Prime Barber web: paid publish stopped', [
       `reason: ${reason}`, `environment: ${job.environment}`, `user: ${job.user_id}`, `intent: ${job.id}`, `revision: ${job.revision}`,
       `attempts: ${job.attempts}`, `subscription: ${job.stripe_subscription_id ?? '(none)'}`, `session: ${job.stripe_session_id ?? '(none)'}`,
       `result: ${JSON.stringify(result ?? null).slice(0, 500)}`,

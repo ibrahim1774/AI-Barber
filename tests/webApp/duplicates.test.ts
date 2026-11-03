@@ -89,7 +89,7 @@ describe('handleDuplicates', () => {
     const { deps, log } = fakes({ subs: two(), refund: true });
     const r = await handleDuplicates('u1', deps);
     expect(r.refunded).toBe(1);
-    expect(log).toEqual(['alert:AI Barber web: customer is paying twice', 'cancel:sub_b', 'refund:sub_b:pi_1']);
+    expect(log).toEqual(['alert:Prime Barber web: customer is paying twice', 'cancel:sub_b', 'refund:sub_b:pi_1']);
     expect(deps.stampRefunded).toHaveBeenCalledWith('sub_b');
     expect(deps.mailCustomer).toHaveBeenCalledWith('u1', 'cus_1', 'website');
     expect(deps.cancel).not.toHaveBeenCalledWith('sub_a');
@@ -130,7 +130,7 @@ describe('handleDuplicates', () => {
     const r = await handleDuplicates('u1', deps);
     expect(r.refunded).toBe(0);
     expect(deps.refund).not.toHaveBeenCalled();
-    expect(log.some((l) => l.startsWith('alert:AI Barber web: duplicate NOT cancelled'))).toBe(true);
+    expect(log.some((l) => l.startsWith('alert:Prime Barber web: duplicate NOT cancelled'))).toBe(true);
     expect((deps.alert as any).mock.calls.at(-1)[1].join('\n')).toMatch(/manually/);
   });
 

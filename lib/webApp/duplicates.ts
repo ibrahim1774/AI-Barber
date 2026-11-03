@@ -94,7 +94,7 @@ export async function handleDuplicates(userId: string, deps: DupDeps): Promise<D
     }
     const refundNow = outcome.verdict === 'refundable';
     try {
-      await deps.alert('AI Barber web: customer is paying twice', [...base, '', refundNow ? 'OUTCOME: cancelling the duplicate and refunding its one payment now (a follow-up email reports any failure).' : `OUTCOME: no automatic action; alert only because ${outcome.reason}. Decide whether to cancel and refund the duplicate.`]);
+      await deps.alert('Prime Barber web: customer is paying twice', [...base, '', refundNow ? 'OUTCOME: cancelling the duplicate and refunding its one payment now (a follow-up email reports any failure).' : `OUTCOME: no automatic action; alert only because ${outcome.reason}. Decide whether to cancel and refund the duplicate.`]);
       out.alerted++;
     } catch (e: any) {
       // Could not tell the owner: free the claim so the next run retries, and move no money this time.
@@ -108,13 +108,13 @@ export async function handleDuplicates(userId: string, deps: DupDeps): Promise<D
     try { await deps.cancel(dup.id); }
     catch (e: any) {
       out.errors++;
-      await deps.alert('AI Barber web: duplicate NOT cancelled, nothing refunded', [...base, '', `cancel failed: ${e?.message || e}`, 'Cancel and refund it manually in Stripe.']).catch(() => {});
+      await deps.alert('Prime Barber web: duplicate NOT cancelled, nothing refunded', [...base, '', `cancel failed: ${e?.message || e}`, 'Cancel and refund it manually in Stripe.']).catch(() => {});
       continue;
     }
     try { await deps.refund(dup.id, invoices!.paymentIntent as string); }
     catch (e: any) {
       out.errors++;
-      await deps.alert('AI Barber web: duplicate cancelled, refund manually', [...base, '', `the subscription is cancelled but the refund failed: ${e?.message || e}`, `Refund payment intent ${invoices!.paymentIntent} manually in Stripe.`]).catch(() => {});
+      await deps.alert('Prime Barber web: duplicate cancelled, refund manually', [...base, '', `the subscription is cancelled but the refund failed: ${e?.message || e}`, `Refund payment intent ${invoices!.paymentIntent} manually in Stripe.`]).catch(() => {});
       continue;
     }
     await deps.stampRefunded(dup.id).catch((e: any) => console.error('[web-app dup] could not stamp dup_refunded_at:', e?.message || e));
