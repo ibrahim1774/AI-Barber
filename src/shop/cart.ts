@@ -90,3 +90,41 @@ export function cartTotals(cart: Cart, products: Product[], fulfilment: Fulfilme
   const shippingCents = fulfilment === 'shipping' && count > 0 ? flatCents : 0;
   return { subtotalCents, shippingCents, totalCents: subtotalCents + shippingCents, count };
 }
+
+// ---- card checkout in flight --------------------------------------------------------------------
+// A card order sends the customer to Stripe and back to the order page, which can be on a DIFFERENT origin (the barber's
+// site) than the shop page they started on, so the order page cannot clear this origin's saved cart. Instead the shop page
+// remembers the order token before leaving; when it loads again it asks the server whether that order was paid.
+const pendingKey = (slug: string) => `ab-cart-pending:${slug}`;
+
+export function markCartPending(slug: string, token: string, storage: StorageLike | undefined): void {
+  try { storage?.setItem(pendingKey(slug), token); } catch { /* ignore */ }
+}
+export function pendingCartToken(slug: string, storage: StorageLike | undefined): string | null {
+  try { return storage?.getItem(pendingKey(slug)) || null; } catch { return null; }
+}
+export function clearCartPending(slug: string, storage: StorageLike | undefined): void {
+  try { storage?.removeItem(pendingKey(slug)); } catch { /* ignore */ }
+}
+
+/**
+ * Settle a pending card checkout. A paid order empties the saved cart; an unpaid one (cancelled, awaiting, expired) keeps it.
+ * A missing/unknown order (404, network) leaves everything as it was and returns 'unknown' so it is retried next load.
+ * Returns the cart to use.
+ */
+export async function settlePendingCart(
+  slug: string, cart: Cart, storage: StorageLike | undefined,
+  getOrder: (token: string) => Promise<{ order: { paymentStatus: string } }>,
+): Promise<{ cart: Cart; cleared: boolean }> {
+  const token = pendingCartToken(slug, storage);
+  if (!token) return { cart, cleared: false };
+  try {
+    const { order } = await getOrder(token);
+    if (order.paymentStatus === 'paid' || order.paymentStatus === 'refunded' || order.paymentStatus === 'partially_refunded') {
+      saveCart(slug, { lines: [] }, storage); clearCartPending(slug, storage);
+      return { cart: { lines: [] }, cleared: true };
+    }
+    if (order.paymentStatus !== 'awaiting') clearCartPending(slug, storage); // cancelled/failed: keep the cart, stop asking
+  } catch { /* keep the marker, try again next time */ }
+  return { cart, cleared: false };
+}

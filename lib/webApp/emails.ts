@@ -106,15 +106,25 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   });
 }
 
-export async function sendMail(to: string, mail: Mail): Promise<void> {
+export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch = fetch): Promise<string> {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error('RESEND_API_KEY missing');
-  const r = await fetch('https://api.resend.com/emails', {
+  const init = {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text }),
-  });
+  };
+  // Resend allows ~2 requests/s per key and an order fires several mails at once: retry a 429/5xx once.
+  let r = await fetchImpl('https://api.resend.com/emails', init);
+  if (r.status === 429 || r.status >= 500) {
+    await new Promise((res) => setTimeout(res, 1100));
+    r = await fetchImpl('https://api.resend.com/emails', init);
+  }
   if (!r.ok) throw new Error(`resend ${r.status}`);
+  // A 2xx without a message id is not an accepted email: never report it as sent.
+  const body: any = await r.json().catch(() => null);
+  if (!body || typeof body.id !== 'string' || !body.id) throw new Error('resend accepted without a message id');
+  return body.id;
 }
 
 /** Customer was charged twice and the second charge was refunded (only sent when WEB_APP_DUP_REFUND=1 acted). */

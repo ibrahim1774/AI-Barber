@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type ShopApi } from './api';
-import { addItem, cartTotals, loadCart, MAX_QTY, reconcile, removeItem, saveCart, setQty } from './cart';
+import { addItem, cartTotals, loadCart, markCartPending, MAX_QTY, reconcile, removeItem, saveCart, setQty, settlePendingCart } from './cart';
 import {
   CHANGED_MESSAGE, checkoutBody, directionsUrl, EMPTY_ADDRESS, EXPIRED_MESSAGE, formatAddress, formatMoney, manualLink, METHOD_LABEL,
   newClientKey, parseShopRoute, paymentLine, payRows, placeOrder, safeTrackingHref, sentErrorMessage, shippedOnLabel, shipsWithinLabel, invalidMessage, STATUS_LABEL, telUrl,
@@ -72,6 +72,8 @@ function ShopPage({ api, pathSlug, loadSlug }: { api: ShopApi; pathSlug: string 
         const r = reconcile(loadCart(s, storage), ok.products);
         setCartState(r.cart);
         saveCart(s, r.cart, storage);
+        // Back from a card checkout that finished on another origin: empty the cart if that order was paid.
+        settlePendingCart(s, r.cart, storage, api.order).then((x) => { if (x.cleared) setCartState(x.cart); });
         if (r.dropped.length) setNotice('Some items in your cart are no longer available.');
       });
     }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
@@ -271,7 +273,7 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
     switch (r.kind) {
       case 'ok': {
         if (r.state.clientKey !== keyRef.current) keyRef.current = r.state.clientKey;
-        if (state.pay === 'card' && r.res.checkoutUrl) { window.location.assign(r.res.checkoutUrl); return; }
+        if (state.pay === 'card' && r.res.checkoutUrl) { markCartPending(shop.slug, tokenFromStatusUrl(r.res.order.statusUrl), getStorage()); window.location.assign(r.res.checkoutUrl); return; }
         onCreated(tokenFromStatusUrl(r.res.order.statusUrl));
         return;
       }

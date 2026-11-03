@@ -17,7 +17,8 @@ export type OwnerEvent =
 export interface OwnerContact { email: string | null; firstName: string | null }
 export interface OwnerNotifyDeps {
   contact(ownerId: string): Promise<OwnerContact>;
-  send(to: string, mail: Mail): Promise<void>;
+  /** Resolves with the provider message id once the email was accepted; must throw otherwise. */
+  send(to: string, mail: Mail): Promise<string | void>;
 }
 
 /** The Stripe mode the web app runs in (from STRIPE_WEBAPP_SECRET_KEY), or null when unset/unknown. */
@@ -174,8 +175,9 @@ export async function sendOwnerEmail(ownerId: string, event: OwnerEvent, deps: O
   try {
     const { email, firstName } = await deps.contact(ownerId);
     if (!email) { console.warn('[web-app owner notify] skipped: no owner email', { kind: event?.kind }); return 'skipped'; }
-    await deps.send(email, ownerEmailFor(event, firstName));
-    console.info('[web-app owner notify] sent', { kind: event?.kind });
+    const id = await deps.send(email, ownerEmailFor(event, firstName));
+    // "sent" only when the provider accepted the mail and gave back an id (so it can be looked up in the Resend dashboard).
+    console.info('[web-app owner notify] sent', { kind: event?.kind, messageId: typeof id === 'string' ? id : undefined });
     return 'sent';
   } catch (e: any) {
     console.error('[web-app owner notify] failed:', event?.kind, e?.message || e);

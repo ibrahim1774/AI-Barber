@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addItem, cartTotals, loadCart, reconcile, removeItem, saveCart, setQty, MAX_LINES, MAX_QTY } from '../../src/shop/cart';
+import { markCartPending, pendingCartToken, settlePendingCart, addItem, cartTotals, loadCart, reconcile, removeItem, saveCart, setQty, MAX_LINES, MAX_QTY } from '../../src/shop/cart';
 import type { Cart, Product, StorageLike } from '../../src/shop/types';
 
 const P = (id: string, priceCents = 1000, extra: Partial<Product> = {}): Product => ({
@@ -133,5 +133,32 @@ describe('clearing after a paid card order', () => {
     const s: StorageLike = { getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v; }, removeItem: (k) => { delete data[k]; } };
     saveCart('x', { lines: [] }, s);
     expect(data['ab-cart:x']).toBeUndefined();
+  });
+});
+
+describe('card checkout that returns on another origin', () => {
+  const full = () => addItem(empty, P('a'), 2);
+  const setup = () => { const s = mem(); saveCart('x', full(), s); markCartPending('x', 'tok', s); return s; };
+  const order = (paymentStatus: string) => async () => ({ order: { paymentStatus } });
+  it('empties the cart and marker once the order is paid', async () => {
+    const s = setup();
+    const r = await settlePendingCart('x', full(), s, order('paid'));
+    expect(r.cleared).toBe(true); expect(r.cart.lines).toEqual([]);
+    expect(loadCart('x', s).lines).toEqual([]); expect(pendingCartToken('x', s)).toBeNull();
+  });
+  it('keeps the cart after a cancelled/failed checkout', async () => {
+    const s = setup();
+    const r = await settlePendingCart('x', full(), s, order('failed'));
+    expect(r.cleared).toBe(false); expect(loadCart('x', s).lines).toHaveLength(1);
+  });
+  it('keeps cart and marker while still awaiting or when the lookup fails', async () => {
+    const s = setup();
+    expect((await settlePendingCart('x', full(), s, order('awaiting'))).cleared).toBe(false);
+    expect((await settlePendingCart('x', full(), s, async () => { throw new Error('net'); })).cleared).toBe(false);
+    expect(pendingCartToken('x', s)).toBe('tok'); expect(loadCart('x', s).lines).toHaveLength(1);
+  });
+  it('does nothing without a marker', async () => {
+    const s = mem(); const f = vi.fn();
+    expect((await settlePendingCart('x', full(), s, f as any)).cleared).toBe(false); expect(f).not.toHaveBeenCalled();
   });
 });
