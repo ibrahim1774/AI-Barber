@@ -7,7 +7,7 @@
 import { requireOwner } from '../bookings/auth.js';
 import { err, invalid, isObj, isUuid, iso, notFound, ok, text, type FlowResult } from '../bookings/core.js';
 import type { PaymentStatus } from '../bookings/repo.js';
-import { isUnpaidCardHold, ownerOrderView, refundOrderOwed, safeNotify, type StoreOwnerDeps } from './core.js';
+import { isUnpaidCardHold, ownerOrderView, refundOrderOwed, safeLog, safeNotify, type StoreOwnerDeps } from './core.js';
 import type { OrderGuard, OrderPatch } from './repo.js';
 import type { OrderRow, OrderStatus, ShopStoreRow, StoreNotifyEvent } from './types.js';
 
@@ -36,8 +36,11 @@ const refundPending = (o: OrderRow) => o.refund_due_cents > o.amount_refunded_ce
 // ---------------------------------------------------------------------------
 // POST /api/shop/orders/:id/mark  { action, trackingNumber?, trackingUrl? }
 // ---------------------------------------------------------------------------
-type Action = 'paid' | 'ready' | 'shipped' | 'done' | 'cancel';
-const ACTIONS: Action[] = ['paid', 'ready', 'shipped', 'done', 'cancel'];
+type Action = 'paid' | 'ready' | 'shipped' | 'tracking' | 'done' | 'cancel';
+const ACTIONS: Action[] = ['paid', 'ready', 'shipped', 'tracking', 'done', 'cancel'];
+/** 'shipped' and 'tracking' are the actions that carry a tracking number / link. */
+const TRACKS = (a: Action) => a === 'shipped' || a === 'tracking';
+const TRACKING_FROM: OrderStatus[] = ['shipped', 'done'];
 const UNPAID: PaymentStatus[] = ['none', 'awaiting'];
 const FULFIL_FROM: OrderStatus[] = ['new', 'paid'];
 const DONE_FROM: OrderStatus[] = ['new', 'paid', 'ready', 'shipped'];
@@ -50,9 +53,9 @@ export async function markOwnerOrder(auth: Auth, id: unknown, body: unknown, dep
   const action = body.action as Action;
   if (!ACTIONS.includes(action)) return invalid('action');
   const trackingNumber = text(body.trackingNumber, 64, true);
-  if (trackingNumber === undefined || (trackingNumber !== null && action !== 'shipped')) return invalid('trackingNumber');
+  if (trackingNumber === undefined || (trackingNumber !== null && !TRACKS(action))) return invalid('trackingNumber');
   const trackingUrl = text(body.trackingUrl, 500, true);
-  if (trackingUrl === undefined || (trackingUrl !== null && (action !== 'shipped' || !/^https:\/\/\S+$/i.test(trackingUrl)))) {
+  if (trackingUrl === undefined || (trackingUrl !== null && (!TRACKS(action) || !/^https:\/\/\S+$/i.test(trackingUrl)))) {
     return invalid('trackingUrl');
   }
 
@@ -106,6 +109,24 @@ export async function markOwnerOrder(auth: Auth, id: unknown, body: unknown, dep
         (r) => r.status === 'shipped',
         { kind: 'order_shipped', orderId: o.id },
       );
+    }
+    case 'tracking': {
+      // Edit the tracking of an order already shipped (or done after shipping). The customer is
+      // emailed only when the value actually changed, so a repeated save sends nothing.
+      if (o.fulfilment !== 'shipping') return err(409, 'wrong-fulfilment');
+      if (!TRACKING_FROM.includes(o.status) || !o.shipped_at) return err(409, 'not-markable');
+      if (trackingNumber === null && trackingUrl === null) return invalid('trackingNumber');
+      if (trackingNumber === o.tracking_number && trackingUrl === o.tracking_url) return reply(o);
+      const upd = await deps.repo.updateOrder(o.id, { tracking_number: trackingNumber, tracking_url: trackingUrl }, { statusIn: TRACKING_FROM });
+      if (upd.ok === false) {
+        const cur = await deps.repo.orderById(o.id);
+        return cur && cur.shop_id === shop.id && cur.tracking_number === trackingNumber && cur.tracking_url === trackingUrl ? reply(cur) : err(409, 'not-markable');
+      }
+      await safeLog(deps, shop.id, 'order_tracking_updated', {
+        orderId: o.id, from: { number: o.tracking_number, url: o.tracking_url }, to: { number: trackingNumber, url: trackingUrl },
+      });
+      await safeNotify(deps, { kind: 'order_tracking_updated', orderId: o.id });
+      return reply(upd.row);
     }
     case 'done': {
       if (o.status === 'done') return reply(o);

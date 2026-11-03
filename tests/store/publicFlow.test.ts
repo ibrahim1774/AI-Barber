@@ -534,7 +534,7 @@ describe('getOrder', () => {
         items: [{ name: 'Beard oil', unitPriceCents: 1500, quantity: 2 }],
         subtotalCents: 3000, shippingCents: 0, totalCents: 3000,
         paymentStatus: 'awaiting', paymentMethod: 'cashapp', amountPaidCents: 0, amountRefundedCents: 0,
-        trackingNumber: null, trackingUrl: null, shippingAddress: null, customerSaysPaid: false,
+        trackingNumber: null, trackingUrl: null, shippedAt: null, shippingAddress: null, customerSaysPaid: false,
       },
       shop: {
         name: 'Fresh Cuts', slug: 'fresh-cuts', address: '1 Main St', phone: '555-0100', accent: '#112233',

@@ -194,6 +194,75 @@ describe('mark: ready / shipped / done', () => {
     expect(w.notified).toEqual([]);
   });
 
+  describe("'tracking' action", () => {
+    const shipIt = async (w: StoreWorld, body: Record<string, unknown> = {}) => {
+      const s = await place(w, shipping);
+      expect((await mark(w, s.id, { action: 'shipped', ...body })).status).toBe(200);
+      w.notified.length = 0;
+      return s;
+    };
+    const trk = { action: 'tracking', trackingNumber: '9400 1111', trackingUrl: 'https://tools.usps.com/go/TrackConfirmAction?tLabels=9400%201111' };
+
+    it('updates tracking on a shipped order, emails once, audits', async () => {
+      const w = storeWorld();
+      const s = await shipIt(w);
+      const r = await mark(w, s.id, trk);
+      expect(r.status).toBe(200);
+      expect(w.order(s.id)).toMatchObject({ status: 'shipped', tracking_number: '9400 1111', tracking_url: trk.trackingUrl });
+      expect((r.body as any).order).toMatchObject({ trackingNumber: '9400 1111' });
+      expect(w.notified).toEqual([{ kind: 'order_tracking_updated', orderId: s.id }]);
+      expect(w.state.events.filter((e) => e.kind === 'order_tracking_updated')).toHaveLength(1);
+    });
+
+    it('is idempotent: same values send no email and no audit', async () => {
+      const w = storeWorld();
+      const s = await shipIt(w, { trackingNumber: '1Z999', trackingUrl: 'https://ups.example/1Z999' });
+      expect((await mark(w, s.id, { action: 'tracking', trackingNumber: '1Z999', trackingUrl: 'https://ups.example/1Z999' })).status).toBe(200);
+      expect(w.notified).toEqual([]);
+      expect(w.state.events.filter((e) => e.kind === 'order_tracking_updated')).toHaveLength(0);
+      await mark(w, s.id, trk);
+      await mark(w, s.id, trk);
+      expect(w.notified).toHaveLength(1);
+    });
+
+    it('works on a done order that shipped', async () => {
+      const w = storeWorld();
+      const s = await shipIt(w);
+      await mark(w, s.id, { action: 'done' });
+      expect((await mark(w, s.id, trk)).status).toBe(200);
+      expect(w.order(s.id)).toMatchObject({ status: 'done', tracking_number: '9400 1111' });
+    });
+
+    it('state guards: pickup, unshipped, done-without-shipping and cancelled are refused', async () => {
+      const w = storeWorld();
+      const p = await place(w);
+      expect(await mark(w, p.id, trk)).toEqual({ status: 409, body: { error: 'wrong-fulfilment' } });
+      const n = await place(w, shipping);
+      expect(await mark(w, n.id, trk)).toEqual({ status: 409, body: { error: 'not-markable' } });
+      await mark(w, n.id, { action: 'done' }); // done without ever shipping
+      expect(await mark(w, n.id, trk)).toEqual({ status: 409, body: { error: 'not-markable' } });
+      const c = await place(w, shipping);
+      await mark(w, c.id, { action: 'cancel' });
+      expect(await mark(w, c.id, trk)).toEqual({ status: 409, body: { error: 'not-markable' } });
+      expect(w.notified.filter((e) => e.kind === 'order_tracking_updated')).toEqual([]);
+    });
+
+    it('validation: http URL, long number, nothing at all', async () => {
+      const w = storeWorld();
+      const s = await shipIt(w);
+      expect(await mark(w, s.id, { action: 'tracking', trackingUrl: 'http://x.example/1' })).toEqual({ status: 400, body: { error: 'invalid', field: 'trackingUrl' } });
+      expect(await mark(w, s.id, { action: 'tracking', trackingNumber: 'x'.repeat(65) })).toEqual({ status: 400, body: { error: 'invalid', field: 'trackingNumber' } });
+      expect(await mark(w, s.id, { action: 'tracking' })).toEqual({ status: 400, body: { error: 'invalid', field: 'trackingNumber' } });
+      expect(w.notified).toEqual([]);
+    });
+
+    it("another shop's order is 404", async () => {
+      const w = storeWorld();
+      const s = await shipIt(w);
+      expect((await mark(w, s.id, trk, 'Bearer other-jwt')).status).toBe(404);
+    });
+  });
+
   it('done works from new, paid, ready and shipped, with no email; 409 from cancelled', async () => {
     const w = storeWorld();
     const n = await place(w);

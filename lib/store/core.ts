@@ -206,6 +206,7 @@ export function publicOrderView(o: OrderRow, items: OrderItemRow[], shop: ShopSt
       amountRefundedCents: o.amount_refunded_cents,
       trackingNumber: o.tracking_number ?? null,
       trackingUrl: o.tracking_url ?? null,
+      shippedAt: isoOrNull(o.shipped_at),
       shippingAddress: addressOrNull(o.shipping_address),
       customerSaysPaid: !!o.customer_says_paid_at,
     },

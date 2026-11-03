@@ -15,7 +15,7 @@ import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } fro
  *
  * - order_created: push to the shop + confirmation email. A card order still awaiting payment
  *   is skipped (the Stripe webhook sends it on payment), and so is a cancelled order.
- * - order_ready / order_shipped / order_cancelled: email to the customer.
+ * - order_ready / order_shipped / order_tracking_updated / order_cancelled: email to the customer.
  * - order_says_paid: push.
  *
  * Every push carries data { kind: 'order', orderId } and goes to the owner and every active
@@ -204,6 +204,19 @@ export function orderShippedEmail(ctx: OrderNotifyContext): EmailMessage {
     rows, [`Your order ${orderNo(o)} from ${shop.name} is on its way.`], button);
 }
 
+export function orderTrackingUpdatedEmail(ctx: OrderNotifyContext): EmailMessage {
+  const { order: o, shop } = ctx;
+  const rows: [string, string][] = [['Order', orderNo(o)]];
+  if (o.tracking_number?.trim()) rows.push(['Tracking number', o.tracking_number.trim()]);
+  const addr = addressLine(o.shipping_address);
+  if (addr) rows.push(['Ship to', addr]);
+  const button = isHttps(o.tracking_url)
+    ? { label: 'Track package', href: o.tracking_url }
+    : { label: 'View order', href: orderManageUrl(o.manage_token, shop) };
+  return message(ctx, `Tracking updated for order ${orderNo(o)}`, 'Tracking updated',
+    rows, [`${shop.name} updated the tracking for your order ${orderNo(o)}.`], button);
+}
+
 export function orderCancelledEmail(ctx: OrderNotifyContext, refundedCents: number, closed = false, owedCents = 0): EmailMessage {
   const { order: o, shop } = ctx;
   const paras = [closed
@@ -265,6 +278,9 @@ export async function notifyOrder(event: StoreNotifyEvent, deps?: OrderNotifyDep
         break;
       case 'order_shipped':
         jobs.push(emailCustomer(ctx, d, () => orderShippedEmail(ctx)));
+        break;
+      case 'order_tracking_updated':
+        jobs.push(emailCustomer(ctx, d, () => orderTrackingUpdatedEmail(ctx)));
         break;
       case 'order_cancelled': {
         const refunded = event.refundedCents ?? o.amount_refunded_cents ?? 0;

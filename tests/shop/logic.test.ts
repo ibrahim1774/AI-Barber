@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAddress, newClientKey, parseShopRoute, shipsWithinLabel } from '../../src/shop/logic';
+import { formatAddress, newClientKey, parseShopRoute, safeTrackingHref, shippedOnLabel, shipsWithinLabel } from '../../src/shop/logic';
 
 describe('parseShopRoute', () => {
   it('/shop/{slug} is the shop', () => {
@@ -46,5 +46,21 @@ describe('shipsWithinLabel', () => {
     expect(shipsWithinLabel(3)).toBe('Ships within 3 days');
     expect(shipsWithinLabel(null)).toBeNull();
     expect(shipsWithinLabel(undefined)).toBeNull();
+  });
+});
+
+describe('shippedOnLabel / safeTrackingHref (customer order page)', () => {
+  it('formats the shipped date and tolerates a missing or bad one', () => {
+    expect(shippedOnLabel('2026-11-02T23:30:00.000Z')).toBe('Nov 2, 2026');
+    expect(shippedOnLabel(null)).toBe('');
+    expect(shippedOnLabel(undefined)).toBe('');
+    expect(shippedOnLabel('nope')).toBe('');
+  });
+  it('only an https link becomes the Track package button', () => {
+    expect(safeTrackingHref('https://www.ups.com/track?tracknum=1Z')).toBe('https://www.ups.com/track?tracknum=1Z');
+    expect(safeTrackingHref('http://x.example/1')).toBeNull();
+    expect(safeTrackingHref('javascript:alert(1)')).toBeNull();
+    expect(safeTrackingHref('')).toBeNull();
+    expect(safeTrackingHref(null)).toBeNull();
   });
 });

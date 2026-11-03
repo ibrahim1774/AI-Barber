@@ -232,3 +232,13 @@ export function sentErrorMessage(e: { status: number; code: string } | null): st
   if (e && e.status === 409 && e.code === 'not-awaiting-payment') return "This order doesn't need a payment sent.";
   return "Couldn't record that. Try again.";
 }
+
+/** "Nov 2, 2026" for an ISO timestamp (UTC date, so the page and the email agree); '' if unparseable. */
+export function shippedOnLabel(iso: string | null | undefined): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** The https tracking link to open, else null (never a javascript: or http: link). */
+export const safeTrackingHref = (u: string | null | undefined): string | null => (u && /^https:\/\/\S+$/i.test(u) ? u : null);

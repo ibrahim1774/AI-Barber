@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  notifyOrder, orderConfirmationEmail, orderReadyEmail, orderShippedEmail, orderCancelledEmail, liveOrderNotifyDeps,
+  notifyOrder, orderConfirmationEmail, orderReadyEmail, orderShippedEmail, orderTrackingUpdatedEmail, orderCancelledEmail, liveOrderNotifyDeps,
   type OrderNotifyContext, type OrderNotifyDeps,
 } from '../../lib/store/notify.js';
 import type { EmailMessage, EmailResult } from '../../lib/bookings/email.js';
@@ -167,6 +167,25 @@ describe('notifyOrder: customer emails', () => {
 
     const noUrl = orderShippedEmail(ctx({ fulfilment: 'shipping', status: 'shipped', tracking_number: '1Z999', tracking_url: null }));
     expect(noUrl.html).toContain('1Z999');
+    expect(noUrl.html).not.toContain('Track package');
+    expect(noUrl.html).toContain('View order');
+    expect(noUrl.html).toContain(STATUS_URL);
+  });
+
+  it('order_tracking_updated: subject, number, Track package, customer only', async () => {
+    const d = mkDeps(ctx({ fulfilment: 'shipping', status: 'shipped', tracking_number: '9400 1111', tracking_url: 'https://track.example.com/9400' }));
+    await notifyOrder({ kind: 'order_tracking_updated', orderId: 'ord-1' }, d);
+    expect(d.sendEmail).toHaveBeenCalledTimes(1);
+    expect(d.push).not.toHaveBeenCalled();
+    const m = d.sendEmail.mock.calls[0][0];
+    expect(m.to).toBe('sam@example.com');
+    expect(m.subject).toBe('Tracking updated for order #1001');
+    expect(m.html).toContain('9400 1111');
+    expect(m.html).toContain('Track package');
+    expect(m.html).toContain('https://track.example.com/9400');
+    expect(m.text).toContain('Tracking number: 9400 1111');
+
+    const noUrl = orderTrackingUpdatedEmail(ctx({ fulfilment: 'shipping', status: 'shipped', tracking_number: '9400', tracking_url: null }));
     expect(noUrl.html).not.toContain('Track package');
     expect(noUrl.html).toContain('View order');
     expect(noUrl.html).toContain(STATUS_URL);

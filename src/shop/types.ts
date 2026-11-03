@@ -67,6 +67,8 @@ export type OrderView = {
   amountRefundedCents: number;
   trackingNumber: string | null;
   trackingUrl: string | null;
+  /** When the shop marked it shipped (absent on older servers). */
+  shippedAt?: string | null;
   shippingAddress: Record<string, string> | null;
   customerSaysPaid: boolean;
 };

@@ -3,7 +3,7 @@ import { ApiError, type ShopApi } from './api';
 import { addItem, cartTotals, loadCart, MAX_QTY, reconcile, removeItem, saveCart, setQty } from './cart';
 import {
   CHANGED_MESSAGE, checkoutBody, directionsUrl, EMPTY_ADDRESS, EXPIRED_MESSAGE, formatAddress, formatMoney, manualLink, METHOD_LABEL,
-  newClientKey, parseShopRoute, paymentLine, payRows, placeOrder, sentErrorMessage, shipsWithinLabel, invalidMessage, STATUS_LABEL, telUrl,
+  newClientKey, parseShopRoute, paymentLine, payRows, placeOrder, safeTrackingHref, sentErrorMessage, shippedOnLabel, shipsWithinLabel, invalidMessage, STATUS_LABEL, telUrl,
   tokenFromStatusUrl, validateCheckout, type AddressForm, type CheckoutState,
 } from './logic';
 import { CHECKOUT_POLL_MS, parseCheckout, shouldKeepPolling, type CheckoutReturn } from '../book/logic';
@@ -460,7 +460,9 @@ function StatusView({ api, token, checkout, fresh, onSite = false }: { api: Shop
           {formatAddress(o.shippingAddress).map((l, i) => <div key={i}>{l}</div>)}
           {!o.shippingAddress && <div className="sub">The address you entered at checkout.</div>}
           {o.status !== 'shipped' && o.status !== 'done' && shop.shipsWithinDays != null ? <div className="sub">{shipsWithinLabel(shop.shipsWithinDays)}.</div> : null}
-          {o.trackingNumber && <div>Tracking: {o.trackingUrl ? <a href={/^https?:\/\//i.test(o.trackingUrl) ? o.trackingUrl : undefined} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>{o.trackingNumber}</a> : o.trackingNumber}</div>}
+          {(o.status === 'shipped' || o.status === 'done') && o.shippedAt && shippedOnLabel(o.shippedAt) ? <div><strong>Shipped on {shippedOnLabel(o.shippedAt)}</strong></div> : null}
+          {o.trackingNumber && <div>Tracking number: {o.trackingNumber}</div>}
+          {safeTrackingHref(o.trackingUrl) && <a className="btn ghost" href={safeTrackingHref(o.trackingUrl)!} target="_blank" rel="noopener noreferrer">Track package</a>}
         </div>
       )}
 
