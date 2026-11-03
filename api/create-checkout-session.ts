@@ -1,7 +1,7 @@
 import { safeAttributionKey } from '../lib/stripeMetadata.js';
 import { checkoutSlugAllowed, type CheckoutGuardDeps } from '../lib/checkoutGuard.js';
 import { liveDeployAuthDeps } from '../lib/deployAuth.js';
-import { excludedMethodParams } from '../lib/checkoutPaymentMethods.js';
+import { newCheckoutMethodParams } from '../lib/checkoutPaymentMethods.js';
 
 let guardDeps: CheckoutGuardDeps | undefined;
 const liveGuardDeps = (): CheckoutGuardDeps => {
@@ -329,7 +329,7 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
-    for (const [k, v] of Object.entries(excludedMethodParams())) params.append(k, v);
+    for (const [k, v] of Object.entries(newCheckoutMethodParams())) params.append(k, v);
     // `app` lets the Stripe webhook (api/stripe-webhook) attribute the
     // server-side Purchase to this app and ignore another app's sessions
     // if AI-Barber + PrimeHub ever share one Stripe account.

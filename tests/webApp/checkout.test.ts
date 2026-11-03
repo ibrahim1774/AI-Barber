@@ -56,6 +56,13 @@ afterEach(() => { vi.unstubAllEnvs(); (globalThis as any).__shop = undefined; (g
 const created = () => stripe.calls.filter((c) => c.path === 'checkout/sessions' && c.method === 'POST');
 
 describe('POST /api/web-app/checkout', () => {
+  it('new plan checkouts use the no-Cash-App configuration when STRIPE_NEW_CHECKOUT_PMC is set', async () => {
+    vi.stubEnv('STRIPE_NEW_CHECKOUT_PMC', 'pmc_newsignups');
+    sb.customers = [];
+    expect((await run()).code).toBe(200);
+    expect(created()[0].body.payment_method_configuration).toBe('pmc_newsignups');
+  });
+
   it('flag off: 404', async () => {
     vi.stubEnv('WEB_APP_CHECKOUT', '');
     expect((await run()).code).toBe(404);
@@ -72,7 +79,7 @@ describe('POST /api/web-app/checkout', () => {
     expect(c.customer).toBeUndefined();
     expect(c.customer_email).toBe('owner@example.com');
     expect(c.client_reference_id).toBe('u1');
-    expect(c['excluded_payment_method_types[0]']).toBe('cashapp'); // new checkouts: no Cash App Pay
+    expect(c.payment_method_configuration).toBeUndefined(); // env unset: Stripe default
     expect(c['metadata[user_id]']).toBe('u1'); expect(c['metadata[app]']).toBe('aibarber-app');
     expect(c['subscription_data[metadata][user_id]']).toBe('u1'); expect(c['subscription_data[metadata][app]']).toBe('aibarber-app');
     expect(sb.calls.some((x) => x.path.startsWith('web_app_customers') && x.method === 'POST')).toBe(false);

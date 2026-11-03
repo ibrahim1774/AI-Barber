@@ -96,7 +96,15 @@ describe('create-domain-checkout: $39/year subscription, owner only, signed serv
       expect(p.get(`${prefix}[sig]`)).toBe(domainSig(SECRET, 'freshcuts.com', 'fresh-cuts'));
     }
     expect(p.get('success_url')).toMatch(/^https:\/\/www\.aibarber\.org\?domain_payment=success/);
-    expect(p.getAll('excluded_payment_method_types[0]')).toEqual(['cashapp']); // new checkouts: no Cash App Pay
+    expect(p.get('payment_method_configuration')).toBeNull(); // env unset: Stripe default, nothing changes
+  });
+
+  it('new domain checkouts use the no-Cash-App configuration when STRIPE_NEW_CHECKOUT_PMC is set', async () => {
+    vi.stubEnv('STRIPE_NEW_CHECKOUT_PMC', 'pmc_newsignups');
+    const { cdeps, createStripeSession } = setup();
+    await createDomainCheckout({ domain: 'FreshCuts.com', siteId: 'Fresh Cuts' }, 'https://www.aibarber.org', OWNER_AUTH, cdeps);
+    expect(createStripeSession.mock.calls[0][0].get('payment_method_configuration')).toBe('pmc_newsignups');
+    vi.unstubAllEnvs();
   });
 
   it('a configured Stripe price id is used instead of price_data', async () => {

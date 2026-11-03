@@ -20,7 +20,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
-import { excludedMethodParams } from './checkoutPaymentMethods.js';
+import { newCheckoutMethodParams } from './checkoutPaymentMethods.js';
 import {
   WEB_REFUND_REASONS, advanceSlot, alertOnce, applyPayerEvent, domainsNotConfigured, missingDomainConfig, ownDetached,
   precheckDomain, refundWebRow, reserveSlot, statusBody,
@@ -152,7 +152,7 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
     params.append('line_items[0][price_data][product_data][name]', `Custom domain - ${domain}`);
   }
   params.append('line_items[0][quantity]', '1');
-  for (const [k, v] of Object.entries(excludedMethodParams())) params.append(k, v);
+  for (const [k, v] of Object.entries(newCheckoutMethodParams())) params.append(k, v);
   for (const prefix of ['metadata', 'subscription_data[metadata]']) {
     params.append(`${prefix}[type]`, 'domain_purchase');
     // Not 'aibarber': a domain checkout must never count as a site checkout (deploy proof, pixels, publish).
