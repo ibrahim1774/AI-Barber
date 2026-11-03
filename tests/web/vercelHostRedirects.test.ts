@@ -29,12 +29,17 @@ describe('www.aibarber.org is the old site again (existing customers sign in the
     }
   });
 
-  it('www.primebarber.org / still goes to the new app, except Stripe/legacy returns', () => {
-    expect(redirectFor('/', 'www.primebarber.org')).toBe('/app');
+  it('www.primebarber.org / is not redirected (middleware serves the app); legacy returns and other paths untouched', () => {
+    expect(redirectFor('/', 'www.primebarber.org')).toBeNull();
     for (const u of ['/?stripe_session=x', '/?payment=success', '/?stripe_cancelled=1', '/?session_id=x', '/?signin']) {
       expect(redirectFor(u, 'www.primebarber.org'), u).toBeNull();
     }
     expect(redirectFor('/privacy', 'www.primebarber.org')).toBeNull();
     expect(redirectFor('/api/x', 'www.primebarber.org')).toBeNull();
+  });
+
+  it('other hosts keep the / -> /app redirect, except the pbroot preview test', () => {
+    expect(redirectFor('/?pbroot=1', 'prime-barber-ai-git-x.vercel.app')).toBeNull();
+    expect(redirectFor('/', 'prime-barber-ai.vercel.app')).toBe('/app');
   });
 });

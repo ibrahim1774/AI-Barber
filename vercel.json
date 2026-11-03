@@ -232,6 +232,14 @@
         {
           "type": "host",
           "value": "www.aibarber.org"
+        },
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        },
+        {
+          "type": "query",
+          "key": "pbroot"
         }
       ]
     }
