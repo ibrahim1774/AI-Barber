@@ -49,11 +49,16 @@ export const webAppCheckoutOn = () => process.env.WEB_APP_CHECKOUT === '1';
 export const webAppEntitlementsOn = () => process.env.WEB_APP_ENTITLEMENTS === '1';
 export const APP_ORIGIN = () => process.env.WEB_APP_ORIGIN || 'https://www.primebarber.org';
 
+/** The web-app origins: ours, plus the staging host. */
+export function webAppOriginAllowed(origin: unknown): origin is string {
+  if (typeof origin !== 'string' || !origin) return false;
+  return new Set([APP_ORIGIN(), 'https://www.aibarber.org', 'https://aibarber.org', 'https://www.primebarber.org', 'https://primebarber.org', 'https://prime-barber-app.vercel.app']).has(origin);
+}
+
 /** CORS for the web-app endpoints: only our own app origins (staging serves the app from another host). True when the request was a preflight and is already answered. */
 export function webAppCors(req: any, res: any): boolean {
   const origin = String(req.headers?.origin ?? '');
-  const allowed = new Set([APP_ORIGIN(), 'https://www.aibarber.org', 'https://aibarber.org', 'https://www.primebarber.org', 'https://primebarber.org', 'https://prime-barber-app.vercel.app']);
-  if (allowed.has(origin)) {
+  if (webAppOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
