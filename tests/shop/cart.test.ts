@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { markCartPending, pendingCartToken, settlePendingCart, addItem, cartTotals, loadCart, reconcile, removeItem, saveCart, setQty, MAX_LINES, MAX_QTY } from '../../src/shop/cart';
 import type { Cart, Product, StorageLike } from '../../src/shop/types';
 
@@ -137,6 +137,10 @@ describe('clearing after a paid card order', () => {
 });
 
 describe('card checkout that returns on another origin', () => {
+  const mem = (): StorageLike & { data: Record<string, string> } => {
+    const data: Record<string, string> = {};
+    return { data, getItem: (k) => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = v; }, removeItem: (k) => { delete data[k]; } };
+  };
   const full = () => addItem(empty, P('a'), 2);
   const setup = () => { const s = mem(); saveCart('x', full(), s); markCartPending('x', 'tok', s); return s; };
   const order = (paymentStatus: string) => async () => ({ order: { paymentStatus } });
