@@ -1,11 +1,18 @@
 import { accountRow, digest, draftPath, modeOf, publishedBinding, readDraft, reliabilityOn } from '../../lib/webApp/reliability.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
-import { MAX_BODY_BYTES, hasDataUrl, validSiteData } from '../../lib/ios/siteShape.js';
+import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/ios/siteShape.js';
 
 /** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
 export const DRAFT_WRITES_PER_MINUTE = 120;
 const writeStore = memoryStore();
+
+/**
+ * Largest draft PUT body (serialized bytes). Real drafts are a few KB (the biggest saved so far is about 5 KB: images are uploaded
+ * and referenced by URL, data: images are refused), so 1 MB leaves a huge margin while keeping a runaway client out of the table.
+ * Above it: 413 draft_too_large. (The 3 MB MAX_BODY_BYTES stays the limit for publish and the phone app.)
+ */
+export const MAX_DRAFT_BYTES = 1024 * 1024;
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
@@ -19,6 +26,7 @@ export default async function handler(req: any, res: any) {
       res.setHeader('Retry-After', '60');
       return res.status(429).json({ error: 'rate_limited' });
     }
+    if (req.method === 'PUT' && jsonBytes(req.body) > MAX_DRAFT_BYTES) return res.status(413).json({ error: 'draft_too_large', maxBytes: MAX_DRAFT_BYTES });
     const previous = await readDraft(user.id);
     if (req.method === 'GET') return res.status(200).json({ draft: previous ? accountRow(previous) : null });
     const { id, site_data, expectedRevision } = req.body ?? {};
