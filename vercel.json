@@ -264,10 +264,6 @@
         {
           "type": "query",
           "key": "session_id"
-        },
-        {
-          "type": "host",
-          "value": "www.primebarber.org"
         }
       ]
     }
