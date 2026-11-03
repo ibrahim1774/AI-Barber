@@ -38,10 +38,12 @@ type Refreshed = { ok: true; session: { access_token: string; refresh_token: str
 
 /** Exchanges a refresh token at Supabase. `definitive` is true when Supabase rejected the token (4xx), false for outages. */
 async function refresh(refreshToken: string): Promise<Refreshed> {
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!anon) return { ok: false, definitive: false }; // misconfigured: 502, and never a reason to clear the cookie
   try {
     const r = await fetch(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: 'POST',
-      headers: { apikey: (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY) as string, 'Content-Type': 'application/json' },
+      headers: { apikey: anon, 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
     if (!r.ok) return { ok: false, definitive: r.status >= 400 && r.status < 500 && r.status !== 429, limited: r.status === 429 };

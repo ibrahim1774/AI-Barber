@@ -144,6 +144,18 @@ describe('GET /api/web-app/session (restore)', () => {
   });
 });
 
+describe('missing anon key', () => {
+  it('is a 502 that never clears the cookie, on restore and on store', async () => {
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', ''); vi.stubEnv('SUPABASE_ANON_KEY', '');
+    const f = supa(200, session('x')); vi.stubGlobal('fetch', f);
+    const g = await call({ method: 'GET', headers: { origin: ORIGIN, 'x-pb-session': '1', cookie: 'pb_rt=rt-1', ...ip() } });
+    expect(g.code).toBe(502); expect(g.headers['Set-Cookie']).toBeUndefined();
+    const p = await call({ method: 'POST', headers: { origin: ORIGIN, authorization: 'Bearer at', ...ip() }, body: { refresh_token: 'rt' } });
+    expect(p.code).toBe(502); expect(p.headers['Set-Cookie']).toBeUndefined();
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
 describe('DELETE /api/web-app/session', () => {
   it('clears the cookie', async () => {
     const r = await call({ method: 'DELETE', headers: { origin: ORIGIN, ...ip() } });
