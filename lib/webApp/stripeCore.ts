@@ -8,10 +8,10 @@ export const INTERVALS = ['month', 'year'] as const;
 export type Tier = (typeof TIERS)[number];
 export type Interval = (typeof INTERVALS)[number];
 
-// Same prices as the iOS app, in cents.
+// Web plan prices in cents (Bookings is $29.99 on the web; the iOS app keeps its own App Store prices).
 export const PRICES: Record<Tier, Record<Interval, number>> = {
   website: { month: 1999, year: 19199 },
-  bookings: { month: 2499, year: 23999 },
+  bookings: { month: 2999, year: 28799 },
   store: { month: 3999, year: 37999 },
 };
 

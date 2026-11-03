@@ -8,7 +8,7 @@ const sub = (over: any = {}) => ({ id: 'sub_1', customer: 'cus_1', status: 'acti
 
 describe('web app stripe core', () => {
   it('prices match the iOS app', () => {
-    expect(PRICES).toEqual({ website: { month: 1999, year: 19199 }, bookings: { month: 2499, year: 23999 }, store: { month: 3999, year: 37999 } });
+    expect(PRICES).toEqual({ website: { month: 1999, year: 19199 }, bookings: { month: 2999, year: 28799 }, store: { month: 3999, year: 37999 } });
   });
   it('maps price ids both ways', () => {
     expect(priceIdFor('website', 'month', env)).toBe('p_wm');
