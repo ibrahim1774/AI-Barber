@@ -35,6 +35,13 @@ describe('web app emails', () => {
   it('omits the site row when there is no site yet', () => {
     expect(failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).not.toContain('Site:');
   });
+  it('welcome and failed-payment keep the original layout (owner-mail redesign does not touch them)', () => {
+    for (const m of [welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O), failedPaymentEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O)]) {
+      expect(m.replyTo).toBeUndefined();
+      expect(m.html).toContain('Forgot your password?');
+      expect(m.html).toContain('display:none');
+    }
+  });
   it('escapes html in the account email', () => {
     expect(welcomeEmail({ email: '<b>x</b>@y.co', siteUrl: null, tier: 'website' }, O).html).not.toContain('<b>x</b>');
   });
