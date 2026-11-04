@@ -425,16 +425,38 @@ export async function createAccountLink(shopId: string, accountId: string, opts:
   return link.url as string;
 }
 
-export interface AccountStatus { connected: boolean; chargesEnabled: boolean; detailsSubmitted: boolean }
+export interface AccountStatus {
+  connected: boolean; chargesEnabled: boolean; detailsSubmitted: boolean;
+  /** Additive: how many items Stripe is waiting on from the owner (currently_due + past_due, deduplicated). Counts only, never field names. */
+  currentlyDue: number;
+  /** Additive: how many items Stripe is still verifying asynchronously. */
+  pendingVerification: number;
+  /** Additive: requirements.disabled_reason (e.g. requirements.pending_verification, requirements.past_due, under_review, rejected.fraud), or null. */
+  disabledReason: string | null;
+}
+
+export const NO_ACCOUNT_STATUS: AccountStatus = {
+  connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null,
+};
+
+const reqCount = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
 /** Live account status. A 403/404 (access revoked / account gone) reads as not connected. */
 export async function fetchAccountStatus(accountId: string, opts: StripeOpts = {}): Promise<AccountStatus> {
   try {
     const a = await stripeRequest('GET', `/accounts/${encodeURIComponent(accountId)}`, {}, { fetch: opts.fetch });
-    return { connected: true, chargesEnabled: a?.charges_enabled === true, detailsSubmitted: a?.details_submitted === true };
+    const r = a?.requirements;
+    return {
+      connected: true,
+      chargesEnabled: a?.charges_enabled === true,
+      detailsSubmitted: a?.details_submitted === true,
+      currentlyDue: new Set([...reqCount(r?.currently_due), ...reqCount(r?.past_due)]).size,
+      pendingVerification: reqCount(r?.pending_verification).length,
+      disabledReason: typeof r?.disabled_reason === 'string' && r.disabled_reason ? r.disabled_reason : null,
+    };
   } catch (e) {
     if (e instanceof StripeApiError && (e.status === 403 || e.status === 404)) {
-      return { connected: false, chargesEnabled: false, detailsSubmitted: false };
+      return { ...NO_ACCOUNT_STATUS };
     }
     throw e;
   }
@@ -540,7 +562,7 @@ export async function stripeStatus(authorization: string | string[] | undefined,
   const r = await ownerShop(authorization, deps);
   if ('status' in r) return r;
   const { shop } = r;
-  if (!shop.stripe_account_id) return { status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
+  if (!shop.stripe_account_id) return { status: 200, body: { ...NO_ACCOUNT_STATUS } };
   try {
     const s = await fetchAccountStatus(shop.stripe_account_id, deps.stripe);
     // Read-only on a 403/404: report connected:false but never clear or change anything, since a

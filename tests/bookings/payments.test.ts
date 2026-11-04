@@ -286,10 +286,10 @@ describe('onboard / status', () => {
   });
 
   it('status: not connected without an account; refreshed + synced from Stripe', async () => {
-    expect(await stripeStatus('Bearer good', mkDeps())).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } });
+    expect(await stripeStatus('Bearer good', mkDeps())).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null } });
     const { f, calls } = fakeFetch({ body: { id: 'acct_1', charges_enabled: true, details_submitted: true } });
     const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1' })) }, f);
-    expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: true, chargesEnabled: true, detailsSubmitted: true } });
+    expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: true, chargesEnabled: true, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: null } });
     expect(calls[0].url).toBe('https://api.stripe.com/v1/accounts/acct_1');
     expect(calls[0].init.method).toBe('GET');
     expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
@@ -299,12 +299,83 @@ describe('onboard / status', () => {
     for (const status of [403, 404]) {
       const { f, calls } = fakeFetch({ status, body: { error: { type: 'invalid_request_error', message: 'no access' } } });
       const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1', stripe_charges_enabled: true })) }, f);
-      expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } });
+      expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null } });
       expect(deps.audit).not.toHaveBeenCalled();
       expect(deps.setChargesEnabled).not.toHaveBeenCalled();
       expect(deps.saveAccountId).not.toHaveBeenCalled();
       expect(calls).toHaveLength(1);
     }
+  });
+
+  describe('status: requirement-aware fields (additive)', () => {
+    const run = async (account: object) => {
+      const { f } = fakeFetch({ body: { id: 'acct_1', ...account } });
+      const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1' })) }, f);
+      const r = await stripeStatus('Bearer good', deps);
+      return { r, deps };
+    };
+
+    it('form half done: owner still has items due', async () => {
+      const { r } = await run({
+        charges_enabled: false, details_submitted: false,
+        requirements: { currently_due: ['tos_acceptance.date', 'tos_acceptance.ip'], past_due: ['tos_acceptance.date'], pending_verification: [], disabled_reason: 'requirements.past_due' },
+      });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 2, pendingVerification: 0, disabledReason: 'requirements.past_due' });
+    });
+
+    it('just submitted: verifying, nothing due, no action needed', async () => {
+      const { r } = await run({
+        charges_enabled: false, details_submitted: true,
+        requirements: { currently_due: [], past_due: [], pending_verification: ['individual.address.city', 'individual.address.line1', 'individual.id_number'], disabled_reason: 'requirements.pending_verification' },
+      });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 3, disabledReason: 'requirements.pending_verification' });
+    });
+
+    it('enabled: all clear', async () => {
+      const { r, deps } = await run({
+        charges_enabled: true, details_submitted: true,
+        requirements: { currently_due: [], past_due: [], pending_verification: [], disabled_reason: null },
+      });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: true, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: null });
+      expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
+    });
+
+    it('failed verification: details submitted but a document is due again', async () => {
+      const { r } = await run({
+        charges_enabled: false, details_submitted: true,
+        requirements: { currently_due: ['individual.verification.document'], past_due: ['individual.verification.document'], pending_verification: [], disabled_reason: 'requirements.past_due' },
+      });
+      expect(r.body).toMatchObject({ detailsSubmitted: true, currentlyDue: 1, disabledReason: 'requirements.past_due' });
+    });
+
+    it('under_review and rejected reasons pass through', async () => {
+      expect((await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: 'under_review' } })).r.body).toMatchObject({ disabledReason: 'under_review', currentlyDue: 0 });
+      expect((await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: 'rejected.fraud' } })).r.body).toMatchObject({ disabledReason: 'rejected.fraud' });
+    });
+
+    it('charges on with eventually_due stays on and does not count eventually_due', async () => {
+      const { r } = await run({
+        charges_enabled: true, details_submitted: true,
+        requirements: { currently_due: [], eventually_due: ['individual.verification.document'], past_due: [], pending_verification: [], disabled_reason: null },
+      });
+      expect(r.body).toMatchObject({ chargesEnabled: true, currentlyDue: 0 });
+    });
+
+    it('missing requirements object reads as zeros', async () => {
+      const { r } = await run({ charges_enabled: false, details_submitted: false });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null });
+    });
+
+    it('never exposes requirement field names', async () => {
+      const { r } = await run({
+        charges_enabled: false, details_submitted: true,
+        requirements: { currently_due: ['person_1.verification.document'], past_due: [], pending_verification: ['individual.id_number'], disabled_reason: 'requirements.pending_verification' },
+      });
+      const json = JSON.stringify(r.body);
+      expect(json).not.toContain('person_1');
+      expect(json).not.toContain('id_number');
+      expect(json).not.toContain('verification.document');
+    });
   });
 });
 

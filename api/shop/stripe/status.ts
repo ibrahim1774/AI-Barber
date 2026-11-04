@@ -1,4 +1,4 @@
-// GET: 200 { connected, chargesEnabled, detailsSubmitted }, refreshed from Stripe (and synced to ab_shops.stripe_charges_enabled).
+// GET: 200 { connected, chargesEnabled, detailsSubmitted, currentlyDue, pendingVerification, disabledReason }, refreshed from Stripe (and synced to ab_shops.stripe_charges_enabled).
 // Owner only: Authorization: Bearer <Supabase access token>.
 import { stripeStatus, liveOwnerStripeDeps } from '../../../lib/bookings/payments.js';
 
