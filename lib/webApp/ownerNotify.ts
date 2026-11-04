@@ -4,7 +4,7 @@
 // A shop with neither an iOS link nor a web plan (pre-web-app shops) never gets these emails.
 // Everything here swallows its own errors: a mail problem must never fail or delay a booking/order
 // flow. No password is ever included.
-import { render, firstOf, esc, signInLink, sendMail, type Mail } from './emails.js';
+import { firstOf, esc, sendMail, type Mail } from './emails.js';
 import { APP_ORIGIN, webAppEntitlementsOn, sbRest } from './webAppServer.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 
@@ -103,7 +103,9 @@ const methodLabel = (m: string) => METHODS[m] ?? clean(m);
 /** Build the owner email for an event. Pure; `first` is the owner's first name when known. */
 export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_ORIGIN()): Mail {
   const hi = first ? `Hi ${esc(first)}, ` : '';
-  const cta = { label: 'Open Prime Barber', href: signInLink(origin) };
+  // One plain link to the app on the brand domain. No sign-in / magic / reset links: owners are already signed in or
+  // use the normal login, and a notification that pushes a sign-in link reads as phishing to Gmail.
+  const cta = { label: 'Open Prime Barber', href: `${origin}/app` };
   const name = fullWho(e.customerName);
   let subject: string; let headline: string; let lead: string; let leadText: string;
   let facts: Array<[string, string]> = [];
@@ -128,30 +130,46 @@ export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_
       break;
     case 'customer_says_paid': {
       const amt = e.amountCents != null && e.amountCents > 0 ? ` ${money(e.amountCents)}` : '';
-      subject = `${who(e.customerName)} says they paid${amt}`;
+      subject = `${who(e.customerName)} says they paid (${methodLabel(e.method)})`;
       headline = 'Customer says they paid';
       leadText = `${name} says they paid${amt} by ${methodLabel(e.method)}. Check your ${methodLabel(e.method)} and mark it paid.`;
       facts = [['Who', name], ['What', clean(e.service)], ['When', e.whenLong]];
       break;
     }
     case 'order_created':
-      subject = `New order: ${money(e.totalCents)} (${e.itemCount} ${e.itemCount === 1 ? 'item' : 'items'})`;
+      subject = `Order ${clean(e.orderLabel)} from ${who(e.customerName)}`;
       headline = 'New store order';
       leadText = `${name} placed order ${clean(e.orderLabel)}.`;
       facts = [['Who', name], ['Total', money(e.totalCents)], ['Items', String(e.itemCount)], ['Type', clean(e.fulfilment)], ...(e.shipTo?.trim() ? [['Ship to', clean(e.shipTo)] as [string, string]] : [])];
       break;
     case 'order_says_paid':
-      subject = `${who(e.customerName)} says they paid ${money(e.totalCents)}`;
+      subject = `${who(e.customerName)} says they paid order ${clean(e.orderLabel)}`;
       headline = 'Customer says they paid';
       leadText = `${name} says they paid ${money(e.totalCents)} by ${methodLabel(e.method)} for order ${clean(e.orderLabel)}.`;
       facts = [['Who', name], ['Total', money(e.totalCents)]];
       break;
   }
   lead = `${hi}${esc(leadText)}`;
-  const mail = render({ subject, preheader: leadText, headline, lead, facts, cta, origin });
-  // render() derives the text part from the HTML lead; rebuild it from the raw strings so nothing shows as &amp;.
-  mail.text = [headline, '', `${first ? `Hi ${first}, ` : ''}${leadText}`, '', ...facts.map(([k, v]) => `${k}: ${v}`), '', `${cta.label}: ${cta.href}`].join('\n');
-  return mail;
+  return renderOwner({ subject, headline, lead, leadText, first, facts, cta });
+}
+
+const OWNER_REPLY_TO = 'support@davoxa.com';
+
+/**
+ * Plain, light owner notification: light background, dark text, one link, a text part that mirrors the HTML,
+ * no hidden preheader, no password-reset link, a one-line reason for the email. Looks like a person's note, not a campaign.
+ */
+function renderOwner(l: { subject: string; headline: string; lead: string; leadText: string; first: string | null; facts: Array<[string, string]>; cta: { label: string; href: string } }): Mail {
+  const rows = l.facts.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">${esc(k)}</td><td style="padding:4px 0;color:#111;font-size:14px">${esc(v)}</td></tr>`).join('');
+  const html = `<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">${esc(l.headline)}</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">${l.lead}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px">${rows}</table>
+<p style="margin:0 0 16px;font-size:15px"><a href="${esc(l.cta.href)}" style="color:#0b57d0">${esc(l.cta.label)}</a></p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.</p>
+</body></html>`;
+  const text = [l.headline, '', `${l.first ? `Hi ${l.first}, ` : ''}${l.leadText}`, '', ...l.facts.map(([k, v]) => `${k}: ${v}`), '', `${l.cta.label}: ${l.cta.href}`, '', 'You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.'].join('\n');
+  return { subject: l.subject, html, text, replyTo: OWNER_REPLY_TO };
 }
 
 /** Owner's account email + first name from Supabase auth (service role), same source as dunning's contactFor. */

@@ -159,15 +159,31 @@ describe('ownerEmailFor / sendOwnerEmail', () => {
     expect(ownerEmailFor({ kind: 'booking_created', customerName: 'Jake Lee', ...when }, 'Ibrahim').subject).toBe('New booking: Jake, Sat 3:00 PM');
     expect(ownerEmailFor({ kind: 'booking_cancelled', customerName: 'Jake Lee', ...when }, null).subject).toBe('Cancelled: Jake, Sat 3:00 PM');
     expect(ownerEmailFor({ kind: 'booking_rescheduled', customerName: null, ...when }, null).subject).toBe('Rescheduled: A customer, Sat 3:00 PM');
-    expect(ownerEmailFor({ kind: 'order_created', customerName: 'Sam', itemCount: 2, totalCents: 2400, fulfilment: 'pickup', orderLabel: '#1' }, null).subject).toBe('New order: $24.00 (2 items)');
-    expect(ownerEmailFor({ kind: 'customer_says_paid', customerName: 'Jake', method: 'venmo', amountCents: 3000, ...when }, null).subject).toBe('Jake says they paid $30.00');
+    expect(ownerEmailFor({ kind: 'order_created', customerName: 'Sam', itemCount: 2, totalCents: 2400, fulfilment: 'pickup', orderLabel: '#1' }, null).subject).toBe('Order #1 from Sam');
+    expect(ownerEmailFor({ kind: 'customer_says_paid', customerName: 'Jake', method: 'venmo', amountCents: 3000, ...when }, null).subject).toBe('Jake says they paid (Venmo)');
   });
-  it('greets by first name, links to sign-in, never a password', () => {
+  it('greets by first name, one plain app link, no sign-in/reset link, never a password', () => {
     const m = ownerEmailFor({ kind: 'booking_created', customerName: 'Jake', ...when }, 'Ibrahim', 'https://www.aibarber.org');
     expect(m.html).toContain('Hi Ibrahim, ');
-    expect(m.html).toContain('href="https://www.aibarber.org/app/sign-in"');
+    expect(m.html).toContain('href="https://www.aibarber.org/app"');
+    expect(m.html + m.text).not.toMatch(/sign-in|forgot-password|Forgot your password/i);
+    expect((m.html.match(/<a /g) ?? []).length).toBe(1);
+    expect(m.html).not.toMatch(/display:\s*none/);
+    expect(m.text).toContain('Open Prime Barber: https://www.aibarber.org/app');
+    expect(m.text).toContain('Hi Ibrahim, ');
+    expect(m.replyTo).toBe('support@davoxa.com');
     expect(m.text).toContain('Saturday, October 24 at 3:00 PM');
     expect(m.html.toLowerCase()).not.toMatch(/password:/);
+  });
+  it('no money in any owner subject; order_says_paid subject has none either', () => {
+    const subs = [
+      ownerEmailFor({ kind: 'order_created', customerName: 'Sam', itemCount: 1, totalCents: 2400, fulfilment: 'pickup', orderLabel: '#1001' }, null).subject,
+      ownerEmailFor({ kind: 'order_says_paid', customerName: 'Sam', totalCents: 2400, method: 'cashapp', orderLabel: '#1001' }, null).subject,
+      ownerEmailFor({ kind: 'customer_says_paid', customerName: 'Jake', method: 'venmo', amountCents: 3000, ...when }, null).subject,
+    ];
+    for (const s of subs) expect(s).not.toMatch(/\$/);
+    expect(subs[0]).toBe('Order #1001 from Sam');
+    expect(subs[1]).toBe('Sam says they paid order #1001');
   });
   it('escapes HTML in customer, service and owner names; strips header newlines from the subject', () => {
     const m = ownerEmailFor({ kind: 'booking_created', customerName: '<img src=x onerror=1>\nBcc: evil@x.co', service: '<script>x</script>', whenShort: 'Sat 3:00 PM', whenLong: 'w' }, '<b>Bob</b>');
@@ -318,7 +334,7 @@ describe('booking and order owner emails take the same gate, and a drop says why
     await notify({ kind: 'booking_created', appointmentId: 'appt-1' }, wire(bdeps(bctx())) as NotifyDeps);
     await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, wire(odeps(octx())) as OrderNotifyDeps);
     expect(send.mock.calls.map((c) => [c[0], (c[1] as any).subject.split(':')[0]])).toEqual([
-      ['web-owner@example.com', 'New booking'], ['web-owner@example.com', 'New order'],
+      ['web-owner@example.com', 'New booking'], ['web-owner@example.com', 'Order #1001 from Sam'],
     ]);
   });
   it('a web-shaped shop that is dropped logs the reason (no iOS link, so it would be a web shop)', async () => {

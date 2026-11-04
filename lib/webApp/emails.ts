@@ -12,7 +12,7 @@ export interface EmailInput {
   /** 0 = the first notice; 1+ = a follow-up reminder. */
   reminder?: number;
 }
-export interface Mail { subject: string; html: string; text: string }
+export interface Mail { subject: string; html: string; text: string; /** Optional Reply-To address (a real, monitored mailbox). */ replyTo?: string }
 
 const TIER_NAME: Record<string, string> = { website: 'Custom site', bookings: 'Custom site + booking', store: 'Custom site, booking + your own store' };
 /** What the plan includes, in a few words. */
@@ -113,7 +113,7 @@ export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch =
   const init = {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text }),
+    body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text, ...(mail.replyTo ? { reply_to: mail.replyTo } : {}) }),
   };
   // Resend allows ~2 requests/s per key and an order fires several mails at once: retry a 429/5xx once.
   let r = await fetchImpl('https://api.resend.com/emails', init);
