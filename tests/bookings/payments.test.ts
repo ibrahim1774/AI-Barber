@@ -353,6 +353,13 @@ describe('onboard / status', () => {
       expect((await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: 'rejected.fraud' } })).r.body).toMatchObject({ disabledReason: 'rejected.fraud' });
     });
 
+    it('unknown reasons (platform_paused, other, action_required.*) pass through unchanged and carry no requirement names', async () => {
+      for (const reason of ['platform_paused', 'other', 'action_required.requested_capabilities', 'paused.inactivity']) {
+        const { r } = await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: reason, currently_due: [] } });
+        expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: reason });
+      }
+    });
+
     it('charges on with eventually_due stays on and does not count eventually_due', async () => {
       const { r } = await run({
         charges_enabled: true, details_submitted: true,
