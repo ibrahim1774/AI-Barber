@@ -8,7 +8,7 @@ set local lock_timeout = '5s';
 --   state 'done'     the written text (jsonb, shape lib/render/svcCopy.ts SvcCopyEntry), kept for good
 -- Written only by the server (service role). The draft's extraPages.svcCopy stays the copy the site renders from.
 create table if not exists public.ab_service_copy (
-  user_id uuid not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   draft_id text not null check (char_length(draft_id) between 1 and 100),
   title_key text not null check (char_length(title_key) between 1 and 100),
   state text not null check (state in ('pending', 'done')),

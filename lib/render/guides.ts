@@ -666,8 +666,8 @@ export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
   const allow = serviceWordsIn(subject.title);
   let count = 0;
   const para = (t: string): string[] => { const l = lintParagraph(t, allow); const r = l.text ? resolveAiSentences(env, l.text, allow, subject) : []; count += r.length; return r.length ? [r.join(' ')] : []; };
-  const line = (t: string): string | null => {
-    if (lintLine(t, allow).length) return null;
+  const line = (t: string, kind: 'heading' | 'question' = 'heading'): string | null => {
+    if (lintLine(t, allow, kind).length) return null;
     const segs = resolveSentence(env, t, allow, subject, true);
     return segs ? segsText(segs) : null;
   };
@@ -675,7 +675,7 @@ export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
   const sections: AiPage['sections'] = [];
   for (const x of e.sections) { const h = line(x.h); const p = para(x.p); if (h !== null && p.length) sections.push({ h, p }); }
   const faq: AiPage['faq'] = [];
-  for (const x of e.faq) { const q = line(x.q); const a = para(x.a); if (q !== null && a.length) faq.push({ q, a }); }
+  for (const x of e.faq) { const q = line(x.q, 'question'); const a = para(x.a); if (q !== null && a.length) faq.push({ q, a }); }
   if (!intro.length || count < MIN_SENTENCES) return null;
   const md = e.metaDescription ? lintParagraph(e.metaDescription, allow) : null;
   const metaSents = md && md.written === 1 && md.kept === 1 ? resolveAiSentences(env, md.text, allow, subject) : [];

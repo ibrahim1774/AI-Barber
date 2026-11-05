@@ -149,19 +149,20 @@ describe('happy path, cache and idempotency', () => {
 });
 
 describe('rate limits', () => {
-  it('site: the 15th call of a day is served and the 16th is refused with 429 (no model call)', async () => {
-    const titles = Array.from({ length: 16 }, (_, i) => `Scalp Care ${'abcdefghijklmnop'[i]}`);
+  it('site: every page costs two counted calls (write + check), so the 7th page of a day is served and the 8th is refused with 429 at its check; nothing of it is stored', async () => {
+    const titles = Array.from({ length: 9 }, (_, i) => `Scalp Care ${'abcdefghijklmnop'[i]}`);
     const r = rig({ siteData: site({}, titles) });
     const codes: number[] = [];
-    for (const t of titles) codes.push((await r.call({ titleKey: t.toLowerCase() })).code);
-    expect(codes.slice(0, 15).every((c) => c === 200)).toBe(true);
-    expect(codes[15]).toBe(429);
-    expect(r.model.calls.length).toBe(SITE_CALLS_PER_DAY);
-    expect(r.store.rows.size).toBe(15); // the refused one left no claim
-    const again = await r.call({ titleKey: titles[15].toLowerCase() });
+    for (const t of titles.slice(0, 8)) codes.push((await r.call({ titleKey: t.toLowerCase() })).code);
+    expect(codes.slice(0, 7).every((c) => c === 200)).toBe(true);
+    expect(codes[7]).toBe(429);
+    expect(r.model.calls.length).toBe(8); expect(r.model.checks.length).toBe(7);
+    expect(r.store.rows.size).toBe(7); // the refused one left no claim and no text
+    const again = await r.call({ titleKey: titles[7].toLowerCase() });
     expect(again.body).toEqual({ error: 'rate_limited', scope: 'site' });
+    expect(r.model.calls.length).toBe(8); // refused before any call
     r.clock.t += DAY_MS; // the next UTC day
-    expect((await r.call({ titleKey: titles[15].toLowerCase() })).code).toBe(200);
+    expect((await r.call({ titleKey: titles[7].toLowerCase() })).code).toBe(200);
   });
   it('cached answers use no quota', async () => {
     const r = rig();
@@ -190,14 +191,27 @@ describe('rate limits', () => {
     expect([res.code, res.body]).toEqual([429, { error: 'rate_limited', scope: 'account' }]);
     expect(r.model.calls.length).toBe(0); expect(r.store.rows.size).toBe(0);
   });
-  it('the retry counts as a second call; when it is refused the first answer is judged', async () => {
-    const bad = { ...GOOD_JSON, intro: 'A calm visit for the head. Backed by 20 years of experience. Plan a little extra time.' };
-    const r = rig({ model: scriptedModel([JSON.stringify(bad), JSON.stringify(GOOD_JSON)]) });
+  it('the retry (only for an unusable first answer) counts as a second call; when it is refused the request ends with nothing stored', async () => {
+    const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [], faq: [] };
+    const r = rig({ model: scriptedModel([JSON.stringify(unusable), JSON.stringify(GOOD_JSON)]) });
     for (let i = 0; i < 14; i++) await r.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, r.clock.t); // one call left
     const res = await r.call();
-    expect(r.model.calls.length).toBe(1);
-    expect(res.body.status).toBe('generated');
-    expect(res.body.copy.intro).not.toContain('20 years');
+    expect([r.model.calls.length, r.model.checks.length]).toEqual([1, 0]);
+    expect(res.body.status).toBe('not_generated'); expect(r.store.rows.size).toBe(0);
+  });
+  it('the claim check is one more counted call: with exactly one call left the write is served but the check is refused (429, nothing stored)', async () => {
+    const r = rig();
+    for (let i = 0; i < 14; i++) await r.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, r.clock.t);
+    const res = await r.call();
+    expect([res.code, res.body]).toEqual([429, { error: 'rate_limited', scope: 'site' }]);
+    expect([r.model.calls.length, r.model.checks.length, r.store.rows.size]).toEqual([1, 0, 0]);
+  });
+  it('a normal page spends exactly two counted calls, on the site and on the account counter', async () => {
+    const r = rig();
+    await r.call();
+    const probe = async (key: string, cap: number): Promise<number> => { let n = 0; while (await r.limits.hit(key, cap, DAY_MS, r.clock.t)) n++; return n; };
+    expect(await probe(siteCounterKey(U1, 'draft-1'), 15)).toBe(13);
+    expect(await probe(accountCounterKey(U1), 50)).toBe(48);
   });
   it('a counter store that errors fails CLOSED: 503, no model call, no claim left', async () => {
     const r = rig();
@@ -233,9 +247,9 @@ describe('errors and logging', () => {
     const r = rig();
     await r.call();
     const line = r.logs.find((l) => l.includes('cost_usd'))!;
-    expect(line).toMatch(/calls=1 in=800 out=900 cost_usd=0\.00053 result=text/);
+    expect(line).toMatch(/calls=1 checks=1 in=1100 out=1000 cost_usd=0\.00061 result=text/);
     const all = r.logs.join('\n');
-    for (const s of ['Scalp', 'scalp', 'untrusted_facts', 'serviceTitle', 'Brooklyn', PII.shop, PII.phone, 'calm visit']) expect(all, s).not.toContain(s);
+    for (const s of ['Scalp', 'scalp', 'untrusted_facts', 'serviceTitle', 'Brooklyn', PII.shop, PII.phone, 'Learn what the service']) expect(all, s).not.toContain(s);
   });
 });
 

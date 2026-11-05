@@ -20,13 +20,13 @@ describe('the exact request', () => {
     expect(r.model.calls.length).toBe(1);
     const req = r.model.calls[0];
     expect(req.system).toBe(SYSTEM_PROMPT);
-    expect(req.messages).toEqual([{ role: 'user', content: 'Write the page text for the service in these facts.\n<untrusted_facts>\n{"serviceTitle":"Scalp Massage","businessType":"Barbershop","place":"Brooklyn, NY"}\n</untrusted_facts>\nReply with the JSON object only.' }]);
+    expect(req.messages).toEqual([{ role: 'user', content: 'Write the page text for the service in these facts.\n<untrusted_facts>\n{"serviceTitle":"Scalp Massage","businessType":"Barbershop"}\n</untrusted_facts>\nReply with the JSON object only.' }]);
     expect(req.maxTokens).toBe(MAX_OUTPUT_TOKENS); expect(req.timeoutMs).toBeGreaterThan(0); expect(req.timeoutMs).toBeLessThanOrEqual(25_000);
   });
   it('contains no phone, email, street, shop name, barber, description, review or price anywhere in what is sent', async () => {
     const { r } = await run([json(GOOD_JSON)]);
     const sent = JSON.stringify(r.model.calls[0]);
-    for (const s of [PII.phone, PII.phoneDigits, '555-0187', PII.email, 'barbermail', PII.street, 'Evergreen', PII.shop, 'Zanzibar', PII.barber, 'Marcus', PII.review, 'Priya', PII.desc, 'eucalyptus', '$99', '$35', '45 min', '11201', '/book']) expect(sent, s).not.toContain(s);
+    for (const s of [PII.phone, PII.phoneDigits, '555-0187', PII.email, 'barbermail', PII.street, 'Evergreen', 'Brooklyn', PII.shop, 'Zanzibar', PII.barber, 'Marcus', PII.review, 'Priya', PII.desc, 'eucalyptus', '$99', '$35', '45 min', '11201', '/book']) expect(sent, s).not.toContain(s);
   });
   it('the retry turn carries only rule names and matched words, not the facts again', async () => {
     const bad = withIntro('A calm visit for the head. Backed by 20 years of experience. Plan a little extra time.');
@@ -61,31 +61,36 @@ describe('the exact request', () => {
 });
 
 describe('hostile model outputs', () => {
-  const hostile: [string, string][] = [
-    ['script in the intro', withIntro('<script>alert(1)</script>. A calm visit for the head. Plan a little extra time.')],
-    ['licensed and insured', withIntro('The barber is licensed and insured. A calm visit for the head. Tell your barber what you prefer. Plan a little extra time.')],
-    ['years of experience', withIntro('A calm visit for the head. Backed by 20 years of experience. Plan a little extra time.')],
-    ['a price', withIntro('A calm visit for the head. It costs $40 for a full visit. Plan a little extra time.')],
-    ['a guarantee', withIntro('A calm visit for the head. Satisfaction is guaranteed or your money back. Plan a little extra time.')],
-    ['a medical claim', withIntro('A calm visit for the head. It treats dandruff and helps scalp health. Plan a little extra time.')],
-    ['a superlative', withIntro('A calm visit for the head. This is the best service in the city. Plan a little extra time.')],
-    ['a comparison', withIntro('A calm visit for the head. It is better than what other shops offer. Plan a little extra time.')],
-    ['a testimonial', withIntro('A calm visit for the head. "Amazing," says one client. Plan a little extra time.')],
-    ['a name', withIntro('A calm visit for the head. Ask Marcus about pressure. Plan a little extra time.')],
-    ['a phone number', withIntro('A calm visit for the head. Call 555-0100 to book. Plan a little extra time.')],
-    ['markup link', withIntro('A calm visit for the head. See [our page](http://x.co) for more. Plan a little extra time.')],
-    ['a forbidden token', withIntro('A calm visit for the head. Call {phone} to book. Plan a little extra time.')],
-    ['spanish without accents', withIntro('El masaje es una pausa para la cabeza. Hable con su barbero sobre la presion. Planee tiempo extra para la visita. Use ropa comoda para el masaje.')],
-    ['a first-person voice', withIntro('A calm visit for the head. We offer this to every guest. Plan a little extra time.')],
+  const SAFE = 'Learn what the service involves before you decide.';
+  const hostile: [string, string, string[]][] = [
+    ['script in the intro', `<script>alert(1)</script>. ${SAFE} Plan some extra time before the visit.`, ['<script']],
+    ['licensed and insured', `The barber is licensed and insured. ${SAFE} Tell your barber what you prefer.`, ['licensed', 'insured']],
+    ['years of experience', `${SAFE} Backed by 20 years of experience. Plan some extra time before the visit.`, ['20 years']],
+    ['a price', `${SAFE} It costs $40 for a full visit. Plan some extra time before the visit.`, ['$40']],
+    ['a guarantee', `${SAFE} Satisfaction is guaranteed or your money back. Plan some extra time before the visit.`, ['guarantee']],
+    ['a medical claim', `${SAFE} It treats dandruff and helps scalp health. Plan some extra time before the visit.`, ['dandruff']],
+    ['a superlative', `${SAFE} This is the best service in the city. Plan some extra time before the visit.`, ['best service']],
+    ['a comparison', `${SAFE} It is better than what other shops offer. Plan some extra time before the visit.`, ['better than']],
+    ['a testimonial', `${SAFE} "Amazing," says one client. Plan some extra time before the visit.`, ['Amazing']],
+    ['a name', `${SAFE} Ask Marcus about pressure. Plan some extra time before the visit.`, ['Marcus']],
+    ['a phone number', `${SAFE} Call 555-0100 to book. Plan some extra time before the visit.`, ['555-0100']],
+    ['markup link', `${SAFE} See [our page](http://x.co) for more. Plan some extra time before the visit.`, ['http']],
+    ['a forbidden token', `${SAFE} Call {phone} to book. Plan some extra time before the visit.`, ['{phone}']],
+    ['spanish without accents', 'El masaje es una pausa para la cabeza. Hable con su barbero sobre la presion. Planee tiempo extra para la visita. Use ropa comoda para el masaje.', ['masaje']],
+    ['a first-person voice', `${SAFE} We offer this to every guest. Plan some extra time before the visit.`, ['We offer']],
+    ['a duration', `${SAFE} The visit takes about thirty minutes. Plan some extra time before the visit.`, ['thirty minutes']],
+    ['a promise', `${SAFE} Your barber will make it right on your next visit. Plan some extra time before the visit.`, ['make it right']],
   ];
-  for (const [name, bad] of hostile) {
+  for (const [name, intro, bads] of hostile) {
     it(`${name}: the bad sentence never reaches the stored text`, async () => {
+      const bad = withIntro(intro);
       const { r, res } = await run([bad, bad]);
+      expect(['generated', 'not_generated']).toContain(res.body.status);
       if (res.body.status === 'generated') {
         const t = allText(res.body.copy);
-        for (const s of ['<script', 'licensed', 'insured', '20 years', '$40', 'guarantee', 'dandruff', 'best service', 'better than', 'Amazing', 'Marcus', '555-0100', 'http', '{phone}', 'We offer', ' We ', 'masaje']) expect(t, s).not.toContain(s);
-      } else expect(res.body.status).toBe('not_generated');
-      expect(r.model.calls.length).toBe(2); // one retry, never more
+        for (const s of bads) expect(t, s).not.toContain(s);
+      }
+      expect(r.model.calls.length).toBeLessThanOrEqual(2); // at most one retry, never more
     });
   }
   it('wrong JSON / empty / huge / extra keys: retry once, then not generated, and nothing is stored', async () => {
@@ -102,12 +107,12 @@ describe('hostile model outputs', () => {
     expect([res.body.status, r.model.calls.length]).toEqual(['generated', 2]);
     expect(res.body.copy.intro).toBe(GOOD_JSON.intro);
   });
-  it('retry then DROP: sentences that still fail are removed, the rest is kept', async () => {
-    const mixed = withIntro('A calm visit for the head can be a slow part of the day. Backed by 20 years of experience. Tell your barber if you prefer lighter or firmer pressure. It costs $40. Plan a little extra time so the visit does not feel rushed.');
+  it('sentences that fail are dropped (no retry for a usable answer), the rest is kept', async () => {
+    const mixed = withIntro('Learn what the service involves before you decide. Backed by 20 years of experience. Tell your barber what you prefer. It costs $40. Plan some extra time before the visit.');
     const { r, res } = await run([mixed, mixed]);
     expect(res.body.status).toBe('generated');
-    expect(res.body.copy.intro).toBe('A calm visit for the head can be a slow part of the day. Tell your barber if you prefer lighter or firmer pressure. Plan a little extra time so the visit does not feel rushed.');
-    expect(r.model.calls.length).toBe(2);
+    expect(res.body.copy.intro).toBe('Learn what the service involves before you decide. Tell your barber what you prefer. Plan some extra time before the visit.');
+    expect([r.model.calls.length, r.model.checks.length]).toEqual([1, 1]);
     expect(r.store.rows.size).toBe(1);
   });
   it('all dropped -> not generated: nothing stored, the page stays thin (noindex), no fabricated fallback', async () => {
@@ -126,11 +131,11 @@ describe('hostile model outputs', () => {
     expect(res.body.copy.metaTitle).toBeUndefined(); expect(res.body.copy.metaDescription).toBeUndefined();
     expect(res.body.copy.intro).toBe(GOOD_JSON.intro);
   });
-  it('{place} when the shop has no place: the sentence is dropped, not printed', async () => {
-    const r = rig({ model: scriptedModel([withIntro('A calm visit for the head. Ask about {place} when you book. Plan a little extra time so the visit is easy.')]), siteData: site({ area: '' }) });
+  it('{place} is never allowed in AI text (the place is not sent to the model): the sentence is dropped', async () => {
+    const r = rig({ model: scriptedModel([withIntro('Learn what the service involves before you decide. Ask about {place} before the visit. Plan some extra time before the visit. Tell your barber what you prefer.')]) });
     const res = await r.call();
     expect(res.body.status).toBe('generated');
-    expect(allText(res.body.copy)).toContain('{place}'); // stored as the token; the renderer drops it for this shop
+    expect(allText(res.body.copy)).not.toContain('{place}');
   });
 });
 
@@ -142,8 +147,10 @@ describe('title gate', () => {
 });
 
 describe('prompt text', () => {
-  it('forbids what the brief lists', () => {
-    for (const w of ['credentials', 'years', 'awards', 'warranties', 'guarantees', 'prices', 'results', 'health', 'comparisons', 'superlatives', 'testimonials', 'names of people', '{service}', 'untrusted_facts', 'JSON']) expect(SYSTEM_PROMPT.toLowerCase(), w).toContain(w.toLowerCase().replace('credentials', 'credentials'));
+  it('forbids what the brief lists and limits the content type', () => {
+    for (const w of ['generic, educational', 'You are not writing about this business', 'licences', 'experience', 'awards', 'guarantees', 'prices', 'promises', 'results', 'health', 'medical', 'comparison', 'testimonials', 'reviews', 'Write in English only', 'SENTENCE SHAPES', 'If in doubt, leave it out', '{service}', 'untrusted_facts', 'JSON']) expect(SYSTEM_PROMPT, w).toContain(w);
+    expect(SYSTEM_PROMPT).not.toContain('{place}');
+    expect(SYSTEM_PROMPT).not.toMatch(/place is context/i);
     expect(userMessage({ serviceTitle: 'X"}', businessType: 'Barbershop' })).toContain('{"serviceTitle":"X\\"}"');
   });
 });

@@ -13,6 +13,7 @@
 //
 // Pure, imports only copyRules (so guides.ts can use it without a cycle).
 import { copyProblems, type VocabGroup } from './copyRules.js';
+import { denyProblems, type DenyKind } from './svcDeny.js';
 
 export interface SvcSection { h: string; p: string }
 export interface SvcFaq { q: string; a: string }
@@ -90,14 +91,15 @@ function languageProblem(text: string): string {
 }
 
 const TOKEN_ANY = /\{[^{}]*\}/g;
-const ALLOWED_TOKENS = new Set(['{service}', '{place}']);
+// The place is never given to the model and never written into AI text: {service} is the only token.
+const ALLOWED_TOKENS = new Set(['{service}']);
 
 /** Every rule one sentence of AI text breaks (empty = clean). `allow` = the vocabulary groups the service's own title uses. */
-export function aiSentenceProblems(sentence: string, allow: readonly VocabGroup[]): string[] {
+export function aiSentenceProblems(sentence: string, allow: readonly VocabGroup[], kind: DenyKind = 'sentence'): string[] {
   const out: string[] = [];
   const pt = plainTextProblem(sentence);
   if (pt) out.push(`plain: ${pt}`);
-  for (const t of sentence.match(TOKEN_ANY) ?? []) if (!ALLOWED_TOKENS.has(t)) out.push(`token: only {service} and {place} are allowed, got ${t}`);
+  for (const t of sentence.match(TOKEN_ANY) ?? []) if (!ALLOWED_TOKENS.has(t)) out.push(`token: only {service} is allowed, got ${t}`);
   out.push(...copyProblems(sentence, { allow, strict: true }));
   const bare = sentence.replace(TOKEN_ANY, ' tok ');
   for (const { id, re } of AI_RULES) {
@@ -107,6 +109,8 @@ export function aiSentenceProblems(sentence: string, allow: readonly VocabGroup[
   const lang = languageProblem(bare);
   if (lang) out.push(lang);
   if (Array.from(sentence).length > 300) out.push('length: sentence over 300 characters');
+  // The default-deny layer (svcDeny.ts): character set, shape, deny groups. Runs for generated text AND again at render time.
+  out.push(...denyProblems(sentence, kind));
   return out;
 }
 
@@ -117,19 +121,23 @@ export function sentencesOf(text: string): string[] {
 }
 const PRONOUN_OPEN = /^(?:it|its|this|that|these|those|they|them|their|he|she|his|her|there|such|doing so|also|and|but|so|then|however)\b/i;
 
+/** The claim checker's verdict for one piece of text: true only when it was explicitly cleared. */
+export type Clearance = (text: string) => boolean;
+
 export interface LintedText { text: string; kept: number; written: number; problems: string[] }
 
 /**
  * One paragraph: sentences that fail are dropped; the sentence right after a dropped one is dropped too when it opens with a
  * pronoun or a connective (it would point at text that is gone). Never repaired. `text` is '' when nothing is left.
  */
-export function lintParagraph(text: string, allow: readonly VocabGroup[]): LintedText {
+export function lintParagraph(text: string, allow: readonly VocabGroup[], cleared?: Clearance): LintedText {
   const sents = sentencesOf(text);
   const out: string[] = [];
   const problems: string[] = [];
   let droppedBefore = false;
   for (const s of sents) {
     const p = aiSentenceProblems(s, allow);
+    if (!p.length && cleared && !cleared(s)) p.push('check: not cleared by the claim checker');
     if (p.length) { problems.push(...p); droppedBefore = true; continue; }
     if (droppedBefore && PRONOUN_OPEN.test(s)) { problems.push('orphan: opens with a pronoun after a dropped sentence'); continue; }
     droppedBefore = false;
@@ -139,9 +147,11 @@ export function lintParagraph(text: string, allow: readonly VocabGroup[]): Linte
 }
 
 /** A heading or question: one line that passes the same rules (no final-stop requirement). Empty problems = ok. */
-export function lintLine(text: string, allow: readonly VocabGroup[]): string[] {
+export function lintLine(text: string, allow: readonly VocabGroup[], kind: DenyKind = 'heading', cleared?: Clearance): string[] {
   if (sentencesOf(text).length !== 1) return ['line: must be one sentence'];
-  return aiSentenceProblems(text, allow);
+  const p = aiSentenceProblems(text, allow, kind);
+  if (!p.length && cleared && !cleared(text)) p.push('check: not cleared by the claim checker');
+  return p;
 }
 
 // ── shape ───────────────────────────────────────────────────────────────────────────────────────
@@ -219,35 +229,52 @@ export interface LintedEntry { entry: SvcCopyEntry | null; written: number; kept
  * a failing heading or meta omitted. `entry` is null when too little survives (MIN_SENTENCES, MIN_SURVIVAL) or there is no intro.
  * Idempotent: linting its own output changes nothing.
  */
-export function lintEntry(e: SvcCopyEntry, allow: readonly VocabGroup[]): LintedEntry {
+export function lintEntry(e: SvcCopyEntry, allow: readonly VocabGroup[], cleared?: Clearance): LintedEntry {
   const problems: string[] = [];
   let written = 0;
   let kept = 0;
-  const para = (t: string): string => { const r = lintParagraph(t, allow); written += r.written; kept += r.kept; problems.push(...r.problems); return r.text; };
-  const line = (t: string): string | null => { const p = lintLine(t, allow); if (p.length) { problems.push(...p); return null; } return t; };
-  const intro = para(e.intro);
+  const line = (t: string, kind: DenyKind): string | null => { const p = lintLine(t, allow, kind, cleared); if (p.length) { problems.push(...p); return null; } return t; };
+  const intro = (() => { const r = lintParagraph(e.intro, allow, cleared); written += r.written; kept += r.kept; problems.push(...r.problems); return r.text; })();
+  // A section or question whose heading fails is not printed, so its sentences count as written but never as kept.
   const sections: SvcSection[] = [];
   for (const s of e.sections) {
-    const h = line(s.h);
-    const p = para(s.p);
-    if (h !== null && p) sections.push({ h, p });
+    const h = line(s.h, 'heading');
+    const r = lintParagraph(s.p, allow, cleared);
+    written += r.written; problems.push(...r.problems);
+    if (h !== null && r.text) { sections.push({ h, p: r.text }); kept += r.kept; }
   }
   const faq: SvcFaq[] = [];
   for (const f of e.faq) {
-    const q = line(f.q);
-    const a = para(f.a);
-    if (q !== null && a) faq.push({ q, a });
+    const q = line(f.q, 'question');
+    const r = lintParagraph(f.a, allow, cleared);
+    written += r.written; problems.push(...r.problems);
+    if (q !== null && r.text) { faq.push({ q, a: r.text }); kept += r.kept; }
   }
   const out: SvcCopyEntry = { v: 1, aiGenerated: true, intro, sections, faq };
-  const heading = e.heading ? line(e.heading) : null;
+  const heading = e.heading ? line(e.heading, 'heading') : null;
   if (heading) out.heading = heading;
   // The meta fields get the honesty lint here; the seo validator (60 / 160, plain, no emoji) is applied by the caller.
-  const mt = e.metaTitle ? line(e.metaTitle) : null;
+  const mt = e.metaTitle ? line(e.metaTitle, 'heading') : null;
   if (mt) out.metaTitle = mt;
-  const md = e.metaDescription ? lintParagraph(e.metaDescription, allow) : null;
+  const md = e.metaDescription ? lintParagraph(e.metaDescription, allow, cleared) : null;
   if (md && md.written === 1 && md.kept === 1) out.metaDescription = md.text; else if (md) problems.push(...md.problems);
   if (e.at) out.at = e.at;
   const total = kept;
   if (!intro || total < MIN_SENTENCES || written === 0 || total / written < MIN_SURVIVAL) return { entry: null, written, kept, problems };
   return { entry: out, written, kept, problems };
+}
+
+/** Every distinct piece of text of an entry that would be printed, with its kind: what the claim checker must judge. */
+export function entryTexts(e: SvcCopyEntry): { text: string; kind: DenyKind }[] {
+  const seen = new Set<string>();
+  const out: { text: string; kind: DenyKind }[] = [];
+  const add = (text: string | undefined, kind: DenyKind): void => { if (text && !seen.has(text)) { seen.add(text); out.push({ text, kind }); } };
+  const paras = (t: string): void => { for (const s of sentencesOf(t)) add(s, 'sentence'); };
+  add(e.heading, 'heading');
+  paras(e.intro);
+  for (const s of e.sections) { add(s.h, 'heading'); paras(s.p); }
+  for (const f of e.faq) { add(f.q, 'question'); paras(f.a); }
+  add(e.metaTitle, 'heading');
+  if (e.metaDescription) paras(e.metaDescription);
+  return out;
 }

@@ -3,6 +3,7 @@ import { memoryStore } from '../../lib/bookings/rateLimit';
 import { makeHandler, type HandlerDeps } from '../../lib/serviceCopy/handler';
 import { memoryCopyStore } from '../../lib/serviceCopy/store';
 import type { ModelClient, ModelRequest, ModelResult } from '../../lib/serviceCopy/model';
+import { CHECK_SYSTEM_PROMPT } from '../../lib/serviceCopy/check';
 
 export const U1 = '10000000-0000-0000-0000-000000000001';
 export const U2 = '10000000-0000-0000-0000-000000000002';
@@ -28,26 +29,45 @@ export function site(extra: Record<string, unknown> = {}, titles: string[] = ['S
 
 export const GOOD_JSON = {
   heading: 'What to expect from {service}',
-  intro: 'A calm visit for the head and neck can be a slow part of the day. Tell your barber if you prefer lighter or firmer pressure. Plan a little extra time so the visit does not feel rushed.',
+  intro: 'Learn what the service involves before you decide. Tell your barber what you would like to change. Bring a photo of the style you have in mind.',
   sections: [
-    { h: 'Before you book', p: 'Think about how much time you have. Wear a top that is easy to move around in. Ask about {service} when you book.' },
-    { h: 'During the visit', p: 'Speak up if anything feels uncomfortable. Your barber can adjust at any point.' },
+    { h: 'Before you arrive', p: 'Think about how you wear your hair. Wear loose clothes that are easy to move in. Ask about {service} before the visit.' },
+    { h: 'During the visit', p: 'Speak up if you would like a change. Check that the plan matches what you asked for.' },
   ],
-  faq: [{ q: 'What should you bring to the visit?', a: 'Bring nothing special. Ask your barber if you have a question.' }],
-  metaTitle: '{service}: what to know',
-  metaDescription: 'Plain notes on what a visit for {service} involves and how to prepare.',
+  faq: [{ q: 'What should you bring to the visit?', a: 'Bring a photo of the look you like. Ask your barber if you have a question.' }],
+  metaTitle: 'What to know about {service}',
+  metaDescription: 'Learn what a visit for {service} involves and how to prepare.',
 };
 
-export interface ScriptedModel extends ModelClient { calls: ModelRequest[]; script: (string | Error | ((r: ModelRequest) => string | Promise<string>))[]; usage: { input: number; output: number } }
-export function scriptedModel(script: ScriptedModel['script'] = [JSON.stringify(GOOD_JSON)]): ScriptedModel {
+type Step = string | Error | ((r: ModelRequest) => string | Promise<string>);
+export interface ScriptedModel extends ModelClient {
+  /** The WRITING calls (the generator prompt). */
+  calls: ModelRequest[];
+  /** The claim-checker calls (the checker prompt). */
+  checks: ModelRequest[];
+  script: Step[];
+  /** How the checker answers; default clears every sentence. A string/Error/function like `script`. */
+  checkScript: Step[];
+  usage: { input: number; output: number };
+  checkUsage: { input: number; output: number };
+}
+/** The checker reply that clears every sentence of the request (or flags the ones `flag` selects by text). */
+export function verdictsFor(req: ModelRequest, flag: (sentence: string) => boolean = () => false): string {
+  const list: string[] = JSON.parse(/<sentences>\n([\s\S]*)\n<\/sentences>/.exec(req.messages[0].content)![1]);
+  return JSON.stringify({ verdicts: list.map((t, n) => ({ n, v: flag(t) ? 'flag' : 'clear' })) });
+}
+export function scriptedModel(script: Step[] = [JSON.stringify(GOOD_JSON)], checkScript: Step[] = [(r) => verdictsFor(r)]): ScriptedModel {
   const m: ScriptedModel = {
-    calls: [], script, usage: { input: 800, output: 900 },
+    calls: [], checks: [], script, checkScript, usage: { input: 800, output: 900 }, checkUsage: { input: 300, output: 100 },
     async complete(req: ModelRequest): Promise<ModelResult> {
-      m.calls.push(JSON.parse(JSON.stringify(req)));
-      const step = m.script[Math.min(m.calls.length - 1, m.script.length - 1)];
+      const isCheck = req.system === CHECK_SYSTEM_PROMPT;
+      (isCheck ? m.checks : m.calls).push(JSON.parse(JSON.stringify(req)));
+      const list = isCheck ? m.checkScript : m.script;
+      const n = isCheck ? m.checks.length : m.calls.length;
+      const step = list[Math.min(n - 1, list.length - 1)];
       if (step instanceof Error) throw step;
       const text = typeof step === 'function' ? await step(req) : step;
-      return { text, usage: m.usage };
+      return { text, usage: isCheck ? m.checkUsage : m.usage };
     },
   };
   return m;

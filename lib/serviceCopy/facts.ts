@@ -1,11 +1,10 @@
-// The facts about a service that may reach the model: its title, the niche's name and the shop's place. Read from the caller's
+// The facts about a service that may reach the model: its title and the niche's name. Read from the caller's
 // OWN stored draft, never from the request. Nothing else is read (no shop name, phone, email, address, price, description,
 // reviews or staff). Each value passes a whitelist or is left out; an unusable title means no call at all.
 import { createHash } from 'node:crypto';
 import type { WebsiteData } from '../../types';
 import { guideIdForTitle, svcTitleKey, titledServices, THIN_DESCRIPTION_MIN, type Svc } from '../render/guides.js';
-import { nicheOf, placeFromArea } from '../render/honest.js';
-import { spliceable } from '../render/spliceable.js';
+import { nicheOf } from '../render/honest.js';
 import { aiTitle } from './titleGate.js';
 import type { Facts } from './prompt.js';
 
@@ -25,9 +24,8 @@ export function serviceFacts(d: WebsiteData, titleKey: string): FactsResult {
   if (title === null) return { ok: false, reason: 'title_not_usable' };
   const industry = nicheOf(d).industry;
   const businessType = NICHE_OK.test(industry) ? industry : 'Barbershop';
-  const place = spliceable('name', placeFromArea(d.area || ''));
-  const facts: Facts = { serviceTitle: title, businessType, ...(place ? { place } : {}) };
-  // The cache is valid while the service and the niche are the same. The place is never written into the text, so it is not part of the hash.
+  // The place is never sent to the model (review 6: it only fed leaks). The cache is valid while the service and the niche are the same.
+  const facts: Facts = { serviceTitle: title, businessType };
   const hash = createHash('sha256').update(JSON.stringify([titleKey, businessType])).digest('hex');
   return { ok: true, facts, subject, titleKey, hash };
 }
