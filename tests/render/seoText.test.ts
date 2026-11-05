@@ -152,11 +152,40 @@ describe('seoSanitize: invalid values are dropped, the rest of the draft is kept
     const m = seoSanitize(sd(many));
     expect(Object.keys((m.siteData as any).copy)).toHaveLength(MAX_SEO_KEYS);
     expect(m.problems).toHaveLength(5); expect(m.problems.every((p) => p.reason === 'too_many')).toBe(true);
+    // a real override is never pushed out by empty or unknown keys that were stored before it (review 4b NIT 4)
+    const junkFirst: Record<string, string> = {};
+    for (let i = 0; i < MAX_SEO_KEYS + 5; i++) junkFirst[i % 2 ? `seo.junk${i}.title` : `seo.home${i}.title`] = i % 3 ? '' : 'ok';
+    junkFirst['seo.home.title'] = 'Fresh Cuts'; junkFirst['seo.faq.description'] = 'Questions answered here.';
+    const j = seoSanitize(sd(junkFirst));
+    const kept = Object.keys((j.siteData as any).copy);
+    expect(kept).toHaveLength(MAX_SEO_KEYS);
+    expect(kept).toContain('seo.home.title'); expect(kept).toContain('seo.faq.description');
+    expect(j.problems.every((p) => p.reason === 'too_many')).toBe(true);
+    expect(j.problems).toHaveLength(MAX_SEO_KEYS + 7 - MAX_SEO_KEYS);
+    // known keys alone over the budget: the first MAX_SEO_KEYS (in stored order) stay
+    const known: Record<string, string> = {};
+    const pages = ['home', 'about', 'services', 'team', 'gallery', 'reviews', 'hours', 'location', 'contact', 'book', 'shop'];
+    for (let i = 0; i < 60; i++) known[`seo.svc.s${i}.title`] = 'ok title'; for (const pg of pages) { known[`seo.${pg}.title`] = 'ok title'; known[`seo.${pg}.description`] = 'ok text'; }
+    for (let i = 60; i < 90; i++) known[`seo.svc.s${i}.title`] = 'ok title';
+    const k = seoSanitize(sd(known));
+    expect(Object.keys((k.siteData as any).copy)).toHaveLength(MAX_SEO_KEYS);
+    expect(k.problems.map((p) => p.key)).toEqual(Object.keys(known).slice(MAX_SEO_KEYS));
     // invalid values do not use up the budget
     const mixed: Record<string, string> = {};
     for (let i = 0; i < MAX_SEO_KEYS; i++) { mixed[`seo.bad${i}.title`] = 'x'.repeat(SEO_RAW_MAX + 1); }
     mixed['seo.home.title'] = 'Fine title';
     expect((seoSanitize(sd(mixed)).siteData as any).copy['seo.home.title']).toBe('Fine title');
+  });
+  it('an own __proto__ key cannot change the prototype of the rebuilt copy (review 4b NIT 5)', () => {
+    const copy = JSON.parse('{"__proto__":{"seo.home.title":"Evil","polluted":"yes"},"seo.home.description":"1\u20E3","faq.book":"keep"}');
+    const r = seoSanitize({ shopName: 'X', copy });
+    const next = (r.siteData as any).copy;
+    expect(Object.getPrototypeOf(next)).toBe(Object.prototype);
+    expect(next.polluted).toBeUndefined();
+    expect(next['seo.home.title']).toBeUndefined();
+    expect(Object.keys(next).sort()).toEqual(['__proto__', 'faq.book']);
+    expect(({} as any).polluted).toBeUndefined();
+    expect(seoOverride({ copy: next }, 'seo.home.title')).toBeNull();
   });
 });
 
@@ -194,6 +223,19 @@ describe('invisible and look-alike-empty characters (one class at a time)', () =
   });
   it('visible letters or digits still pass (no false positive on other scripts)', () => {
     for (const v of ['한국 이발소', 'حلاقة الأحمد', 'नाई की दुकान', 'ไทย บาร์เบอร์', 'Fade 2 Go', '１２ 理髪']) expect(T(v), v).not.toBeNull();
+  });
+  it('text that prints as nothing but a stretch bar, a box or a filler is refused (review 4b NIT 1)', () => {
+    for (const v of ['\u0640', '\u0640\u0640\u0640', '\u0640 \u0640', '\u0640\u0640 7', '\uFFFC\uFFFCab', 'ab\uFFFC', '\u{16FE4}\u{16FE4}', 'ab\u{16FE4}', 'ab\u{1D159}']) {
+      expect(T(v), JSON.stringify(v)).toBeNull(); expect(D(v), JSON.stringify(v)).toBeNull();
+    }
+    // a tatweel inside a real Arabic word, and one letter from another script next to it, are fine
+    expect(T('\u062D\u0640\u0640\u0644\u0627\u0642\u0629')).not.toBeNull();
+    expect(checkSeoText('title', '\u0640\u0640\u0640')).toEqual({ ok: false, reason: 'too_few_letters' });
+    expect(checkSeoText('title', 'ab\uFFFC')).toEqual({ ok: false, reason: 'invisible' });
+  });
+  it('no false positive on three marks on one letter (Hebrew with vowel, dagesh and cantillation)', () => {
+    expect(T('\u05D1\u05B0\u05BC\u0591\u05E8\u05D0\u05E9\u05D9\u05EA')).not.toBeNull();
+    expect(T('Ab\u0300\u0301\u0302 cuts')).not.toBeNull(); // three marks is the largest stack that passes
   });
   it('checkSeoText names the rule', () => {
     expect(checkSeoText('title', 'ㅤㅤ')).toEqual({ ok: false, reason: 'invisible' });

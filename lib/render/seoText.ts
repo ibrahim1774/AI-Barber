@@ -48,7 +48,8 @@ export const isSeoKey = (key: unknown): boolean => parseSeoKey(key) !== null;
 const FORBIDDEN = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\u2028\u2029]/u;
 // Letters and blanks that print as nothing: Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), braille blank (U+2800),
 // combining grapheme joiner (U+034F), Khmer inherent vowels (U+17B4, U+17B5), Mongolian free variation selectors (U+180B-U+180D).
-const INVISIBLE = /[\u115F\u1160\u3164\uFFA0\u2800\u034F\u17B4\u17B5\u180B-\u180D]/u;
+// Also the object replacement character (U+FFFC, prints a box), the Khitan small script filler (U+16FE4) and the musical null notehead (U+1D159).
+const INVISIBLE = /[\u115F\u1160\u3164\uFFA0\u2800\u034F\u17B4\u17B5\u180B-\u180D\uFFFC\u{16FE4}\u{1D159}]/u;
 // Variation selectors (U+FE00-U+FE0F, U+E0100-U+E01EF) turn a plain character into an emoji ("Fade\uFE0F") or glyph variant.
 const VARIATION = /[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/u;
 // Enclosing marks, mainly the combining keycap U+20E3 ("1\uFE0F\u20E3"); an emoji modifier (skin tone) is refused as well.
@@ -57,7 +58,8 @@ const ENCLOSING = /[\p{Me}\p{Emoji_Modifier}]/u;
 const MARK_STACK = /\p{M}{4,}/u;
 const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
 const ENTITY = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]{1,31});/i;
-const ALNUM = /[\p{L}\p{N}]/gu;
+// A real letter or digit. The Arabic tatweel (U+0640, a letter that only stretches a join) is not one: "ـــ" prints a bare line.
+const ALNUM = /[^\P{L}\u0640]|\p{N}/gu;
 const UPPER = /\p{Lu}/gu;
 const LOWER = /\p{Ll}/gu;
 const SYMBOL_RUN = /([^\p{L}\p{N}\s])\1{3,}/u;
@@ -138,7 +140,9 @@ export function seoSanitize<T>(sd: T): { siteData: T; problems: SeoFieldProblem[
   if (!copy || typeof copy !== 'object' || Array.isArray(copy)) return { siteData: sd, problems: [] };
   const problems: SeoFieldProblem[] = [];
   const drop = new Set<string>();
-  let kept = 0;
+  const why = new Map<string, SeoFieldProblem>();
+  const prioritised: string[] = []; // known keys with a value: they take the key budget first
+  const others: string[] = []; // empty values and keys the renderer does not know
   for (const key of Object.keys(copy)) {
     if (!key.startsWith('seo.')) continue;
     const parsed = parseSeoKey(key);
@@ -149,12 +153,17 @@ export function seoSanitize<T>(sd: T): { siteData: T; problems: SeoFieldProblem[
     else if (typeof v !== 'string') reason = 'not_text';
     else if (v.length > SEO_RAW_MAX) reason = 'too_long_raw';
     else if (parsed && v.trim() !== '') { const r = checkSeoText(parsed.kind, v); if ('reason' in r) reason = r.reason; }
-    if (!reason && ++kept > MAX_SEO_KEYS) reason = 'too_many';
-    if (reason) { drop.add(key); problems.push({ ...where, reason }); }
+    if (reason) { drop.add(key); why.set(key, { ...where, reason }); continue; }
+    (parsed && (v as string).trim() !== '' ? prioritised : others).push(key);
+    why.set(key, { ...where, reason: 'too_many' });
   }
+  // Past MAX_SEO_KEYS the surplus is dropped, but a real override is never pushed out by empty or unknown keys that came first.
+  for (const key of [...prioritised.slice(MAX_SEO_KEYS), ...others.slice(Math.max(0, MAX_SEO_KEYS - prioritised.length))]) drop.add(key);
+  for (const key of Object.keys(copy)) if (drop.has(key)) problems.push(why.get(key)!);
   if (!drop.size) return { siteData: sd, problems };
+  // defineProperty, not assignment: an own `__proto__` key stays an own entry and never changes the prototype of the rebuilt object.
   const next: Record<string, unknown> = {};
-  for (const key of Object.keys(copy)) if (!drop.has(key)) next[key] = (copy as Record<string, unknown>)[key];
+  for (const key of Object.keys(copy)) if (!drop.has(key)) Object.defineProperty(next, key, { value: (copy as Record<string, unknown>)[key], enumerable: true, writable: true, configurable: true });
   return { siteData: { ...sd, copy: next }, problems };
 }
 

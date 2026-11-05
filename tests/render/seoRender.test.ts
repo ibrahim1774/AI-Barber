@@ -257,3 +257,15 @@ describe('editor markers never leak into the seo list', () => {
     for (const e of marked.seo) { expect(e.title).not.toContain('⁣'); expect(e.description).not.toContain('⁣'); }
   });
 });
+
+describe('the seo list never carries editor markers (review 4b NIT 3)', () => {
+  const M = (id: string, v: string) => `⁣${id}⁣${v}⁣/⁣`;
+  it('home and sub-page entries are plain text, with a default title and with an override', () => {
+    for (const copy of [undefined, { [seoKey('home', 'title')]: 'Fresh Cuts | Brooklyn', [seoKey('home', 'description')]: 'Fades and beard trims in Brooklyn.' }, { [seoKey('home', 'title')]: 'Fresh Cuts | Brooklyn' }, { [seoKey('home', 'description')]: 'Fades and beard trims in Brooklyn.' }]) {
+      const d = shop({ shopName: M('shopName', 'Fresh Cuts'), area: M('area', 'Brooklyn, NY'), hero: { heading: M('heroHeading', 'Fresh Cuts'), tagline: M('heroTagline', 'Sharp fades'), imageUrl: '' }, ...(copy ? { copy } : {}) });
+      const b = renderSiteBundle(d, BASE);
+      expect(b.seo.length).toBeGreaterThan(3);
+      for (const e of b.seo) { expect(e.title, e.id).not.toMatch(/⁣/); expect(e.description, e.id).not.toMatch(/⁣/); }
+    }
+  });
+});

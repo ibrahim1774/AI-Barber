@@ -407,7 +407,7 @@ describe('SEO title and description overrides (copy keys seo.*)', () => {
       const r = await save(withCopy({ 'seo.home.title': v, 'faq.book': 'Our own words.', 'seo.home.description': 'A fine description.' }), rev);
       expect(r.code, String(v).slice(0, 20)).toBe(200); rev = r.body.draft.revision;
       expect(r.body.seoProblems).toEqual([{ page: 'home', field: 'title', reason, key: 'seo.home.title' }]);
-      const stored = (await db.query('select site_data from web_app_drafts')).rows[0].site_data;
+      const stored = ((await db.query('select site_data from web_app_drafts')).rows[0] as any).site_data;
       expect(stored.copy).toEqual({ 'faq.book': 'Our own words.', 'seo.home.description': 'A fine description.' });
       expect(r.body.draft.site_data.copy['seo.home.title']).toBeUndefined();
     }
@@ -426,7 +426,7 @@ describe('SEO title and description overrides (copy keys seo.*)', () => {
     for (let i = 0; i < 130; i++) copy[`seo.k${i}.title`] = 'ok';
     const r = await save(withCopy(copy));
     expect(r.code).toBe(200); expect(r.body.seoProblems).toHaveLength(30);
-    expect(Object.keys((await db.query('select site_data from web_app_drafts')).rows[0].site_data.copy)).toHaveLength(100);
+    expect(Object.keys(((await db.query('select site_data from web_app_drafts')).rows[0] as any).site_data.copy)).toHaveLength(100);
   });
   it('an empty override (cleared in the editor) saves', async () => {
     expect((await save(withCopy({ 'seo.home.title': '' }))).code).toBe(200);
@@ -435,7 +435,7 @@ describe('SEO title and description overrides (copy keys seo.*)', () => {
     expect((await save(withCopy({ 'seo.home.title': 'Test Cuts' }))).code).toBe(200);
     const r = await save({ ...withCopy({ 'seo.home.title': '<b>x</b>' }), phone: 'edited' }, 1);
     expect(r.code).toBe(200);
-    const row = (await db.query('select site_data from web_app_drafts')).rows[0].site_data;
+    const row = ((await db.query('select site_data from web_app_drafts')).rows[0] as any).site_data;
     expect(row.copy['seo.home.title']).toBeUndefined(); expect(row.phone).toBe('edited');
   });
 });

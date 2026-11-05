@@ -246,3 +246,30 @@ describe('SF2: the web-origin marker is stamped on the server', () => {
     expect(((deps.writePending as any).mock.calls[0][1] as PendingSite).siteData.source).toBe('web-app');
   });
 });
+
+describe('runWebPublish: the seoFallbacks field of the success body (step 7 reads it)', () => {
+  it('lists each dropped seo.* value with page, field, reason and key; the stored copy lacks them', async () => {
+    const { deps } = fakes();
+    const r: any = await runWebPublish({ siteData: site({ copy: { 'seo.home.title': '💈 Cuts', 'seo.faq.description': 'x'.repeat(161), 'seo.about.title': 'Our story', 'faq.book': 'ours' } as any }) }, deps, { authorization: AUTH });
+    expect(r.status).toBe(200);
+    expect(r.body.seoFallbacks).toEqual([
+      { page: 'home', field: 'title', reason: 'emoji', key: 'seo.home.title' },
+      { page: 'faq', field: 'description', reason: 'too_long', key: 'seo.faq.description' },
+    ]);
+    const stored = [...deps._pending.values()][0].siteData as any;
+    expect(stored.copy).toEqual({ 'seo.about.title': 'Our story', 'faq.book': 'ours' });
+  });
+  it('is an empty list when every value is valid or there are none', async () => {
+    for (const copy of [undefined, { 'seo.home.title': 'Fresh Cuts' }]) {
+      const { deps } = fakes();
+      const r: any = await runWebPublish({ siteData: site(copy ? { copy: copy as any } : {}) }, deps, { authorization: AUTH });
+      expect(r.status).toBe(200);
+      expect(r.body.seoFallbacks).toEqual([]);
+    }
+  });
+  it('is absent from error bodies', async () => {
+    const { deps } = fakes({ ent: null });
+    const r: any = await runWebPublish({ siteData: site({ copy: { 'seo.home.title': '💈' } as any }) }, deps, { authorization: AUTH });
+    expect(r.status).toBe(402); expect(r.body.seoFallbacks).toBeUndefined();
+  });
+});

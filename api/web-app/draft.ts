@@ -35,7 +35,7 @@ export default async function handler(req: any, res: any) {
       Buffer.byteLength(JSON.stringify(req.body)) > MAX_BODY_BYTES || !validSiteData(site_data) || hasDataUrl(site_data)) {
       return res.status(400).json({ error: 'invalid_draft' });
     }
-    // An over-long or hostile SEO title / description (copy keys `seo.*`) is refused here, so it is never stored (Phase 1 step 4).
+    // An over-long or hostile SEO title / description (copy keys `seo.*`) is never stored (Phase 1 step 4).
     // Only a structural problem (copy is not an object) is refused. An invalid value is DROPPED from what is stored and listed in
     // `seoProblems` (page, field, reason), so one bad title never blocks the autosave of the rest of the draft.
     const seo = seoProblem(site_data);
