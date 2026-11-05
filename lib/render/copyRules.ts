@@ -147,8 +147,9 @@ const SERVICE_AS_SUBJECT = /(?:^|[.!?]\s+|[,;:]\s+(?:and|but|so)\s+)\{(?:service
 // R16: a sentence about directions needs the address in the same sentence, so it drops with it ("Mobile - I come to you",
 // a city, no address). R17: no pronoun may point back at {service} (a plural title: "Braids ... has it"). R18: the book
 // link's label is the barber's own button text ("Book now"), so it is never a noun phrase: it must be followed by "link".
-const DIRECTIONS_WORD = /\b(?:directions?|map|maps|drive|driving|parking|get here|getting here)\b/i;
-const PRONOUN_AFTER_SERVICE = /\{(?:service|svc:[a-z-]+)\}[^.!?]*?\b(?:it|they|them|these|those|one|ones)\b/i;
+const DIRECTIONS_WORD = /\b(?:directions?|map|maps|drive|driving|parking|get here|getting here|reach|find us|route|navigate)\b/i;
+const HAS_SERVICE = /\{(?:service|svc:[a-z-]+)\}/;
+const PRONOUN_IN_SERVICE_ENTRY = /\b(?:it|they|them|these|those|one|ones)\b/i;
 const BOOK_LINK_BARE = /\{link:book\}(?!\s+link\b)/;
 
 /** R12, R13 and R15 to R18 (strict blocks only). */
@@ -163,8 +164,9 @@ export function strictProblems(raw: string): string[] {
   const v = SERVICE_AS_SUBJECT.exec(raw);
   if (v) out.push(`R15: the service is the subject of a verb "${v[0].trim()}"`);
   if (DIRECTIONS_WORD.test(raw) && !/\{address\}/.test(raw)) out.push('R16: directions without {address} in the same sentence');
-  const pr = PRONOUN_AFTER_SERVICE.exec(raw);
-  if (pr) out.push(`R17: a pronoun points back at the service "${pr[0]}"`);
+  // R17 looks at the whole entry, across "?" and "." too: "Looking for {service}? {shop} has it on the menu."
+  const pr = HAS_SERVICE.test(raw) ? PRONOUN_IN_SERVICE_ENTRY.exec(raw.replace(TOKEN_ANY, ' tok ')) : null;
+  if (pr) out.push(`R17: a pronoun in a sentence with the service "${pr[0]}"`);
   if (BOOK_LINK_BARE.test(raw)) out.push('R18: {link:book} must be followed by "link" (its label is the barber\'s button text)');
   const n = (raw.match(/\{service\}/g) ?? []).length;
   if (n > 1) out.push(`R15: {service} appears ${n} times in one sentence`);

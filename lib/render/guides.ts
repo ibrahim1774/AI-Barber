@@ -389,19 +389,46 @@ const DURATION = new RegExp(`^${DURATION_UNIT}(?:\\s*(?:and\\s+|&\\s*)?${DURATIO
 export const isMoney = (v: string): boolean => MONEY.test(v.trim());
 export const isDuration = (v: string): boolean => DURATION.test(v.trim());
 /** A street address has a house number followed by a street name; a city, "Mobile - I come to you" or a PO box does not. */
-export const isStreetAddress = (v: string): boolean => /(?:^|[\s,])\d{1,6}[A-Za-z]?(?:-\d{1,6})?\s+[A-Za-z]/.test(v) && !/\bp\.?\s?o\.?\s*box\b/i.test(v) && !/\b(?:mobile|travel|house\s*calls?|i come to you|we come to you|home visits?)\b/i.test(v);
+export const isStreetAddress = (v: string): boolean => /(?:^|[\s,])#?\d{1,6}[A-Za-z]?(?:-\d{1,6})?\s+[A-Za-z]/.test(v) && !/\bp\.?\s?o\.?\s*box\b/i.test(v) && !/\b(?:mobile|travel|house\s*calls?|i come to you|we come to you|home visits?)\b/i.test(v);
 
 /**
  * A barber's own text as it goes into a strict sentence: one space between words, no leading symbols or inverted
  * marks ("- Fade", "¿Corte?"), no trailing sentence punctuation, and no bracket or quote that has lost its partner.
  */
 export function tidyValue(raw: string): string {
-  let v = raw.replace(/\s+/g, ' ').replace(/^[\s\-–—+&/.,;:¿¡!?*#~|]+/, '').replace(/[\s.!?,;:]+$/, '').trim();
-  for (const [a, b] of [['(', ')'], ['[', ']'], ['{', '}']]) {
+  // Leading junk goes only when it is clearly junk: a symbol followed by a space ("- Fade", "+ & Beard"), a dash, bullet,
+  // inverted mark or other punctuation glued to a word. A "+" (phone country code, "+$25"), "#" ("#1 Cut") or "~" ("~$30")
+  // in front of a digit or "$" is meaning, and stays (an approximate price then fails isMoney and drops its sentence).
+  let v = raw.replace(/\s+/g, ' ').trim()
+    .replace(/\*([^*\s][^*]*?)\*/g, '$1')
+    .replace(/^(?:[-\u2013\u2014+&/.,;:*~|!?#]+\s+)+/, '')
+    .replace(/^[-\u2013\u2014*|.,;:!?\u00bf\u00a1]+(?=\S)/, '')
+    .replace(/^[*]+/, '')
+    .replace(/[\s.!?,;:]+$/, '').trim();
+  for (const [a, b] of [['(', ')'], ['[', ']'], ['{', '}'], ['\u201c', '\u201d']]) {
     if (v.split(a).length !== v.split(b).length) v = v.split(a).join('').split(b).join('');
   }
   if ((v.match(/"/g) ?? []).length % 2) v = v.replace(/"/g, '');
+  // A lone apostrophe or single quote opening a title ("'Fade") has no partner; a closing one ("Kids' Cut") is a possessive.
+  if (/^['\u2018]/.test(v) && (v.match(/['\u2018\u2019]/g) ?? []).length === 1) v = v.slice(1);
   return v.replace(/\s+/g, ' ').trim();
+}
+
+const LABEL_MAX = 30;
+/**
+ * A link label (the barber's own button or page name) as it goes inside a strict sentence ("Use the Book now link."):
+ * no trailing punctuation or arrow, sentence case when it is all caps, all lower case or oddly cased, and the neutral
+ * default when nothing usable is left (empty, no letters, too long, a URL, a label that is itself several sentences).
+ * The button elsewhere keeps the barber's text; only the sentence is tidied.
+ */
+export function tidyLabel(raw: string, fallback: string): string {
+  let v = tidyValue(String(raw ?? '')).replace(/[\s\u2192\u203a\u00bb>\u2190\u2039\u00ab<]+$/, '').replace(/^[\s\u2192\u203a\u00bb>\u2190\u2039\u00ab<]+/, '').trim();
+  if (!/[\p{L}\p{N}]/u.test(v) || v.length > LABEL_MAX || /[!?]|[.](?:\s|$)|:\/\/|www\.|[<>{}@]/.test(v)) return fallback;
+  const letters = v.replace(/[^\p{L}]/gu, '');
+  const acronym = letters.length <= 4 && !/\s/.test(v) && letters === letters.toUpperCase();
+  const odd = letters.length > 1 && !acronym && (letters === letters.toUpperCase() || letters === letters.toLowerCase() || /(?:^|\s)\p{Ll}\p{Lu}/u.test(v));
+  if (odd) v = v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+  return v;
 }
 
 /**
@@ -422,12 +449,20 @@ export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly 
     if (m.index! > last) push({ t: 'text', s: sentence.slice(last, m.index) });
     let seg = tokenSeg(env, m[1], m[2], subject);
     if (!seg) return null;
+    if (strict && seg.t === 'link') {
+      // The label is the barber's own text; the sentence gets it tidied (the button elsewhere keeps the original).
+      const label = m[1] === 'link' && isLinkKey(m[2]) ? tidyLabel(seg.label, FALLBACK_LABEL[m[2]]) : tidyValue(seg.label);
+      if (!label) return null;
+      seg = { ...seg, label };
+    }
     if (strict && seg.t === 'text') {
       // R14 at render time: one space between words, no trailing punctuation that would end the sentence early ("haircut."
       // would give "haircut. is ..."), and only values that read as what they are (a free-text price or time is dropped).
       const v = tidyValue(seg.s);
       if (!v) return null;
       values[m[1]] = v.toLowerCase();
+      // A title with a sentence end inside ("Shave? Yes") would end the sentence early.
+      if (m[1] === 'service' && /[.!?](?:\s|$)/.test(v)) return null;
       if (m[1] === 'price' && !isMoney(v)) return null;
       if (m[1] === 'duration' && !isDuration(v)) return null;
       if (m[1] === 'address' && !isStreetAddress(v)) return null;

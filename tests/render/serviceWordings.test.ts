@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { SERVICE_VISIT } from '../../lib/render/copyLibrary';
 import { outputProblems, strictProblems } from '../../lib/render/copyRules';
-import { lenientEnv, resolveSentence, segsText, svcCopyKey, tidyValue } from '../../lib/render/guides';
+import { isDuration, isMoney, lenientEnv, resolveSentence, segsText, svcCopyKey, tidyLabel, tidyValue } from '../../lib/render/guides';
 import { renderSiteBundle } from '../../lib/render/site';
 import type { WebsiteData } from '../../types';
 
@@ -119,9 +119,102 @@ describe('re-review 12 nits', () => {
     for (const sentence of SERVICE_VISIT.variants.flat()) expect(outputProblems(sentence.replace(/\{[^}]*\}/g, 'Zed')), sentence).toEqual([]); // the library's own words repeat nothing
   });
   it('R17 refuses a pronoun after {service}, R16 directions without an address, R18 a bare book link', () => {
-    expect(strictProblems('Looking for {service}? {shop} lists it on the menu.')).toEqual([]); // different sentence: the question ends first
+    expect(strictProblems('Looking for {service}? {shop} lists it on the menu.').join()).toMatch(/R17/); // across the question mark too
     expect(strictProblems('{shop} lists {service} and keeps it ready.').join()).toMatch(/R17/);
     expect(strictProblems('See the map and parking details.').join()).toMatch(/R16/);
     expect(strictProblems('Use {link:book}.').join()).toMatch(/R18/);
+  });
+});
+
+// ── Re-review 12c ───────────────────────────────────────────────────────────────────────────────
+const sv = (title: string) => ({ index: 0, title, price: '', duration: '', guide: null }) as never;
+const say = (sentence: string, o: { shop?: string; phone?: string; address?: string; title?: string; price?: string; duration?: string } = {}) => {
+  const d = mk(o.title ?? 'Fade', { shop: o.shop ?? 'Fresh Cuts', address: o.address ?? '12 Main St', price: o.price ?? '$30', duration: o.duration ?? '30 min', wording: 0, phone: o.phone ?? '(512) 555-0100', book: '/book' });
+  const r = resolveSentence(lenientEnv(d), sentence, [], { index: 0, title: o.title ?? 'Fade', price: o.price ?? '$30', duration: o.duration ?? '30 min', guide: null } as never, true);
+  return r ? segsText(r) : null;
+};
+
+describe('BL-A: meaningful leading symbols stay (table)', () => {
+  const keep: Array<[string, string]> = [
+    ['+44 20 7946 0958', '+44 20 7946 0958'], ['+1 (512) 555-0100', '+1 (512) 555-0100'], ['+52 55 1234 5678', '+52 55 1234 5678'],
+    ['#1 Cut', '#1 Cut'], ['#1 Barbers', '#1 Barbers'], ['~$30', '~$30'], ['$25+', '$25+'], ['+$25', '+$25'], ['~30 min', '~30 min'], ['#4 Oak Ave, Austin', '#4 Oak Ave, Austin'],
+  ];
+  const clean: Array<[string, string]> = [
+    ['- Fade', 'Fade'], ['+ Beard', 'Beard'], ['+ & Fade', 'Fade'], ['-Fade', 'Fade'], ['*New* Fade', 'New Fade'], ['¿Corte?', 'Corte'], ['  Fade!!  ', 'Fade'],
+    ['\u201cFade', 'Fade'], ['\u201cFade\u201d', '\u201cFade\u201d'], ["'Fade", 'Fade'], ["Kids' Cut", "Kids' Cut"], ['Call us!!!', 'Call us'], ['', ''], ['   ', ''],
+  ];
+  for (const [i, o] of keep) it(`keeps ${JSON.stringify(i)}`, () => expect(tidyValue(i)).toBe(o));
+  for (const [i, o] of clean) it(`tidies ${JSON.stringify(i)}`, () => expect(tidyValue(i)).toBe(o));
+  it('approximate and signed prices and times do not pass as exact', () => {
+    for (const v of ['~$30', '+$25', '~30 min', '+30 min']) expect(isMoney(tidyValue(v)) || isDuration(tidyValue(v)), v).toBe(false);
+    expect(isMoney(tidyValue('$25+'))).toBe(true);
+    expect(say('The listed price is {price}.', { price: '~$30' })).toBeNull();
+    expect(say('The listed time is {duration}.', { duration: '~30 min' })).toBeNull();
+    expect(say('The listed price is {price}.', { price: '$25+' })).toBe('The listed price is $25+.');
+  });
+  it('phone, shop, title and address print unchanged in a sentence', () => {
+    expect(say('Call {phone} to book.', { phone: '+44 20 7946 0958' })).toBe('Call +44 20 7946 0958 to book.');
+    expect(say('Call {phone} to book.', { phone: '+1 (512) 555-0100' })).toBe('Call +1 (512) 555-0100 to book.');
+    expect(say('{shop} lists {service} on its menu.', { shop: '#1 Barbers', title: 'Fade' })).toBe('#1 Barbers lists Fade on its menu.');
+    expect(say('Ready to book {service}?', { title: '#1 Cut' })).toBe('Ready to book #1 Cut?');
+    expect(say('The shop is at {address}.', { address: '#4 Oak Ave, Austin' })).toBe('The shop is at #4 Oak Ave, Austin.');
+  });
+  it('full render: a +44 phone and a #1 shop keep their signs on the page', () => {
+    const d = mk('Fade', { shop: '#1 Barbers', address: '12 Main St, Austin, TX', price: '$30', duration: '30 min', wording: 0, phone: '+44 20 7946 0958', book: '/book' });
+    const text = added(d).join(' ');
+    expect(text).not.toMatch(/(?<![+#\w])44 20/);
+    expect(text).not.toMatch(/(?<![#\w])1 Barbers/);
+  });
+});
+
+describe('BL-B: link labels in sentences are tidied (table)', () => {
+  const cases: Array<[string, string, string]> = [
+    ['Book Now!', 'Book now', 'Book Now'], ['BOOK NOW', 'Book now', 'Book now'], ['book now', 'Book now', 'Book now'], ['', 'Book now', 'Book now'], ['  ', 'Book now', 'Book now'],
+    ['Call us!!!', 'Book now', 'Call us'], ['Book now.', 'Book now', 'Book now'], ['Where Are We?', 'Location', 'Where Are We'],
+    ['Book Now \u2192', 'Book now', 'Book Now'], ['!!!', 'Book now', 'Book now'], ['https://x.com/book', 'Book now', 'Book now'], ['bOOK nOW', 'Book now', 'Book now'],
+    ['Book a Fade', 'Book now', 'Book a Fade'], ['FAQ', 'Book now', 'FAQ'], ['Reserve your spot at our shop today now', 'Book now', 'Book now'], ['Book. Now', 'Book now', 'Book now'],
+  ];
+  for (const [raw, fb, want] of cases) it(`${JSON.stringify(raw)} -> ${JSON.stringify(want)}`, () => expect(tidyLabel(raw, fb)).toBe(want));
+
+  const labels = ['Book Now!', 'BOOK NOW', 'book now', '', '  ', 'Call us!!!', 'Book now.', 'Where Are We?', 'Location.', '!!!'];
+  for (const label of labels) for (const wording of [0, 1, 2]) for (const tpl of ['luxe', 'prime']) {
+    it(`full render ${JSON.stringify(label)} wording ${wording} ${tpl}`, () => {
+      const d = mk('Fade', { shop: 'Fresh Cuts', address: '12 Main St, Austin, TX', price: '$30', duration: '30 min', wording, phone: '(512) 555-0100', book: '/book' });
+      (d as unknown as Record<string, unknown>).template = tpl;
+      (d as unknown as Record<string, unknown>).labels = { pgBookCta: label, pgNavLocation: label };
+      const out = added(d);
+      for (const s of out) {
+        expect(s).not.toMatch(/[.!?]\s+(?:link|page)\b/);
+        expect(s).not.toMatch(/[!?][^.!?]*\b(?:link|page)\b/);
+        expect(outputProblems(s, { repeats: false }), s).toEqual([]);
+        expect(s).toMatch(/[.?!]$/);
+      }
+    });
+  }
+  it('the sentence label is tidied but the button keeps the barber text', () => {
+    const d = mk('Fade', { shop: 'Fresh Cuts', address: '12 Main St, Austin, TX', price: '$30', duration: '30 min', wording: 1, phone: '', book: '/book' });
+    (d as unknown as Record<string, unknown>).labels = { pgBookCta: 'Book Now!' };
+    expect(added(d).join(' ')).toContain('Use the Book Now link.');
+  });
+});
+
+describe('SF-1 / N-1 / N-2', () => {
+  it('SF-1: R17 catches the BL1 shape across a question mark, for every pronoun', () => {
+    for (const s of ['Looking for {service}? {shop} has it on the menu.', 'Looking for {service}? It is on the menu.', '{service} is listed; they are popular.', 'Want {service}? Ask for them.', 'Try {service}. Those are fast.']) expect(strictProblems(s).join(), s).toMatch(/R17/);
+    expect(strictProblems('Looking for {service}? {shop} lists this service on the menu.')).toEqual([]);
+    expect(strictProblems('It is easy to find {shop}.')).toEqual([]);
+    for (const s of SERVICE_VISIT.variants.flat()) expect(strictProblems(s).join(), s).not.toMatch(/R17/);
+  });
+  it('N-1: stray asterisks, curly quotes, apostrophes; an inner sentence end drops the sentence', () => {
+    expect(tidyValue('*New* Fade')).toBe('New Fade');
+    expect(tidyValue('\u201cFade')).toBe('Fade');
+    expect(tidyValue("'Fade")).toBe('Fade');
+    expect(say('Ready to book {service}?', { title: 'Shave? Yes!' })).toBeNull();
+    expect(say('Ready to book {service}?', { title: 'Fade 2.0' })).toBe('Ready to book Fade 2.0?');
+    expect(say('Ready to book {service}?', { title: 'Fade.' })).toBe('Ready to book Fade?');
+  });
+  it('N-2: R16 also covers reach / find us / route / navigate', () => {
+    for (const s of ['The {link:location} page shows how to reach the shop.', 'Find us on the {link:location} page.', 'Navigate with the {link:location} page.']) expect(strictProblems(s).join(), s).toMatch(/R16/);
+    expect(strictProblems('The shop is at {address}; find us on the {link:location} page.')).toEqual([]);
   });
 });

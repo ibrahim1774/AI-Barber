@@ -2,7 +2,7 @@
 // `git archive 08186dc lib types.ts` into .cache-ios-baseline/ (git-ignored, inside the repo so node_modules resolves), then imported.
 // iosUnchanged.test.ts renders the same iOS-shaped sites with this and with the branch and requires identical output.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const BASELINE_COMMIT = '08186dc';
@@ -14,8 +14,11 @@ export function baselineAvailable(): boolean {
   try { execFileSync('git', ['cat-file', '-e', `${BASELINE_COMMIT}^{commit}`], { cwd: ROOT, stdio: 'ignore' }); return true; } catch { return false; }
 }
 
+let extracted = false;
+/** Re-extracted once per process, so a locally edited cache is never trusted. */
 export function extractBaseline(): string {
-  if (existsSync(join(DIR, 'lib/render/site.ts'))) return DIR;
+  if (extracted) return DIR;
+  extracted = true;
   rmSync(DIR, { recursive: true, force: true });
   mkdirSync(DIR, { recursive: true });
   const tar = execFileSync('git', ['archive', BASELINE_COMMIT, 'lib', 'types.ts'], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
