@@ -1,6 +1,6 @@
 // Mode A (a classifier chose a library guide family: the page prints the library's own reviewed wording) and the approval gate of
 // Mode B (model text prints only with an approval). Everything here is pure rendering; no model, no network.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
 import { buildPageSet } from '../../lib/render/pages';
 import { aiPageFor, familyFor, guideForTitle, lenientEnv, serviceAltFor, serviceGuideFor, thinServiceIndexes, titledServices } from '../../lib/render/guides';
@@ -46,15 +46,43 @@ const shopA = (extraPages: Record<string, unknown> = {}, extra: Partial<WebsiteD
 const BASE = { siteBaseUrl: 'https://fresh.example.com' };
 const NOINDEX = '<meta name="robots" content="noindex,follow">';
 const all = (d: WebsiteData) => renderSiteBundle(d, BASE);
-const htmlA = (d: WebsiteData, p = 'services/mohawk/index.html') => all(d).pages.find((x) => x.path === p)?.html ?? '';
+const htmlA = (d: WebsiteData, p = 'services/mohawk/index.html') => (all(d).pages.find((x) => x.path === p)?.html ?? '').replace(/<meta name="published-at"[^>]*>/, '');
 const html = (d: WebsiteData, p = 'services/scalp-massage/index.html') => all(d).pages.find((x) => x.path === p)?.html ?? '';
 const everything = (d: WebsiteData) => { const b = all(d); return [b.sitemap, ...b.pages.map((p) => p.html)].join('\n'); };
 
 describe('Mode A: a family chosen by the classifier', () => {
-  it('without a family a custom service is thin (noindex, not in the sitemap)', () => {
+  it('LIVE IMPACT (2026-11-05): with no choice a title made only of reviewed words gets the vocabulary guide automatically; a title with an unknown word stays thin (noindex, not in the sitemap)', () => {
     const d = shopA();
-    expect(htmlA(d)).toContain(NOINDEX);
-    expect(all(d).sitemap).not.toContain('/services/mohawk/');
+    expect(htmlA(d)).not.toContain(NOINDEX);
+    expect(htmlA(d)).toContain('About this service');
+    expect(all(d).sitemap).toContain('/services/mohawk/');
+    expect(htmlA(d)).toBe(htmlA(shopA({ svcFamily: { mohawk: 'haircut' } }))); // same words as an explicit pick of the same type
+    const thin = shopA({}, { services: [svc('Skin Fade', { description: 'A close fade with a straight razor finish around the ears and the neckline, booked as one visit.' }), svc('Mohawk Zorbo')] });
+    expect(htmlA(thin, 'services/mohawk-zorbo/index.html')).toContain(NOINDEX);
+    expect(all(thin).sitemap).not.toContain('/services/mohawk-zorbo/');
+  });
+  it('the barber\'s choice beats the automatic one: none gives a thin noindex page, and own text prints alone', () => {
+    const none = shopA({ svcFamily: { mohawk: 'none' } });
+    expect(htmlA(none)).toContain(NOINDEX);
+    expect(htmlA(none)).not.toContain('About this service');
+    expect(all(none).sitemap).not.toContain('/services/mohawk/');
+    const entry = { v: 1, aiGenerated: false, intro: 'A mohawk is cut with the sides short and the centre left long. Tell us how tall you want it. Bring a photo.', sections: [{ h: 'Care', p: 'Ask us how to style it at home. Use a little product.' }] };
+    const own = shopA({ svcCopy: { mohawk: entry } });
+    const ownHtml = htmlA(own);
+    expect(ownHtml).toContain('sides short');
+    // the library text does not print beside it: every paragraph only the automatic page has is missing from the page with own text
+    const paras = (h: string) => new Set(h.match(/<p[^>]*>[^<]{30,}<\/p>/g) ?? []);
+    const libOnly = [...paras(htmlA(shopA()))].filter((x) => !paras(htmlA(none)).has(x));
+    expect(libOnly.length).toBeGreaterThan(0);
+    for (const x of libOnly) expect(ownHtml).not.toContain(x);
+    // a stored value that is not a guide id or 'none' counts as not chosen: the automatic type applies (the server drops it anyway)
+    expect(htmlA(shopA({ svcFamily: { mohawk: 'zzz' } }))).toBe(htmlA(shopA()));
+  });
+  it('no model, no network and no service-text request is involved in the automatic type', () => {
+    const spy = vi.fn(async () => { throw new Error('network is blocked'); });
+    vi.stubGlobal('fetch', spy);
+    try { htmlA(shopA()); } finally { vi.unstubAllGlobals(); }
+    expect(spy).not.toHaveBeenCalled();
   });
   it('with a family the page prints the library guide of that family exactly as a built-in service of that kind does, and is indexable', () => {
     const d = shopA({ svcFamily: { 'mohawk': 'haircut' } });
@@ -84,8 +112,11 @@ describe('Mode A: a family chosen by the classifier', () => {
     expect(page1).toContain('About this service'); expect(page1).not.toContain(NOINDEX);
     expect(serviceAltFor(d, [0, 1]).get(1)).toBe('haircut');
     expect(page2).toContain(NOINDEX);
+    // LIVE IMPACT (2026-11-05): with no choice the vocabulary gives the same type, so the pages are the same; with none for both they are bare
     const dNoFam = shopA({}, { services: [svc('Mohawk'), svc('Mullet')] });
-    expect(htmlA(dNoFam, 'services/mullet/index.html')).not.toBe(page2); // the family changes the second page (its alt block); without it the page is bare
+    expect(htmlA(dNoFam, 'services/mullet/index.html')).toBe(page2);
+    const dNone = shopA({ svcFamily: { mohawk: 'none', mullet: 'none' } }, { services: [svc('Mohawk'), svc('Mullet')] });
+    expect(htmlA(dNone, 'services/mullet/index.html')).not.toBe(page2);
     expect(page2).toContain('Mullet');
   });
   it('is ignored unless every gate holds: web-created pages v2, guides on, a real guide id, a title the library does not match, no text of its own', () => {

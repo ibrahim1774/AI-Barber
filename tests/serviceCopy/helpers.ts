@@ -78,7 +78,7 @@ export function scriptedModel(script: Step[] = [JSON.stringify(GOOD_JSON)], chec
 export function response() { const r: any = { code: 0, body: null, headers: {} as Record<string, string>, setHeader: (k: string, v: string) => { r.headers[k] = v; } }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; }
 
 export interface Rig { deps: HandlerDeps; model: ScriptedModel; store: ReturnType<typeof memoryCopyStore>; logs: string[]; drafts: Map<string, any>; clock: { t: number }; limits: ReturnType<typeof memoryStore>; call: (body?: any, opts?: { auth?: string | null; method?: string; raw?: boolean }) => Promise<any> }
-export function rig(opts: { secret?: string | null; model?: ScriptedModel; siteData?: any; enabled?: boolean; entitled?: boolean | ((userId: string) => Promise<boolean>); /** SERVICE_COPY_AUTO_PUBLISH. The legacy generation tests run with it ON (text prints without approval); the default of the product is OFF. */ autoPublish?: boolean } = {}): Rig {
+export function rig(opts: { secret?: string | null; model?: ScriptedModel; siteData?: any; enabled?: boolean; entitled?: boolean | ((userId: string) => Promise<boolean>); /** SERVICE_COPY_AUTO_PUBLISH. The legacy generation tests run with it ON (text prints without approval); the default of the product is OFF. */ autoPublish?: boolean; /** SERVICE_COPY_WRITE_MODE. The Mode B tests run with it ON; the product default is OFF. */ writeMode?: boolean } = {}): Rig {
   const model = opts.model ?? scriptedModel();
   const store = memoryCopyStore();
   const logs: string[] = [];
@@ -92,6 +92,7 @@ export function rig(opts: { secret?: string | null; model?: ScriptedModel; siteD
     draft: async (uid) => drafts.get(uid) ?? null,
     entitled: typeof opts.entitled === 'function' ? opts.entitled : async () => (opts.entitled as boolean | undefined) ?? true,
     autoPublish: () => opts.autoPublish ?? true,
+    writeMode: () => opts.writeMode ?? true,
     secret: () => (opts.secret === undefined ? TEST_SECRET : opts.secret),
     model: () => model, store, limits, requests: memoryStore(), now: () => clock.t, log: (l) => logs.push(l),
   };

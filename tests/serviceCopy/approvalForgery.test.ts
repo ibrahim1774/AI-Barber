@@ -364,6 +364,12 @@ describe('families cannot be forged either: the title itself decides', () => {
       expect((validateWebSnapshot(d, () => []).sd.extraPages as any).svcFamily).toBeUndefined();
       const b = deploy(d);
       const slug = t.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (t === 'Mohawk') {
+        // LIVE IMPACT (2026-11-05): Mohawk is made only of reviewed words, so it gets the vocabulary's OWN type automatically. A forged family changes nothing: the page is exactly the one with no family.
+        const strip = (h: string | undefined) => (h ?? '').replace(/<meta name="published-at"[^>]*>/, '');
+        expect(strip(b.pages.find((p) => p.path === `services/${slug}/index.html`)?.html), `${t}/${f}`).toBe(strip(deploy(site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7 } }, [t])).pages.find((p) => p.path === `services/${slug}/index.html`)?.html));
+        continue;
+      }
       expect(b.pages.find((p) => p.path === `services/${slug}/index.html`)?.html ?? '', `${t}/${f}`).not.toContain('About this service');
       expect(b.sitemap ?? '').not.toContain(`/services/${slug}/`);
     }

@@ -14,3 +14,12 @@
  * Rotating it retires every approval at once (pages with model text go thin until re-approved). A draft approval expires after 30 days; a published site's does not.
  */
 export const serviceCopyAutoPublish = (env: Record<string, string | undefined> = process.env): boolean => env.SERVICE_COPY_AUTO_PUBLISH === '1';
+
+/**
+ * SERVICE_COPY_WRITE_MODE. OFF (anything but the exact string '1') is the default and the product state (Ibrahim, 2026-11-05): nobody asks a model
+ * to WRITE page text, and the web editor has no "Write it for me" and no "Looks right". A service the library has no pattern for gets the library's
+ * own reviewed wording automatically when its title is made only of reviewed words (guides.ts familyFor), and otherwise a neutral stub.
+ * With the flag off the endpoint answers 404 to mode 'write' and 'approve' before anything else happens (no auth, no store, no model call).
+ * The Mode B code (generate.ts, check.ts, approval.ts) is kept only as dormant, unreachable code behind this flag; nothing in the client calls it.
+ */
+export const serviceCopyWriteMode = (env: Record<string, string | undefined> = process.env): boolean => env.SERVICE_COPY_WRITE_MODE === '1';

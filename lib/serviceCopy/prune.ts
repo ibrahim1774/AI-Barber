@@ -5,14 +5,14 @@
 //   - model text is kept ONLY with a server signature that verifies for this exact text, service key and niche (approval.ts; and this
 //     owner when `userId` is given). A client-written 'owner'/'auto', an edited, moved or re-labelled entry is dropped. Without a
 //     signing secret all model text is dropped (fail closed);
-//   - svcFamily[key] (a classifier choice, Mode A) is kept only for a real service whose title the library does not match, with a real
-//     guide id that the title's own keywords allow (familyKeywords.ts), with no text of its own under the same key; at most LIMITS.keys entries;
+//   - svcFamily[key] (the barber's choice of standard text type) is kept only for a real service whose title the library does not match, with
+//     a real guide id that the title's own keywords allow (familyKeywords.ts) or the marker 'none' (no standard text), with no text of its own under the same key; at most LIMITS.keys entries;
 //   - an entry whose key is not the title key of a service on the site (a removed or renamed service) is dropped, so text can never
 //     resurface under another service that later gets the same key;
 //   - an entry that fails the stored shape or the caps is dropped (never repaired);
 //   - at most LIMITS.keys entries; a svcCopy that is not an object is removed.
 // Returns the same object when nothing changes. Never mutates.
-import { guideIdForTitle, isGuideId, svcTitleKey, titledServices } from '../render/guides.js';
+import { guideIdForTitle, isGuideId, NO_FAMILY, svcTitleKey, titledServices } from '../render/guides.js';
 import { familyAllowed } from '../render/familyKeywords.js';
 import { checkEntryShape, LIMITS } from '../render/svcCopy.js';
 import { stampApproval, verifyApproval } from './approval.js';
@@ -108,7 +108,7 @@ export function svcCopySanitize<T>(sd: T, opts: SanitizeOptions = {}): { siteDat
     if (isObj(raw)) {
       const withText = hasCopy ? (changed ? kept : (isObj(ep.svcCopy) ? ep.svcCopy : {})) : {};
       for (const k of Object.keys(raw)) {
-        if (k === '__proto__' || !custom.has(k) || !isGuideId(raw[k]) || !familyAllowed(custom.get(k), raw[k]) || Object.prototype.hasOwnProperty.call(withText, k) || Object.keys(famKept).length >= LIMITS.keys) { dropped.push(`family:${k}`); continue; }
+        if (k === '__proto__' || !custom.has(k) || !(raw[k] === NO_FAMILY || (isGuideId(raw[k]) && familyAllowed(custom.get(k), raw[k]))) || Object.prototype.hasOwnProperty.call(withText, k) || Object.keys(famKept).length >= LIMITS.keys) { dropped.push(`family:${k}`); continue; }
         famKept[k] = raw[k];
       }
     } else dropped.push('(svcFamily)');

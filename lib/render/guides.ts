@@ -76,38 +76,45 @@ export function titledServices(d: Pick<WebsiteData, 'services'> & Partial<Pick<W
   return out;
 }
 
+/** The stored value of svcFamily[titleKey] that means "the barber chose no standard text type for this service". */
+export const NO_FAMILY = 'none';
+
 /**
- * The family a custom service was assigned (Mode A: a model only CLASSIFIED the title into one of the closed set of library
- * guides, nothing it wrote is ever printed). Stored at extraPages.svcFamily[titleKey]. Honoured only on web-created pages-v2 sites with
- * service guides on, only for a title the library does not match, only with a real guide id, and never when the service has text of
- * its own (svcCopy) - the barber's own wording or approved text wins - and only when the title itself holds a keyword of that family
- * (familyAllowed; a vetoed title never gets one). Anything else is ignored.
+ * The standard text type a service the library has no pattern for gets. Web-created pages-v2 sites with service guides on only.
+ * AUTOMATIC: the closed all-token vocabulary (structuralGuide, `auto`) decides, so a title made only of reviewed words ("Mohawk") gets the
+ * library's own reviewed wording for that family with no click and no model. The barber's choice, stored at extraPages.svcFamily[titleKey],
+ * wins over it: a guide id picks that type (only when the title itself holds a keyword of that family, familyAllowed), and 'none'
+ * (NO_FAMILY) means no standard text. Text of the service's own (svcCopy) beats both: nothing from the library prints beside it. Any
+ * other stored value counts as "not chosen". Anything that fails the vocabulary (an unknown word, a veto) never gets a guide.
  */
-export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
+export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown, auto: GuideId | null = null): GuideId | null {
   const ep = d.extraPages as { svcFamily?: unknown; svcCopy?: unknown } | undefined;
   if (!ep || !serviceTextOn(d as Pick<WebsiteData, 'extraPages' | 'source'>)) return null;
-  const fam = ep.svcFamily;
-  if (!fam || typeof fam !== 'object' || Array.isArray(fam)) return null;
   const key = svcTitleKey(title);
-  if (!key || !Object.prototype.hasOwnProperty.call(fam, key)) return null;
+  if (!key) return null;
   const copy = ep.svcCopy;
   if (copy && typeof copy === 'object' && !Array.isArray(copy) && Object.prototype.hasOwnProperty.call(copy, key)) return null;
-  const g = (fam as Record<string, unknown>)[key];
-  // Review 6c B1: a family prints specific wording, so it needs a keyword of that family in the title itself (familyKeywords.ts), whoever chose it.
-  return isGuideId(g) && familyAllowed(title, g) ? g : null;
+  const fam = ep.svcFamily;
+  if (fam && typeof fam === 'object' && !Array.isArray(fam) && Object.prototype.hasOwnProperty.call(fam, key)) {
+    const g = (fam as Record<string, unknown>)[key];
+    if (g === NO_FAMILY) return null;
+    // A family prints specific wording, so it needs a keyword of that family in the title itself (familyKeywords.ts), whoever chose it.
+    if (isGuideId(g)) return familyAllowed(title, g) ? g : null;
+  }
+  return auto;
 }
 
 /**
  * The guide a service title gets on this site. On a web-created site with service guides on (serviceTextOn) ONLY the closed vocabulary decides
- * (structuralGuide): for a title the library pattern matches, that guide; for one it does not, the family the barber (or the classifier,
- * approved by the barber) assigned, when the vocabulary allows it. Any other site: the library pattern, exactly as on main.
+ * (structuralGuide): for a title the library pattern matches, that guide; for one it does not, the vocabulary's own guide unless the barber
+ * chose another type or none (familyFor). Any other site: the library pattern, exactly as on main.
  */
 export function guideForTitle(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
   const lib = guideIdForTitle(title);
   if (!serviceTextOn(d as Pick<WebsiteData, 'extraPages' | 'source'>)) return lib;
   const s = structuralGuide(plain(title));
   if (s === null) return null;
-  return lib !== null ? s : familyFor(d, title);
+  return lib !== null ? s : familyFor(d, title, s);
 }
 
 /**

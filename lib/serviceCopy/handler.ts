@@ -1,3 +1,6 @@
+// DORMANT (Ibrahim, 2026-11-05): the web editor no longer calls this endpoint. Page text for a service the library has no pattern for is automatic
+// (guides.ts familyFor, closed vocabulary, no model); modes 'write' and 'approve' answer 404 unless SERVICE_COPY_WRITE_MODE=1 (flags.ts), and the
+// classifier mode is redundant under that rule. Keep SERVICE_COPY_AI off.
 // POST /api/web-app/service-copy  { titleKey: string, draftId?: string, mode?: 'classify' | 'write' | 'approve' }
 // For ONE service the library has no guide for, on an explicit request from the signed-in owner with an active paid web plan:
 //   mode 'classify' (default, MODE A)  the model only classifies the title into a library guide family: 200 { status: 'family', family }
@@ -17,7 +20,7 @@ import { callerFrom, webAppCheckoutOn, webAppCors } from '../webApp/webAppServer
 import { modeOf, readDraft, reliabilityOn, type Draft } from '../webApp/reliability.js';
 import { serviceFacts } from './facts.js';
 import { approveProposal, classifyServiceFamily, generateServiceCopy, type GenerateDeps } from './generate.js';
-import { serviceCopyAutoPublish } from './flags.js';
+import { serviceCopyAutoPublish, serviceCopyWriteMode } from './flags.js';
 import { signingSecret } from './approval.js';
 import { isEntitledStatus } from '../webApp/stripeCore.js';
 import { liveModelClient, type ModelClient } from './model.js';
@@ -34,6 +37,8 @@ export interface HandlerDeps {
   entitled: (userId: string) => Promise<boolean>;
   /** SERVICE_COPY_AUTO_PUBLISH is on (read per request). */
   autoPublish: () => boolean;
+  /** SERVICE_COPY_WRITE_MODE is on (read per request). OFF = modes 'write' and 'approve' answer 404 (dormant Mode B). */
+  writeMode: () => boolean;
   /** The approval signing key (SERVICE_COPY_SIGNING_SECRET), read per request. Null = no approval can be issued. */
   secret: () => string | null;
   model: () => ModelClient;
@@ -56,6 +61,7 @@ export function liveDeps(): HandlerDeps {
       return Array.isArray(rows) && rows.length > 0 && isEntitledStatus(String(rows[0]?.status));
     },
     autoPublish: () => serviceCopyAutoPublish(),
+    writeMode: () => serviceCopyWriteMode(),
     secret: () => signingSecret(),
     model: () => liveModelClient(),
     store: tableCopyStore,
@@ -70,6 +76,9 @@ export function makeHandler(deps: HandlerDeps) {
   return async function handler(req: any, res: any) {
     if (webAppCors(req, res)) return;
     if (!deps.enabled()) return res.status(404).json({ error: 'not_found' });
+    // Dormant Mode B (Ibrahim, 2026-11-05): no model writes page text. With the flag off a write or approve request is refused first of all: no auth, no store, no model.
+    const asked = req.body && typeof req.body === 'object' ? req.body.mode : undefined;
+    if ((asked === 'write' || asked === 'approve') && !deps.writeMode()) return res.status(404).json({ error: 'not_found' });
     // No usable signing secret: nothing can be approved and nothing would verify, so the feature is OFF (404, like the flag), with a clear line
     // in the log (never the value). Set SERVICE_COPY_SIGNING_SECRET (16+ characters) in the server env before turning SERVICE_COPY_AI on.
     if (!deps.secret()) { deps.log('[service-copy] SERVICE_COPY_SIGNING_SECRET is not set (or shorter than 16 characters): service text AI is off'); return res.status(404).json({ error: 'not_found' }); }
