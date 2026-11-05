@@ -1,0 +1,33 @@
+// The facts about a service that may reach the model: its title, the niche's name and the shop's place. Read from the caller's
+// OWN stored draft, never from the request. Nothing else is read (no shop name, phone, email, address, price, description,
+// reviews or staff). Each value passes a whitelist or is left out; an unusable title means no call at all.
+import { createHash } from 'node:crypto';
+import type { WebsiteData } from '../../types';
+import { guideIdForTitle, svcTitleKey, titledServices, THIN_DESCRIPTION_MIN, type Svc } from '../render/guides.js';
+import { nicheOf, placeFromArea } from '../render/honest.js';
+import { spliceable } from '../render/spliceable.js';
+import { aiTitle } from './titleGate.js';
+import type { Facts } from './prompt.js';
+
+export type FactsResult =
+  | { ok: true; facts: Facts; subject: Svc; titleKey: string; hash: string }
+  | { ok: false; reason: 'no_such_service' | 'has_library_text' | 'has_description' | 'title_not_usable' };
+
+const NICHE_OK = /^[A-Za-z][A-Za-z &-]{1,40}$/;
+
+export function serviceFacts(d: WebsiteData, titleKey: string): FactsResult {
+  const subject = titledServices(d).find((s) => svcTitleKey(s.title) === titleKey);
+  if (!subject) return { ok: false, reason: 'no_such_service' };
+  if (guideIdForTitle(subject.title) !== null) return { ok: false, reason: 'has_library_text' };
+  const desc = Array.from(String((Array.isArray(d.services) ? d.services : [])[subject.index]?.description ?? '').trim()).length;
+  if (desc >= THIN_DESCRIPTION_MIN) return { ok: false, reason: 'has_description' };
+  const title = aiTitle(subject.title);
+  if (title === null) return { ok: false, reason: 'title_not_usable' };
+  const industry = nicheOf(d).industry;
+  const businessType = NICHE_OK.test(industry) ? industry : 'Barbershop';
+  const place = spliceable('name', placeFromArea(d.area || ''));
+  const facts: Facts = { serviceTitle: title, businessType, ...(place ? { place } : {}) };
+  // The cache is valid while the service and the niche are the same. The place is never written into the text, so it is not part of the hash.
+  const hash = createHash('sha256').update(JSON.stringify([titleKey, businessType])).digest('hex');
+  return { ok: true, facts, subject, titleKey, hash };
+}

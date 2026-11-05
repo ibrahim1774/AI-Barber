@@ -205,7 +205,8 @@ export function candidateFromModel(raw: unknown): { ok: true; entry: SvcCopyEntr
   for (const k of need) if (!own(raw, k)) return { ok: false, reason: `missing ${k}` };
   const o: Record<string, unknown> = { v: 1, aiGenerated: true, intro: raw.intro, sections: raw.sections, faq: raw.faq };
   for (const k of ['heading', 'metaTitle', 'metaDescription'] as const) {
-    if (raw[k] === '') continue;
+    // The meta fields are optional extras: one that is empty, not text or over its cap is left out, it never sinks the text.
+    if (typeof raw[k] !== 'string' || raw[k] === '' || Array.from(raw[k] as string).length > (k === 'heading' ? LIMITS.heading : k === 'metaTitle' ? LIMITS.metaTitle : LIMITS.metaDescription)) continue;
     o[k] = raw[k];
   }
   return checkEntryShape(o);
