@@ -17,7 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
-import { familyAllowed, plainHaircutTitle, structuralGuide } from './familyKeywords.js';
+import { bareHaircutTitle, familyAllowed, plainHaircutTitle, plainKidsTitle, structuralGuide } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -348,9 +348,15 @@ function subjectFor(env: CopyEnv, kind: NonNullable<Block['subject']>): Svc | nu
     // Review 6g: on a web-created site with service guides on a price, a time or "kids" is attributed ONLY to a service that is exactly
     // what the question says: one plain haircut (generic word + who it is for), one kids' cut. Two candidates, a combo, a membership, a
     // named cut, a fade or anything else answers nothing. A time is never borrowed from another service.
-    if (kind === 'kids') { const k = all.filter((s) => s.guide === 'kids-cut'); return k.length === 1 ? k[0] : null; }
+    // Several candidates: the single unqualified one wins ("Haircut" beside "Senior Haircut", "Kids Haircut" beside "Kids Fade"); otherwise none.
+    if (kind === 'kids') {
+      const k = all.filter((s) => s.guide === 'kids-cut');
+      const pk = k.filter((s) => plainKidsTitle(s.title));
+      return k.length === 1 ? k[0] : pk.length === 1 ? pk[0] : null;
+    }
     const plainOnes = all.filter((s) => s.guide === 'haircut' && plainHaircutTitle(s.title));
-    const one = plainOnes.length === 1 ? plainOnes[0] : null;
+    const bare = plainOnes.filter((s) => bareHaircutTitle(s.title));
+    const one = plainOnes.length === 1 ? plainOnes[0] : bare.length === 1 ? bare[0] : null;
     return one && (kind === 'haircut' ? one.price : one.duration) ? one : null;
   }
   if (kind === 'haircut') return all.find((s) => !!s.guide && PRICE_TYPE.has(s.guide) && s.price) ?? null;

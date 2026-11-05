@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { GUIDES, SERVICE_ALT } from '../../lib/render/copyLibrary';
 import { GUIDE_IDS, type GuideId } from '../../lib/render/copyRules';
-import { FAMILY_VETO, FAMILY_VOCAB, familyCandidates, nonServiceTitle, plainHaircutTitle, structuralGuide } from '../../lib/render/familyKeywords';
+import { FAMILY_VETO, FAMILY_VOCAB, bareHaircutTitle, familyCandidates, nonServiceTitle, plainHaircutTitle, plainKidsTitle, structuralGuide } from '../../lib/render/familyKeywords';
 import { blockText, guideForTitle, guideIdForTitle, lenientEnv, resolveBlock, svcTitleKey } from '../../lib/render/guides';
 import { renderSiteBundle } from '../../lib/render/site';
 import { baselineAvailable, loadBaseline } from './helpers/iosBaseline';
@@ -22,19 +22,25 @@ const N = (...titles: string[]): [string, null][] => titles.map((t) => [t, null]
 const POSITIVE: [string, GuideId][] = [
   ...P('haircut', 'Haircut', "Men's Haircut", 'Mens Haircut', 'Adult Haircut', 'Regular Haircut', 'Classic Haircut', 'Standard Haircut', 'Senior Haircut', "Women's Haircut", 'Ladies Haircut', 'Haircuts', 'Hair Cut', 'Cut',
     'Buzz Cut', 'Crew Cut', 'Scissor Cut', 'Clipper Cut', 'Short Haircut', 'Long Haircut', 'Haircut for Men', "Gentlemen's Haircut", 'Layered Haircut', 'Textured Haircut', 'Pompadour Cut', 'Mohawk', 'Mullet', 'Undercut', 'Caesar',
-    'Faux Hawk', 'Flat Top', 'High and Tight', 'Hair Trim', 'Basic Haircut', "Women's Hair Trim", 'Crew Cut for Men'),
+    'Faux Hawk', 'Flat Top', 'High and Tight', 'Hair Trim', 'Basic Haircut', "Women's Hair Trim", 'Crew Cut for Men',
+    // 6h (review 6g S1): common realistic titles
+    'Haircut (Men)', 'Haircut (Long Hair)', 'Adult Haircut (13+)', 'Senior Haircut (65+)', 'Military Cut', 'Executive Cut', 'Gents Haircut', "Gent's Cut", 'Under Cut', 'Tapered Haircut', 'Tapered Cut', 'Curly Cut', 'Curly Haircut', 'Afro Cut',
+    'Afro Haircut', 'Teen Haircut', 'Youth Haircut', 'Student Haircut', 'Students Haircut', 'Senior Citizen Haircut', 'Veteran Haircut', 'Military Haircut', 'Haircut Only', 'Cut Only', "Men's Haircuts", 'Hair Cuts'),
   ...P('kids-cut', 'Kids Haircut', 'Kids Cut', "Kid's Haircut", "Kids' Haircut", "Children's Haircut", 'Childrens Haircut', 'Children Haircut', 'Child Haircut', "Child's Haircut", 'Boys Haircut', "Boy's Haircut", 'Boys Cut', 'Girls Haircut',
-    'Junior Haircut', 'Juniors Haircut', 'Toddler Haircut', 'Toddler Mohawk', 'Toddler Hair Trim', 'Kids Fade', 'Boys Taper', 'Kids Buzz Cut', 'Kids Mohawk', 'Kids Hair Cut', 'Haircut for Kids', 'Haircut for Children', 'Kids Crew Cut', 'Kids Undercut'),
+    'Junior Haircut', 'Juniors Haircut', 'Toddler Haircut', 'Toddler Mohawk', 'Toddler Hair Trim', 'Kids Fade', 'Boys Taper', 'Kids Buzz Cut', 'Kids Mohawk', 'Kids Hair Cut', 'Haircut for Kids', 'Haircut for Children', 'Kids Crew Cut', 'Kids Undercut',
+    'Kids Haircut (Under 12)', 'Kids Haircut 12 & Under', 'Kids Haircut (Ages 5-12)', 'Little Kids Cut', 'Kids Trim', 'Toddler Trim', 'Childs Haircut'),
   ...P('fade', 'Fade', 'Fades', 'Skin Fade', 'Low Fade', 'Mid Fade', 'High Fade', 'Drop Fade', 'Burst Fade', 'Temple Fade', 'Bald Fade', 'Taper Fade', 'Shadow Fade', "Men's Fade", 'Fade Haircut', 'Fade Cut', 'Low Skin Fade', 'High Skin Fade',
-    'Mid Skin Fade', 'Classic Fade', 'Fade for Men', 'Low Taper Fade', 'Mid Taper Fade', 'High Taper Fade', 'Haircut Fade'),
-  ...P('taper', 'Taper', 'Low Taper', 'Mid Taper', 'High Taper', 'Classic Taper', "Men's Taper", 'Taper Haircut', 'Taper Cut', 'Short Taper', 'Regular Taper'),
-  ...P('line-up', 'Line Up', 'Line-Up', 'Lineup', 'Line Ups', 'Shape Up', 'Shape-Up', 'Shapeup', 'Edge Up', 'Edge-Up', 'Edgeup', "Men's Line Up", 'Basic Line Up', 'Classic Lineup', 'Line Up for Men', 'Regular Shape Up'),
-  ...P('beard-trim', 'Beard Trim', 'Beard Trims', 'Beard Shaping', 'Beard Shape', 'Beard Sculpt', 'Beard Sculpting', 'Beard Cut', "Men's Beard Trim", 'Full Beard Trim', 'Short Beard Trim', 'Classic Beard Trim', 'Beard Trim for Men', 'Standard Beard Trim'),
-  ...P('shave', 'Shave', 'Shaves', 'Shaving', 'Hot Towel Shave', 'Straight Razor Shave', 'Razor Shave', 'Wet Shave', 'Traditional Shave', 'Head Shave', "Men's Shave", 'Classic Shave', 'Hot Shave', 'Beard Shave', 'Classic Hot Towel Shave', 'Head Shave for Men'),
-  ...P('design', 'Hair Design', 'Hair Designs', 'Hair Art', 'Haircut Design', 'Haircut Designs', 'Cut Design', 'Custom Hair Design', 'Simple Hair Design', "Men's Hair Design"),
+    'Mid Skin Fade', 'Classic Fade', 'Fade for Men', 'Low Taper Fade', 'Mid Taper Fade', 'High Taper Fade', 'Haircut Fade', 'Mohawk Fade', 'Burst Fade Mohawk'),
+  ...P('taper', 'Taper', 'Low Taper', 'Mid Taper', 'High Taper', 'Classic Taper', "Men's Taper", 'Taper Haircut', 'Taper Cut', 'Short Taper', 'Regular Taper', 'Taper Mohawk'),
+  ...P('line-up', 'Line Up', 'Line-Up', 'Lineup', 'Line Ups', 'Shape Up', 'Shape-Up', 'Shapeup', 'Edge Up', 'Edge-Up', 'Edgeup', "Men's Line Up", 'Basic Line Up', 'Classic Lineup', 'Line Up for Men', 'Regular Shape Up', 'Razor Line Up', 'Line Up with Razor', 'Hairline Line Up'),
+  ...P('beard-trim', 'Beard Trim', 'Beard Trims', 'Beard Shaping', 'Beard Shape', 'Beard Sculpt', 'Beard Sculpting', 'Beard Cut', "Men's Beard Trim", 'Full Beard Trim', 'Short Beard Trim', 'Classic Beard Trim', 'Beard Trim for Men', 'Standard Beard Trim', 'Beard Cleanup', 'Beard Clean Up', 'Beard Line Up', 'Beard Lineup', 'Beard Shape Up', 'Beard Edge Up'),
+  ...P('shave', 'Shave', 'Shaves', 'Shaving', 'Hot Towel Shave', 'Straight Razor Shave', 'Razor Shave', 'Wet Shave', 'Traditional Shave', 'Head Shave', "Men's Shave", 'Classic Shave', 'Hot Shave', 'Beard Shave', 'Classic Hot Towel Shave', 'Head Shave for Men', 'Face Shave', 'Clean Shave', 'Royal Shave', 'Luxury Shave', 'Shave and Hot Towel', 'Shave & Hot Towel'),
+  ...P('design', 'Hair Design', 'Hair Designs', 'Hair Art', 'Haircut Design', 'Haircut Designs', 'Cut Design', 'Custom Hair Design', 'Simple Hair Design', "Men's Hair Design", 'Design', 'Designs', 'Freestyle Design', 'Hard Part', 'Razor Part'),
   ...P('cut-beard', 'Haircut & Beard', 'Haircut and Beard', 'Haircut + Beard', 'Haircut with Beard', 'Haircut & Beard Trim', 'Haircut and Beard Trim', 'Cut & Beard', 'Cut and Beard Trim', 'Fade & Beard', 'Fade and Beard Trim', 'Fade + Beard',
     'Taper & Beard', 'Taper and Beard', "Men's Haircut & Beard Trim", 'Beard & Haircut', 'Beard Trim & Haircut', 'Beard and Fade', 'Beard Trim + Fade', 'Haircut and a Beard', 'Mohawk & Beard', 'Skin Fade & Beard Trim', 'Low Taper + Beard Trim',
-    'Buzz Cut & Beard', 'Haircut & Beard Shaping', 'Haircut & Beard Sculpt', 'Cut + Beard'),
+    'Buzz Cut & Beard', 'Haircut & Beard Shaping', 'Haircut & Beard Sculpt', 'Cut + Beard',
+    // 6h NIT 1: a joiner inside a core ("high AND tight") is not a second joiner
+    'High and Tight & Beard', 'Beard & High and Tight', 'High & Tight and Beard Trim', 'Beard Trim with High and Tight', 'High and Tight + Beard'),
 ];
 
 /** Hostile, odd and out-of-scope titles from every review report (6c to 6f): none. */
@@ -50,9 +56,9 @@ const NEGATIVE: [string, null][] = [
     '10 Haircuts', 'Haircut Bundle', 'Haircut Special', 'VIP Haircut', 'Premium Haircut', 'Deluxe Haircut', 'Luxury Haircut', 'Executive Haircut', 'Fade Membership', 'Beard Trim Membership', 'Shave Package', 'Line Up Pass', 'Kids Haircut Package',
     'Kids Haircut Membership', 'Monthly Membership', 'Annual Pass', 'Gift Card', 'Gift Certificate', 'Voucher', 'Deposit', 'Booking Fee', 'Package Deal', 'Loyalty Card', 'Subscription'),
   // wrong subject: partial cuts, animals, other body parts, ages the kids guide is not for
-  ...N('Eyelash Cut', 'Youth Haircut', 'Teen Haircut', 'Teenager Haircut', 'Cat Haircut', 'Puppy Cut', 'Puppy Haircut', 'Dog Haircut', 'Dog Cut', 'Pet Haircut', 'Nail Cut', 'Wig Cut', 'Extension Cut', 'Bang Cut', 'Fringe Cut', 'Sideburn Cut',
-    'Bang Trim', 'Bangs Trim', 'Fringe Trim', 'Neck Trim', 'Eyebrow Cut', 'Mustache Trim', 'Moustache Trim', 'Goatee Trim', 'Nose Trim', 'Ear Trim', 'Beard Fade', 'Kids Trim', 'Kids Beard Trim', 'Toddler Trim', 'Infant Haircut', 'Baby Haircut',
-    "Baby's First Haircut", 'Infant Hair Trim', 'Babies First Haircut', 'Pompadour', 'Classic Pompadour', 'First Haircut', 'Parent and Child Haircut', 'Mommy and Me Haircut', 'Students Haircut', 'Military Haircut', 'Short Back and Sides'),
+  ...N('Eyelash Cut', 'Teenager Haircut', 'Cat Haircut', 'Puppy Cut', 'Puppy Haircut', 'Dog Haircut', 'Dog Cut', 'Pet Haircut', 'Nail Cut', 'Wig Cut', 'Extension Cut', 'Bang Cut', 'Fringe Cut', 'Sideburn Cut',
+    'Bang Trim', 'Bangs Trim', 'Fringe Trim', 'Neck Trim', 'Eyebrow Cut', 'Mustache Trim', 'Moustache Trim', 'Goatee Trim', 'Nose Trim', 'Ear Trim', 'Beard Fade', 'Kids Beard Trim', 'Infant Haircut', 'Baby Haircut',
+    "Baby's First Haircut", 'Infant Hair Trim', 'Babies First Haircut', 'Pompadour', 'Classic Pompadour', 'First Haircut', 'Parent and Child Haircut', 'Mommy and Me Haircut', 'Short Back and Sides'),
   // color: no color guide on a web site (nothing guarantees dye, toner or a method)
   ...N('Bleach', 'Balayage', 'Frosted Tips', 'Hair Bleach', 'Bleach Blonde', 'Platinum Blonde', 'Highlights', 'Hair Color', 'Hair Colour', 'Hair Dye', 'Gray Blending', 'Beard Dye', 'Color Consultation', 'Hair Color Consultation', 'Color Contacts',
     'Toner', 'Ombre', 'Ombre Lips', 'Blonde', 'Root Touch Up', 'Full Color', 'Color', 'Gray Coverage'),
@@ -66,10 +72,21 @@ const NEGATIVE: [string, null][] = [
     'Shave Kit', 'Straight Razor', 'Razor', 'Trimmer', 'Hot Towel Warmer', 'Pomade', 'Hair Spray', 'Hair Wax', 'T-Shirt', 'Merch', 'Barber Cape', 'Cut Kit', 'Fade Pomade', 'Beard Kit'),
   // not letters: digits, symbols, emoji, look-alike letters, connectors alone, over-long titles
   ...N('Haircut 2', '2 Haircuts', 'Haircut $20', '30 Min Haircut', 'Haircut #1', 'Haircut ✂️', 'Haіrcut', 'Skin Fadе', '&', '+', 'And', 'For', 'The Haircut', 'A Haircut', 'Haircut for', 'and Haircut', 'Haircut and', 'Haircut &', '& Haircut',
-    "Men's Classic Regular Standard Basic Haircut For Adult Men", 'Haircut - Beard', 'Haircut (Beard)', 'Haircut!', 'Haircut?'),
+    "Men's Classic Regular Standard Basic Haircut For Adult Men", 'Haircut - Beard', 'Haircut (Beard)', 'Haircut!', 'Haircut?',
+    // 6h: a qualifier is only an age or a plain descriptor; a bare number, a count or a pack is not
+    'Haircut (2)', 'Haircut (2 people)', 'Haircut (10 pack)', 'Haircut 2 Beard', 'Haircut Under 12 Beard', 'Kids Haircut (Beard)', 'Haircut (Under 12) Beard', 'Haircut (Under 12) (Under 5)', 'Haircut (Dog)'),
+  // 6h: the carved-out "face" (Face Shave) and the bare "design" must not let another trade or product in
+  ...N('Shave Face', 'Face Mask', 'Face Wash', 'Face Waxing', 'Facial Shave', 'Face Haircut', 'Logo Design Haircut', 'Haircut with Design', 'Fade with Design', 'Kids Haircut & Design', 'Part', 'Pet Design', 'Design Package', 'Design Membership',
+    'Hard Part Membership', 'Beard Cleanup Kit', 'Royal Haircut', 'Line Up & Beard', 'Teen Beard Trim', 'Kids Line Up', 'Shave and Hot Towel Package', 'Under Cut Clippers'),
 ];
 const MATRIX: [string, GuideId | null][] = [...POSITIVE, ...NEGATIVE];
-const PLAIN = new Set(['Haircut', "Men's Haircut", 'Mens Haircut', 'Adult Haircut', 'Regular Haircut', 'Classic Haircut', 'Standard Haircut', 'Senior Haircut', "Women's Haircut", 'Ladies Haircut', 'Hair Cut', 'Cut', 'Haircut for Men', "Gentlemen's Haircut", 'Basic Haircut']);
+const PLAIN = new Set(['Haircut', "Men's Haircut", 'Mens Haircut', 'Adult Haircut', 'Regular Haircut', 'Classic Haircut', 'Standard Haircut', 'Senior Haircut', "Women's Haircut", 'Ladies Haircut', 'Hair Cut', 'Cut', 'Haircut for Men', "Gentlemen's Haircut", 'Basic Haircut',
+  'Haircuts', "Men's Haircuts", 'Hair Cuts', 'Haircut Only', 'Cut Only', 'Gents Haircut', "Gent's Cut", 'Haircut (Men)', 'Adult Haircut (13+)', 'Senior Haircut (65+)']);
+/** Plain AND unqualified: the generic word only. When several plain haircuts are listed, exactly one of these wins the FAQ price/time. */
+const BARE = new Set(['Haircut', 'Hair Cut', 'Cut', 'Haircuts', 'Hair Cuts']);
+/** A kids' cut that is only an age word and the generic words. When several kids' cuts are listed, exactly one of these wins the kids answer. */
+const PLAIN_KIDS_SET = new Set(['Kids Haircut', 'Kids Cut', "Kid's Haircut", "Kids' Haircut", "Children's Haircut", 'Childrens Haircut', 'Children Haircut', 'Child Haircut', "Child's Haircut", 'Boys Haircut', "Boy's Haircut", 'Boys Cut', 'Girls Haircut',
+  'Junior Haircut', 'Juniors Haircut', 'Toddler Haircut', 'Kids Hair Cut', 'Haircut for Kids', 'Haircut for Children', 'Kids Haircut (Under 12)', 'Kids Haircut 12 & Under', 'Kids Haircut (Ages 5-12)', 'Little Kids Cut', 'Childs Haircut']);
 const KIDS = new Set(POSITIVE.filter(([, g]) => g === 'kids-cut').map(([t]) => t));
 
 // ── Rendering helpers (the real renderer) ──────────────────────────────────────────────────────────
@@ -154,11 +171,14 @@ describe('FAQ attribution: never one service\'s price or time given to another s
     it(`${JSON.stringify(title)} $10 listed before Haircut $35 / Kids Haircut $20`, () => {
       const d = siteWith([{ title, price: '$10', duration: '20 min' }, { title: 'Haircut', price: '$35', duration: '30 min' }, { title: 'Kids Haircut', price: '$20' }], { family: familyFor([title], expected ?? 'haircut') });
       const price = faqBlock(d, 'price'), len = faqBlock(d, 'length'), kids = faqBlock(d, 'kids');
-      if (PLAIN.has(title)) { expect(price, 'two plain haircuts: no answer').toBeNull(); expect(len).toBeNull(); } else {
+      if (BARE.has(title)) { expect(price, 'two unqualified plain haircuts: no answer').toBeNull(); expect(len).toBeNull(); } else {
         expect(price).toContain('$35'); expect(price).toContain('Haircut'); expect(price).not.toContain('$10'); expect(price).not.toContain(title);
         expect(len).toContain('30 min'); expect(len).not.toContain('20 min');
       }
-      if (KIDS.has(title)) expect(kids, 'two kids cuts: no answer').toBeNull(); else { expect(kids).toContain('$20'); expect(kids).not.toContain('$10'); }
+      // Several kids' cuts: only a single plain kids' cut ("Kids Haircut") may answer; beside a second plain one there is no answer.
+      if (PLAIN_KIDS_SET.has(title)) expect(kids, 'two plain kids cuts: no answer').toBeNull();
+      else if (KIDS.has(title)) { expect(kids, 'the one plain kids cut wins').toContain('$20'); expect(kids).toContain('Kids Haircut'); expect(kids).not.toContain('$10'); }
+      else { expect(kids).toContain('$20'); expect(kids).not.toContain('$10'); }
     });
   }
   it('a plain haircut with no price answers nothing for the price and no time answer; its time is its own', () => {
@@ -206,17 +226,17 @@ describe('the second service of a kind: its alt text follows the closed-vocabula
 // ── 2. Sentence truth ──────────────────────────────────────────────────────────────────────────────
 // Every sentence of a guide is reached by every title the guide is assigned to. This table is the truth predicate per guide: a title that
 // reaches the guide must satisfy it. It is checked on the matrix AND on every title the vocabulary can build (1 to 3 tokens).
-const BAD_FOR_ALL = /\b(?:dye\w*|bleach\w*|toner|toning|lighten\w*|colou?r\w*|highlight\w*|perm\w*|relax\w*|wax\w*|facial\w*|massage\w*|wash\w*|shampoo\w*|style|styling|membership|package|pass|subscription|voucher|gift|card|deposit|fee|dog|cat|pet|puppy|nail\w*|wig\w*|lash\w*|brow\w*|bangs?|fringe|sideburns?|neck|nape|clippers|scissors|kit|oil|balm|pomade|infant|baby|babies|teen\w*|youth)\b/i;
+const BAD_FOR_ALL = /\b(?:dye\w*|bleach\w*|toner|toning|lighten\w*|colou?r\w*|highlight\w*|perm\w*|relax\w*|wax\w*|facial\w*|massage\w*|wash\w*|shampoo\w*|style|styling|membership|package|pass|subscription|voucher|gift|card|deposit|fee|dog|cat|pet|puppy|nail\w*|wig\w*|lash\w*|brow\w*|bangs?|fringe|sideburns?|neck|nape|clippers|scissors|kit|oil|balm|pomade|infant|baby|babies)\b/i;
 const CUTWORD = '(?:hair\\s?cuts?|cuts?|hair trims?|mohawks?|faux\\s?hawks?|mullets?|flat\\s?tops?|caesars?|undercuts?|high (?:and|&) tight|buzz\\s?cuts?|crew\\s?cuts?)';
 const TRUTH: Record<string, { says: string; test: (t: string) => boolean }> = {
   haircut: { says: 'A haircut shortens/shapes hair with clippers or scissors; suits anyone', test: (t) => new RegExp(`\\b${CUTWORD}\\b`, 'i').test(t) && !/\b(?:fades?|tapers?|beard|shav\w*|razor|line|edge|shape|design|art|kids?|child\w*|boys?|girls?|juniors?|toddlers?|towel)\b/i.test(t) },
-  'kids-cut': { says: 'A haircut made for a child', test: (t) => /\b(?:kids?|child\w*|boys?|girls?|juniors?|toddlers?)\b/i.test(t) && new RegExp(`\\b(?:${CUTWORD}|fades?|tapers?)\\b`, 'i').test(t) && !/\b(?:beard|shav\w*|razor|design|line|edge|shape)\b/i.test(t) },
+  'kids-cut': { says: 'A haircut made for a child', test: (t) => /\b(?:kids?|child\w*|boys?|girls?|juniors?|toddlers?)\b/i.test(t) && new RegExp(`\\b(?:${CUTWORD}|fades?|tapers?|trims?)\\b`, 'i').test(t) && !/\b(?:beard|shav\w*|razor|design|line|edge|shape)\b/i.test(t) },
   fade: { says: 'A fade blends short hair into longer hair', test: (t) => /\bfades?\b/i.test(t) && !/\b(?:beard|shav\w*|razor|design|line|edge|shape|kids?|child\w*|boys?|girls?|juniors?|toddlers?)\b/i.test(t) },
   taper: { says: 'A taper makes the hair gradually shorter toward the neckline', test: (t) => /\btapers?\b/i.test(t) && !/\b(?:fades?|beard|shav\w*|razor|design|line|edge|shape|kids?|child\w*|boys?|girls?|juniors?|toddlers?)\b/i.test(t) },
   'line-up': { says: 'A line-up sharpens the hairline, temples and neckline', test: (t) => /\b(?:line|shape|edge)[\s-]?ups?\b/i.test(t) && !/\b(?:beard|fades?|tapers?|cuts?|shav\w*)\b/i.test(t) },
-  'beard-trim': { says: 'A beard trim tidies the length and outline of the beard', test: (t) => /\bbeard (?:trims?|shap\w+|sculpt\w*|cuts?)\b/i.test(t) && !/\b(?:hair\s?cuts?|fades?|tapers?|shav\w*|razor|line|edge)\b/i.test(t) },
+  'beard-trim': { says: 'A beard trim tidies the length and outline of the beard (trim, shape, sculpt, cut, clean up, line up)', test: (t) => /\bbeard (?:trims?|shap\w+|sculpt\w*|cuts?|clean ?ups?|line ?ups?|edge ?ups?)\b/i.test(t) && !/\b(?:hair\s?cuts?|fades?|tapers?|shav\w*|razor)\b/i.test(t) },
   shave: { says: 'A razor shave removes hair close to the skin with warm towels', test: (t) => /\bshav(?:e|es|ing)\b/i.test(t) && !/\b(?:hair\s?cuts?|cuts?|trim\w*|fades?|tapers?|line|edge|design)\b/i.test(t) },
-  design: { says: 'A hair design is a pattern or line cut into short hair', test: (t) => /\b(?:hair (?:designs?|art)|(?:hair\s?cut|cut) designs?)\b/i.test(t) },
+  design: { says: 'A hair design is a pattern or line cut into short hair (a design, a hard part)', test: (t) => /\b(?:hair (?:designs?|art)|(?:hair\s?cut|cut) designs?|designs?|(?:hard|razor) parts?)\b/i.test(t) },
   'cut-beard': { says: 'The haircut and the beard are done together in one visit', test: (t) => /\bbeard\b/i.test(t) && new RegExp(`\\b(?:${CUTWORD}|fades?|tapers?)\\b`, 'i').test(t) && !/\b(?:shav\w*|razor|line|edge|shape up|design|kids?|child\w*)\b/i.test(t) },
 };
 const SENTENCE_COUNT: Record<string, number> = Object.fromEntries(GUIDE_IDS.map((g) => [g, guideSentences(g).length]));
@@ -272,10 +292,16 @@ describe('the vocabulary is closed and reviewed', () => {
   });
   it('no vocabulary word is vetoed (the veto is an independent second layer) and none is a product / membership / gift word', () => {
     for (const w of ALL_WORDS) {
-      expect(FAMILY_VETO.test(w), w).toBe(false);
+      // "face" is the one reviewed carve-out (6h): vetoed everywhere except directly before "shave" ("Face Shave"); see the next test
+      if (w !== 'face') expect(FAMILY_VETO.test(w), w).toBe(false);
       expect(nonServiceTitle(w), w).toBe(false);
-      expect(/^(?:membership|package|pass|subscription|voucher|gift|card|deposit|fee|dog|cat|pet|puppy|nail|wig|lash|brow|bang|bangs|fringe|sideburn|neck|nape|clippers|scissors|kit|oil|balm|color|colour|dye|bleach|youth|teen|infant|baby)s?$/.test(w), w).toBe(false);
+      expect(/^(?:membership|package|pass|subscription|voucher|gift|card|deposit|fee|dog|cat|pet|puppy|nail|wig|lash|brow|bang|bangs|fringe|sideburn|neck|nape|clippers|scissors|kit|oil|balm|color|colour|dye|bleach|infant|baby)s?$/.test(w), w).toBe(false);
     }
+  });
+  it('"face" is vetoed everywhere except directly before "shave" (Face Shave); every other face word and the reverse order stay none', () => {
+    expect(FAMILY_VETO.test('face shave')).toBe(false);
+    for (const t of ['face', 'face mask', 'face wash', 'face wax', 'facial', 'shave face', 'face and neck', 'face lift']) expect(FAMILY_VETO.test(t), t).toBe(true);
+    for (const t of ['Face Mask', 'Face Wash', 'Shave Face', 'Facial Shave', 'Face Waxing', 'Face Haircut']) expect(structuralGuide(t), t).toBeNull();
   });
   it('cores are disjoint between guides, lower-case and single-spaced', () => {
     const seen = new Map<string, string>();
@@ -288,11 +314,11 @@ describe('the vocabulary is closed and reviewed', () => {
   it('a modifier of one guide is the core word of another only where reviewed (a title of two cores is none, not a guess)', () => {
     const coreWords = new Map<string, string[]>();
     for (const [g, v] of Object.entries(FAMILY_VOCAB)) for (const c of v!.cores) if (!c.includes(' ')) { const a = coreWords.get(c) ?? []; a.push(g); coreWords.set(c, a); }
-    const allowed = new Set(['fade:taper', 'fade:haircut', 'fade:cut', 'taper:haircut', 'taper:cut']);
+    const allowed = new Set(['fade:taper', 'fade:haircut', 'fade:cut', 'taper:haircut', 'taper:cut', 'fade:mohawk', 'taper:mohawk']);
     for (const [g, v] of Object.entries(FAMILY_VOCAB)) for (const m of v!.mods) if (coreWords.has(m) && !coreWords.get(m)!.includes(g)) expect(allowed.has(`${g}:${m}`), `${g} mod ${m} is a core of ${coreWords.get(m)}`).toBe(true);
   });
   it('a risky word is in no vocabulary, and a matrix title exercises each of them (adding one changes a matrix row)', () => {
-    for (const risky of ['dog', 'bang', 'nail', 'membership', 'package', 'youth', 'color', 'wig', 'kit', 'clippers', 'oil', 'deposit']) {
+    for (const risky of ['dog', 'bang', 'nail', 'membership', 'package', 'infant', 'color', 'wig', 'kit', 'clippers', 'oil', 'deposit']) {
       expect(ALL_WORDS.has(risky), risky).toBe(false);
       expect(NEGATIVE.some(([t]) => new RegExp(`\\b${risky}s?\\b`, 'i').test(t)), `${risky} is exercised by a matrix title`).toBe(true);
     }
@@ -380,5 +406,93 @@ describe('PARITY: web-created sites with service guides OFF, iOS and legacy site
       }
     }
     expect(compared).toBeGreaterThan(1000);
+  });
+});
+
+// ── 5. Review 6g follow-ups (6h): NITs and the pinned live behaviour ─────────────────────────────────
+const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, open: '09:00', close: '17:00' }));
+
+describe('6h NIT 1: a joiner inside a core ("high AND tight") is not a second joiner (mutant "exactly one joiner token" is killed)', () => {
+  it('High and Tight combos with a beard are cut-beard in either order; two real joiners are still none', () => {
+    for (const t of ['High and Tight & Beard', 'Beard & High and Tight', 'High & Tight and Beard Trim', 'Beard Trim with High and Tight', 'High and Tight + Beard']) expect(structuralGuide(t), t).toBe('cut-beard');
+    for (const t of ['High and Tight', 'High and Tight & Shave', 'High and Tight & Beard & Shave', 'Haircut & Beard & High and Tight', 'High and Tight and High and Tight', 'High and Tight & Haircut']) expect(structuralGuide(t) === 'cut-beard', t).toBe(false);
+    expect(structuralGuide('High and Tight')).toBe('haircut');
+  });
+});
+
+describe('6h NIT 2/5: the single unqualified plain haircut / plain kids\' cut wins when several are listed; otherwise no answer', () => {
+  const sv = (...titles: Array<[string, string]>): Svc[] => titles.map(([title, price]) => ({ title, price, duration: '30 min' }));
+  it('"Haircut" beside "Senior Haircut" (either order) answers with the Haircut\'s own price and time; "Men\'s Haircut" beside "Women\'s Haircut" answers nothing', () => {
+    for (const list of [sv(['Haircut', '$35'], ['Senior Haircut', '$20']), sv(['Senior Haircut', '$20'], ['Haircut', '$35'])]) {
+      const d = siteWith(list);
+      expect(faqBlock(d, 'price')).toContain('$35'); expect(faqBlock(d, 'price')).not.toContain('$20'); expect(faqBlock(d, 'length')).toContain('30 min');
+    }
+    expect(faqBlock(siteWith(sv(["Men's Haircut", '$30'], ["Women's Haircut", '$40'])), 'price')).toBeNull();
+    expect(faqBlock(siteWith(sv(['Haircut', '$30'], ['Hair Cut', '$40'])), 'price'), 'two unqualified').toBeNull();
+    expect(faqBlock(siteWith(sv(['Haircut', '$30'], ['Haircut (Under 12)', '$20'])), 'price'), 'a qualifier is not "unqualified"').toContain('$30');
+  });
+  it('plurals: a shop whose only cut is "Haircuts" or "Men\'s Haircuts" gets the price answer, with its own price', () => {
+    expect(faqBlock(siteWith(sv(['Haircuts', '$25'])), 'price')).toContain('$25');
+    expect(faqBlock(siteWith(sv(["Men's Haircuts", '$25'])), 'price')).toContain('$25');
+    expect(bareHaircutTitle('Haircuts')).toBe(true); expect(bareHaircutTitle('Haircut (Men)')).toBe(false); expect(bareHaircutTitle("Men's Haircut")).toBe(false);
+  });
+  it('kids: "Kids Haircut" beside "Kids Fade" / "Toddler Cut" answers with the Kids Haircut; two plain kids\' cuts answer nothing', () => {
+    expect(faqBlock(siteWith(sv(['Kids Haircut', '$20'], ['Kids Fade', '$25'])), 'kids')).toContain('$20');
+    expect(faqBlock(siteWith(sv(['Kids Fade', '$25'], ['Kids Haircut', '$20'], ['Boys Taper', '$15'])), 'kids')).toContain('$20');
+    expect(faqBlock(siteWith(sv(['Kids Haircut', '$20'], ['Boys Haircut', '$22'])), 'kids')).toBeNull();
+    expect(faqBlock(siteWith(sv(['Kids Fade', '$25'], ['Boys Taper', '$15'])), 'kids'), 'no plain kids cut').toBeNull();
+    expect(plainKidsTitle('Kids Haircut')).toBe(true); expect(plainKidsTitle('Kids Fade')).toBe(false); expect(plainKidsTitle('Toddler Mohawk')).toBe(false);
+  });
+});
+
+describe('6h NIT 3 (pinned): a sole plain haircut that names an audience still answers, and the answer names that service', () => {
+  it('"Senior Haircut" alone: the answer says "Senior Haircut" with its own price (true, if loose)', () => {
+    for (const t of ['Senior Haircut', 'Ladies Haircut', 'Haircut for Women']) {
+      const a = faqBlock(siteWith([{ title: t, price: '$18' }]), 'price');
+      expect(a, t).toContain(t); expect(a).toContain('$18');
+    }
+  });
+});
+
+describe('6h NIT 4 (pinned): the FAQ page floor on a gated site with no plain haircut', () => {
+  const menu: Svc[] = [{ title: 'Skin Fade', price: '$25' }, { title: 'Low Taper', price: '$25' }, { title: 'Beard Trim', price: '$15' }];
+  it('a full 7-day week + address + booking link keeps /faq/ without any plain haircut', () => {
+    const d = siteWith(menu); d.hours = WEEK as never;
+    expect(render(d).pages.map((p) => p.path)).toContain('faq/index.html');
+  });
+  it('a one-row hours table, no policy and no plain haircut drops below the 3-question floor and loses /faq/ (pinned, deliberate)', () => {
+    expect(render(siteWith(menu)).pages.map((p) => p.path)).not.toContain('faq/index.html');
+  });
+});
+
+describe('6h NIT 7: iOS and web guides-off keep main\'s duration fallback when the menu has no fade, taper or haircut', () => {
+  for (const [label, cfg] of [['ios', { source: 'ios' }], ['web guides off', { source: 'web-app', guides: false }]] as const) {
+    for (const menu of [[{ title: 'Beard Trim', duration: '15 min' }], [{ title: 'Line Up', duration: '10 min' }, { title: 'Beard Trim', duration: '15 min' }], [{ title: 'Kids Haircut', duration: '20 min' }]]) {
+      it(`${label}: ${menu.map((m) => m.title).join(' + ')} still answers the first listed time (main's fallback)`, () => {
+        const a = faqBlock(siteWith(menu, cfg), 'length');
+        expect(a, 'a time is answered').toContain(`The ${menu[0].title} is listed as ${menu[0].duration}`);
+      });
+    }
+  }
+  it('and the gated web site does not borrow it', () => {
+    expect(faqBlock(siteWith([{ title: 'Beard Trim', duration: '15 min' }]), 'length')).toBeNull();
+  });
+});
+
+describe('6h LIVE IMPACT (pinned): web-created sites with service guides OFF behave exactly like main, including main\'s loose FAQ lines', () => {
+  const off = { source: 'web-app', guides: false } as const;
+  it('guide = library pattern, and the FAQ still quotes the first priced fade/taper/haircut-guide service, whatever it is (main\'s defect, deliberately NOT widened)', () => {
+    for (const t of ['Dog Haircut', 'Clippers', 'Haircut Membership', 'Haircut Gift Card', 'Temple Fade Removal']) {
+      const d = siteWith([{ title: t, price: '$10' }], off);
+      expect(guideForTitle(d, t), t).toBe(guideIdForTitle(t));
+      expect(faqBlock(d, 'price'), t).toContain(`${t} is $10`.replace(/ is \$10$/, '')); // names the (wrong) service, as main does
+    }
+    expect(faqBlock(siteWith([{ title: 'Kids Nails', price: '$10' }], off), 'kids')).toContain('Kids Nails');
+  });
+  it('the same titles on a gated site (guides ON) get no such answer', () => {
+    for (const t of ['Dog Haircut', 'Clippers', 'Haircut Membership', 'Haircut Gift Card', 'Temple Fade Removal', 'Kids Nails']) {
+      const d = siteWith([{ title: t, price: '$10' }]);
+      expect(faqBlock(d, 'price'), t).toBeNull(); expect(faqBlock(d, 'kids'), t).toBeNull();
+    }
   });
 });

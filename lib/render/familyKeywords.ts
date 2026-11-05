@@ -15,7 +15,7 @@ const fold = (v: unknown): string =>
 export const FAMILY_VETO: RegExp = new RegExp(
   '\\b(?:' + [
     // face and body services the library has no page for
-    "brows?", "eyebrows?", "lash(?:es)?", "m(?:ou|u)staches?", "nose", "ears?", "neck", "necklines?", "napes?", "wax(?:es|ing)?", "thread(?:s|ing)?", "facials?", "face", "faces", "masks?", "massages?", "scalp",
+    "brows?", "eyebrows?", "lash(?:es)?", "m(?:ou|u)staches?", "nose", "ears?", "neck", "necklines?", "napes?", "wax(?:es|ing)?", "thread(?:s|ing)?", "facials?", "face(?!\\s+shav)", "faces", "masks?", "massages?", "scalp",
     "steam(?:s|ing)?", "spa", "ritual(?:s)?", "peels?", "exfoliat\\w*", "scrubs?", "cleans(?:e|er|ing)", "detox", "tint(?:s|ing)?", "teeth", "tooth", "whiten\\w*",
     "nails?", "mani", "manis", "manicures?", "pedi", "pedis", "pedicures?", "gel", "acrylics?", "(?<!\\bhead\\s+)polish(?:ed|es|ing)?",
     "chest", "back", "body", "arms?", "legs?", "underarms?", "armpits?", "bikini", "pubic", "groin", "hands?", "feet", "foot", "pets?", "dogs?",
@@ -85,13 +85,13 @@ type Vocab = {
 const CUT_CORES = [
   'hair trim', 'hair trims', 'mohawk', 'mohawks', 'faux hawk', 'fauxhawk', 'faux hawks', 'fauxhawks',
   'mullet', 'mullets', 'flat top', 'flattop', 'flat tops', 'flattops', 'caesar', 'caesars', 'undercut', 'undercuts',
-  'high and tight', 'high & tight',
+  'high and tight', 'high & tight', 'under cut', 'under cuts', 'executive cut', 'executive cuts',
   'buzz cut', 'buzzcut', 'buzz cuts', 'buzzcuts', 'crew cut', 'crewcut', 'crew cuts', 'crewcuts',
 ] as const;
 /** The generic words for a haircut. */
 const PLAIN_CORES = ['haircut', 'haircuts', 'hair cut', 'hair cuts', 'cut', 'cuts'] as const;
 /** Who it is for. The guides say "suits anyone", so none of these changes what is true. */
-const DEMO = ["men's", 'mens', 'men', 'gentlemen', 'gentlemens', "gentlemen's", "women's", 'womens', 'women', 'ladies', 'adult', 'adults', 'senior', 'seniors'] as const;
+const DEMO = ["men's", 'mens', 'men', 'gentlemen', 'gentlemens', "gentlemen's", 'gents', "gent's", 'gent', "women's", 'womens', 'women', 'ladies', 'adult', 'adults', 'senior', 'seniors'] as const;
 /** Plain descriptors that make no claim about the method. */
 const LEVEL = ['regular', 'standard', 'basic', 'classic'] as const;
 
@@ -99,53 +99,85 @@ export const FAMILY_VOCAB: Partial<Record<GuideId, Vocab>> = {
   // "A haircut shortens and shapes your hair ... trims the hair with clippers, scissors or both ... suits anyone."
   haircut: {
     cores: [...CUT_CORES, ...PLAIN_CORES],
-    mods: [...DEMO, ...LEVEL, 'short', 'long', 'hair', 'trim', 'trims', 'scissor', 'clipper', 'layered', 'textured', 'pompadour', 'for'],
+    mods: [...DEMO, ...LEVEL, 'short', 'long', 'hair', 'trim', 'trims', 'scissor', 'clipper', 'layered', 'textured', 'pompadour', 'for',
+      // 6h: who it is for and plain descriptors of a cut (the sentences say "suits anyone" and name no method)
+      'teen', 'teens', 'youth', 'student', 'students', 'veteran', 'veterans', 'military', 'citizen', 'citizens', 'curly', 'afro', 'only', 'tapered'],
   },
   // "A kids' cut is a haircut made for a child." An age word AND hair work that is a cut, a fade or a taper.
   'kids-cut': {
-    cores: ['kid', 'kids', "kid's", 'child', "child's", 'children', "children's", 'childrens', 'boy', 'boys', "boy's", 'girl', 'girls', "girl's", 'junior', 'juniors', 'toddler', 'toddlers'],
-    needs: [...CUT_CORES, ...PLAIN_CORES, 'fade', 'fades', 'taper', 'tapers'],
-    mods: [...LEVEL, 'short', 'hair', 'trim', 'trims', 'for'],
+    cores: ['kid', 'kids', "kid's", 'child', "child's", 'childs', 'children', "children's", 'childrens', 'boy', 'boys', "boy's", 'girl', 'girls', "girl's", 'junior', 'juniors', 'toddler', 'toddlers'],
+    needs: [...CUT_CORES, ...PLAIN_CORES, 'fade', 'fades', 'taper', 'tapers', 'trim', 'trims'],
+    mods: [...LEVEL, 'short', 'hair', 'trim', 'trims', 'for', 'little', 'big'],
   },
   // "A fade blends short hair into longer hair ... often down to the skin."
   fade: {
     cores: ['fade', 'fades'],
-    mods: [...DEMO, ...LEVEL, 'skin', 'bald', 'low', 'mid', 'high', 'drop', 'burst', 'temple', 'shadow', 'taper', 'haircut', 'cut', 'hair', 'short', 'for'],
+    mods: [...DEMO, ...LEVEL, 'skin', 'bald', 'low', 'mid', 'high', 'drop', 'burst', 'temple', 'shadow', 'taper', 'haircut', 'cut', 'hair', 'short', 'for', 'mohawk'],
   },
   // "A taper makes the hair gradually shorter toward the neckline and around the ears."
   taper: {
     cores: ['taper', 'tapers'],
-    mods: [...DEMO, ...LEVEL, 'low', 'mid', 'high', 'haircut', 'cut', 'hair', 'short', 'for'],
+    mods: [...DEMO, ...LEVEL, 'low', 'mid', 'high', 'haircut', 'cut', 'hair', 'short', 'for', 'mohawk'],
   },
   // "A line-up sharpens the hairline, the temples and the neckline."
   'line-up': {
-    cores: ['line up', 'line ups', 'lineup', 'lineups', 'shape up', 'shape ups', 'shapeup', 'shapeups', 'edge up', 'edge ups', 'edgeup', 'edgeups'],
-    mods: [...DEMO, ...LEVEL, 'hair', 'for'],
+    cores: ['line up', 'line ups', 'lineup', 'lineups', 'shape up', 'shape ups', 'shapeup', 'shapeups', 'edge up', 'edge ups', 'edgeup', 'edgeups',
+      'line up with razor', 'line up with a razor', 'lineup with razor', 'lineup with a razor'],
+    mods: [...DEMO, ...LEVEL, 'hair', 'for', 'razor', 'hairline'],
   },
   // "A beard trim tidies the length and the outline of the beard."
   'beard-trim': {
-    cores: ['beard trim', 'beard trims', 'beard shaping', 'beard shape', 'beard sculpt', 'beard sculpts', 'beard sculpting', 'beard cut', 'beard cuts'],
+    cores: ['beard trim', 'beard trims', 'beard shaping', 'beard shape', 'beard sculpt', 'beard sculpts', 'beard sculpting', 'beard cut', 'beard cuts',
+      'beard cleanup', 'beard cleanups', 'beard clean up', 'beard clean ups',
+      'beard line up', 'beard line ups', 'beard lineup', 'beard lineups', 'beard shape up', 'beard shape ups', 'beard shapeup', 'beard edge up', 'beard edge ups', 'beard edgeup'],
     mods: [...DEMO, ...LEVEL, 'full', 'short', 'long', 'for'],
   },
   // "A razor shave removes hair close to the skin. Warm towels are often used first."
   shave: {
-    cores: ['shave', 'shaves', 'shaving'],
-    mods: [...DEMO, ...LEVEL, 'hot', 'towel', 'straight', 'razor', 'wet', 'traditional', 'head', 'beard', 'for'],
+    cores: ['shave', 'shaves', 'shaving', 'shave and hot towel', 'shave & hot towel', 'shave + hot towel', 'shave with hot towel', 'shave with a hot towel'],
+    mods: [...DEMO, ...LEVEL, 'hot', 'towel', 'straight', 'razor', 'wet', 'traditional', 'head', 'beard', 'for', 'face', 'clean', 'royal', 'luxury'],
   },
   // "A hair design is a pattern or line cut into short hair, usually with a trimmer."
   design: {
-    cores: ['hair design', 'hair designs', 'hair art', 'haircut design', 'haircut designs', 'cut design', 'cut designs'],
-    mods: [...DEMO, ...LEVEL, 'custom', 'simple', 'for'],
+    cores: ['hair design', 'hair designs', 'hair art', 'haircut design', 'haircut designs', 'cut design', 'cut designs', 'design', 'designs', 'hard part', 'hard parts', 'razor part', 'razor parts'],
+    mods: [...DEMO, ...LEVEL, 'custom', 'simple', 'for', 'freestyle'],
   },
   // No `color` entry (6f B1, 6g): no title guarantees "dye", "toner" or a method.
 };
 
 /** A plain haircut, for the FAQ "How much is a haircut?": only the generic words and who it is for. Not a named cut, not a fade. */
-const PLAIN_HAIRCUT: Vocab = { cores: ['haircut', 'hair cut', 'cut'], mods: [...DEMO, ...LEVEL, 'for'] };
+const PLAIN_HAIRCUT: Vocab = { cores: ['haircut', 'haircuts', 'hair cut', 'hair cuts', 'cut', 'cuts'], mods: [...DEMO, ...LEVEL, 'for', 'only'] };
+/** The unqualified generic words only ("Haircut", "Hair Cut", "Cuts"). */
+const BARE_HAIRCUT: Vocab = { cores: ['haircut', 'haircuts', 'hair cut', 'hair cuts', 'cut', 'cuts'], mods: [] };
+/** A plain kids' haircut: an age word and the generic words only (no fade, taper, named cut). */
+const PLAIN_KIDS: Vocab = { cores: FAMILY_VOCAB['kids-cut']!.cores, needs: PLAIN_CORES, mods: [...LEVEL, 'for', 'only', 'little', 'big'] };
 
 const CONNECTORS: ReadonlySet<string> = new Set(['and', '&', '+', 'with', 'for', 'a', 'the']);
 const COMBO_JOINERS: ReadonlySet<string> = new Set(['and', '&', '+', 'with']);
 const ARTICLES: ReadonlySet<string> = new Set(['a', 'the']);
+
+// A trailing qualifier that only says who the service is for: an age ("(Under 12)", "12 & Under", "(65+)", "(Ages 5-12)") or a plain
+// descriptor in parentheses ("(Men)", "(Long Hair)"). An age is dropped; a descriptor is unwrapped and its words must still be vocabulary.
+// Any other parenthesis, or a bare number, is not vouched for and the title stays none (tokensOf rejects it).
+const AGE_Q: readonly RegExp[] = [
+  /^(?:ages?|aged)\s+\d{1,2}(?:\s*-\s*\d{1,2})?\s*(?:\+|yrs?|years?)?$/,
+  /^(?:under|over|below|above|up to)\s+\d{1,2}(?:\s*(?:yrs?|years?))?$/,
+  /^\d{1,2}\s*(?:\+|(?:yrs?|years?)?\s*(?:&|and|\+)\s*(?:under|over|up|younger|older|below|above))$/,
+  /^\d{1,2}\s*-\s*\d{1,2}$/,
+];
+const PAREN_WORDS: ReadonlySet<string> = new Set([...DEMO, ...LEVEL, 'short', 'long', 'hair']);
+const ageQualifier = (q: string): boolean => AGE_Q.some((r) => r.test(q));
+function dropQualifier(t: string): string {
+  const m = /^(.*\S)\s*\(([^()]*)\)$/.exec(t);
+  if (m) {
+    const q = m[2].trim();
+    if (ageQualifier(q)) return m[1];
+    const words = q.split(/\s+/);
+    return q && words.every((w) => PAREN_WORDS.has(w)) ? `${m[1]} ${q}` : t;
+  }
+  const n = /^(.*\S)\s+(?:(?:under|over)\s+\d{1,2}|\d{1,2}\s*(?:&|and)\s*(?:under|over|younger|older|up)|\d{1,2}\+|ages?\s+\d{1,2}(?:\s*-\s*\d{1,2})?)$/.exec(t);
+  return n ? n[1] : t;
+}
 
 /** Tokens of a folded title, or null when it holds a character we do not vouch for (digits, symbols, other scripts). */
 function tokensOf(t: string): string[] | null {
@@ -188,16 +220,19 @@ function matchesVocab(tokens: string[], v: Vocab): boolean {
 const CUT_SIDE: readonly GuideId[] = ['haircut', 'fade', 'taper'];
 /** The one true combination: a cut-type side and a beard side around exactly one joiner, in either order ("Haircut & Beard Trim", "Beard and Fade"). */
 function isCutBeard(tokens: string[]): boolean {
-  const at = tokens.map((w, i) => (COMBO_JOINERS.has(w) ? i : -1)).filter((i) => i >= 0);
-  if (at.length !== 1) return false;
-  const i = at[0];
-  const left = tokens.slice(0, i);
-  let right = tokens.slice(i + 1);
-  if (right[0] === 'a') right = right.slice(1);
-  if (!left.length || !right.length) return false;
   const beardSide = (side: string[]): boolean => (side.length === 1 && side[0] === 'beard') || matchesVocab(side, FAMILY_VOCAB['beard-trim']!);
   const cutSide = (side: string[]): boolean => CUT_SIDE.some((g) => matchesVocab(side, FAMILY_VOCAB[g]!));
-  return (cutSide(left) && beardSide(right)) || (beardSide(left) && cutSide(right));
+  // Each joiner is a candidate split; a joiner inside a core ("high AND tight") simply fails to give two sides. Exactly one split may work.
+  let ok = 0;
+  tokens.forEach((w, i) => {
+    if (!COMBO_JOINERS.has(w)) return;
+    const left = tokens.slice(0, i);
+    let right = tokens.slice(i + 1);
+    if (right[0] === 'a') right = right.slice(1);
+    if (!left.length || !right.length) return;
+    if ((cutSide(left) && beardSide(right)) || (beardSide(left) && cutSide(right))) ok++;
+  });
+  return ok === 1;
 }
 
 /**
@@ -208,7 +243,7 @@ export function structuralGuide(title: unknown): GuideId | null {
   const t = fold(title).trim();
   if (!t || t.length > 120) return null;
   if (FAMILY_VETO.test(t) || nonServiceTitle(t)) return null;
-  const tokens = tokensOf(t);
+  const tokens = tokensOf(dropQualifier(t));
   if (!tokens || tokens.length > 8) return null;
   const hit: GuideId[] = [];
   for (const id of GUIDE_IDS) { const v = FAMILY_VOCAB[id]; if (v && matchesVocab(tokens, v)) hit.push(id); }
@@ -220,8 +255,22 @@ export function structuralGuide(title: unknown): GuideId | null {
 export function plainHaircutTitle(title: unknown): boolean {
   const t = fold(title).trim();
   if (!t || t.length > 120 || FAMILY_VETO.test(t) || nonServiceTitle(t)) return false;
-  const tokens = tokensOf(t);
+  const tokens = tokensOf(dropQualifier(t));
   return !!tokens && tokens.length <= 6 && structuralGuide(title) === 'haircut' && matchesVocab(tokens, PLAIN_HAIRCUT);
+}
+
+/** True when the title is the unqualified generic haircut ("Haircut", "Hair Cut", "Haircuts", "Cut"): no audience, no level, no qualifier. */
+export function bareHaircutTitle(title: unknown): boolean {
+  const t = fold(title).trim();
+  const tokens = t ? tokensOf(t) : null;
+  return !!tokens && structuralGuide(title) === 'haircut' && matchesVocab(tokens, BARE_HAIRCUT);
+}
+
+/** True when the title is a kids' cut made only of an age word and the generic words ("Kids Haircut", "Children's Cut", "Haircut for Kids"), not a fade, taper or named cut. */
+export function plainKidsTitle(title: unknown): boolean {
+  const t = fold(title).trim();
+  const tokens = t ? tokensOf(dropQualifier(t)) : null;
+  return !!tokens && tokens.length <= 6 && structuralGuide(title) === 'kids-cut' && matchesVocab(tokens, PLAIN_KIDS);
 }
 
 /**
