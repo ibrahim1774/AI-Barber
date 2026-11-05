@@ -70,7 +70,7 @@ export async function claimCheck(model: ModelClient, texts: readonly string[]): 
   if (texts.length > CHECK_MAX_ITEMS) throw new CheckError('too_many');
   const r = await model.complete({
     system: CHECK_SYSTEM_PROMPT, messages: [{ role: 'user', content: checkMessage(texts) }],
-    maxTokens: CHECK_MAX_TOKENS, timeoutMs: CHECK_TIMEOUT_MS, schema: CHECK_OUTPUT_SCHEMA,
+    maxTokens: CHECK_MAX_TOKENS, timeoutMs: CHECK_TIMEOUT_MS, schema: CHECK_OUTPUT_SCHEMA, effort: 'medium', // a safety classifier is the wrong place to save thinking (review 6b S2)
   });
   const idx = parseVerdicts(r.text, texts.length);
   return { cleared: new Set(texts.filter((_, i) => idx.has(i))), usage: r.usage };

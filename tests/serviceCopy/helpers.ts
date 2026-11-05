@@ -75,8 +75,8 @@ export function scriptedModel(script: Step[] = [JSON.stringify(GOOD_JSON)], chec
 
 export function response() { const r: any = { code: 0, body: null, headers: {} as Record<string, string>, setHeader: (k: string, v: string) => { r.headers[k] = v; } }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; }
 
-export interface Rig { deps: HandlerDeps; model: ScriptedModel; store: ReturnType<typeof memoryCopyStore>; logs: string[]; drafts: Map<string, any>; clock: { t: number }; limits: ReturnType<typeof memoryStore>; call: (body?: any, opts?: { auth?: string | null; method?: string }) => Promise<any> }
-export function rig(opts: { model?: ScriptedModel; siteData?: any; enabled?: boolean } = {}): Rig {
+export interface Rig { deps: HandlerDeps; model: ScriptedModel; store: ReturnType<typeof memoryCopyStore>; logs: string[]; drafts: Map<string, any>; clock: { t: number }; limits: ReturnType<typeof memoryStore>; call: (body?: any, opts?: { auth?: string | null; method?: string; raw?: boolean }) => Promise<any> }
+export function rig(opts: { model?: ScriptedModel; siteData?: any; enabled?: boolean; entitled?: boolean | ((userId: string) => Promise<boolean>); /** SERVICE_COPY_AUTO_PUBLISH. The legacy generation tests run with it ON (text prints without approval); the default of the product is OFF. */ autoPublish?: boolean } = {}): Rig {
   const model = opts.model ?? scriptedModel();
   const store = memoryCopyStore();
   const logs: string[] = [];
@@ -88,10 +88,14 @@ export function rig(opts: { model?: ScriptedModel; siteData?: any; enabled?: boo
     enabled: () => opts.enabled ?? true,
     caller: async (a) => (a === 'Bearer u1' ? { id: U1 } : a === 'Bearer u2' ? { id: U2 } : null),
     draft: async (uid) => drafts.get(uid) ?? null,
+    entitled: typeof opts.entitled === 'function' ? opts.entitled : async () => (opts.entitled as boolean | undefined) ?? true,
+    autoPublish: () => opts.autoPublish ?? true,
     model: () => model, store, limits, requests: memoryStore(), now: () => clock.t, log: (l) => logs.push(l),
   };
   const handler = makeHandler(deps);
-  const call = async (body: any = { titleKey: 'scalp massage' }, o: { auth?: string | null; method?: string } = {}) => {
+  /** Legacy generation tests mean Mode B: a body with no `mode` is sent as mode 'write'. Pass mode explicitly (or raw) for the product default (classify). */
+  const call = async (body: any = { titleKey: 'scalp massage' }, o: { auth?: string | null; method?: string; raw?: boolean } = {}) => {
+    if (!o.raw && body && typeof body === 'object' && !Array.isArray(body) && body.mode === undefined) body = { ...body, mode: 'write' };
     const r = response();
     await handler({ method: o.method ?? 'POST', headers: o.auth === null ? {} : { authorization: o.auth ?? 'Bearer u1', origin: 'https://www.primebarber.org' }, body }, r);
     return r;

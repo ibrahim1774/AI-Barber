@@ -4,6 +4,7 @@ import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webA
 import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/ios/siteShape.js';
 import { seoProblem, seoSanitize } from '../../lib/render/seoText.js';
 import { serviceKeys, svcCopySanitize } from '../../lib/serviceCopy/prune.js';
+import { serviceCopyAutoPublish } from '../../lib/serviceCopy/flags.js';
 import { serviceCopyEnabled } from '../../lib/serviceCopy/handler.js';
 import { tableCopyStore } from '../../lib/serviceCopy/store.js';
 
@@ -45,8 +46,8 @@ export default async function handler(req: any, res: any) {
     if (seo) return res.status(400).json({ error: 'invalid_draft', detail: seo });
     const { siteData: cleaned, problems: seoProblems } = seoSanitize(site_data);
     // Deployment URLs are server-owned. The browser cannot turn an arbitrary URL into a published account site.
-    // AI service text (extraPages.svcCopy) stays tied to real services: an entry of a removed or renamed service, or one that is not the stored shape, is dropped.
-    const { siteData: pruned } = svcCopySanitize(cleaned);
+    // AI service text (extraPages.svcCopy) and family choices (svcFamily) stay tied to real services: an entry of a removed or renamed service, or one that is not the stored shape, is dropped; so is model text with no owner approval.
+    const { siteData: pruned } = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish() });
     const content = { ...pruned, source: 'web-app' };
     if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: accountRow(previous), seoProblems });
     if ((previous?.revision ?? 0) !== expectedRevision) {

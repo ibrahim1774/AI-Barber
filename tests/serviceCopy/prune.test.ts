@@ -14,7 +14,7 @@ import { svcCopySanitize, serviceKeys } from '../../lib/serviceCopy/prune';
 import { validateWebSnapshot } from '../../lib/webApp/publishFlow';
 import { GOOD_JSON, site } from './helpers';
 
-const entry = { v: 1, aiGenerated: true, ...GOOD_JSON };
+const entry = { v: 1, aiGenerated: true, approval: 'owner', ...GOOD_JSON };
 const withCopy = (titles: string[], svcCopy: any) => site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcCopy } }, titles);
 const response = () => { const r: any = { code: 0, body: null, setHeader: vi.fn() }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; };
 
@@ -61,6 +61,25 @@ describe('draft save', () => {
     expect(r.code).toBe(200);
     expect(Object.keys(r.body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
   });
+  it('model text with no owner approval never reaches the stored draft; "auto" text only while SERVICE_COPY_AUTO_PUBLISH is on; owner text and families stay', async () => {
+    const proposal = { v: 1, aiGenerated: true, ...GOOD_JSON };
+    const auto = { ...proposal, approval: 'auto' };
+    st.previous = prev(withCopy(['Scalp Massage'], undefined));
+    delete process.env.SERVICE_COPY_AUTO_PUBLISH;
+    for (const e of [proposal, auto]) {
+      const r = await put(withCopy(['Scalp Massage'], { 'scalp massage': e }));
+      expect(r.code).toBe(200);
+      expect(r.body.draft.site_data.extraPages.svcCopy).toBeUndefined();
+    }
+    expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': entry }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
+    const fam = site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'scalp massage': 'shave', 'gone': 'shave' } } }, ['Scalp Massage']);
+    expect((await put(fam)).body.draft.site_data.extraPages.svcFamily).toEqual({ 'scalp massage': 'shave' });
+    process.env.SERVICE_COPY_AUTO_PUBLISH = '1';
+    try {
+      expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': auto }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
+      expect((await put(withCopy(['Scalp Massage'], { 'scalp massage': proposal }))).body.draft.site_data.extraPages.svcCopy).toBeUndefined();
+    } finally { delete process.env.SERVICE_COPY_AUTO_PUBLISH; }
+  });
   it('removing a service retires its cached text (only when the feature is on); no cleanup call otherwise', async () => {
     st.previous = prev(withCopy(['Scalp Massage'], { 'scalp massage': entry }));
     await put(withCopy([], undefined));
@@ -71,7 +90,7 @@ describe('draft save', () => {
     expect(r.code).toBe(200);
     const del = st.writes.find((w) => w.path.startsWith('ab_service_copy'));
     expect(del?.init.method).toBe('DELETE');
-    expect(decodeURIComponent(del!.path)).toContain('title_key=in.("scalp massage")');
+    expect(decodeURIComponent(del!.path)).toContain('title_key=in.("scalp massage","family:scalp massage")');
     expect(del!.path).toContain('draft_id=eq.d1');
   });
   it('a failing cleanup never fails the save', async () => {

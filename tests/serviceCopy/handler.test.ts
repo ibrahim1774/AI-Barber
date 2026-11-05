@@ -149,20 +149,20 @@ describe('happy path, cache and idempotency', () => {
 });
 
 describe('rate limits', () => {
-  it('site: every page costs two counted calls (write + check), so the 7th page of a day is served and the 8th is refused with 429 at its check; nothing of it is stored', async () => {
-    const titles = Array.from({ length: 9 }, (_, i) => `Scalp Care ${'abcdefghijklmnop'[i]}`);
+  it('site: ONE unit per generation request, so 15 requests a day are served and the 16th is refused with 429 before any model call; nothing of it is stored', async () => {
+    const titles = Array.from({ length: 17 }, (_, i) => `Scalp Care ${'abcdefghjklmnopqr'[i]}`);
     const r = rig({ siteData: site({}, titles) });
     const codes: number[] = [];
-    for (const t of titles.slice(0, 8)) codes.push((await r.call({ titleKey: t.toLowerCase() })).code);
-    expect(codes.slice(0, 7).every((c) => c === 200)).toBe(true);
-    expect(codes[7]).toBe(429);
-    expect(r.model.calls.length).toBe(8); expect(r.model.checks.length).toBe(7);
-    expect(r.store.rows.size).toBe(7); // the refused one left no claim and no text
-    const again = await r.call({ titleKey: titles[7].toLowerCase() });
+    for (const t of titles.slice(0, 16)) codes.push((await r.call({ titleKey: t.toLowerCase() })).code);
+    expect(codes.slice(0, 15), JSON.stringify(codes)).toEqual(Array(15).fill(200));
+    expect(codes[15]).toBe(429);
+    expect(r.model.calls.length).toBe(15); expect(r.model.checks.length).toBe(15);
+    expect(r.store.rows.size).toBe(15); // the refused one left no claim and no text
+    const again = await r.call({ titleKey: titles[15].toLowerCase() });
     expect(again.body).toEqual({ error: 'rate_limited', scope: 'site' });
-    expect(r.model.calls.length).toBe(8); // refused before any call
+    expect(r.model.calls.length).toBe(15); // refused before any call
     r.clock.t += DAY_MS; // the next UTC day
-    expect((await r.call({ titleKey: titles[7].toLowerCase() })).code).toBe(200);
+    expect((await r.call({ titleKey: titles[15].toLowerCase() })).code).toBe(200);
   });
   it('cached answers use no quota', async () => {
     const r = rig();
@@ -191,27 +191,29 @@ describe('rate limits', () => {
     expect([res.code, res.body]).toEqual([429, { error: 'rate_limited', scope: 'account' }]);
     expect(r.model.calls.length).toBe(0); expect(r.store.rows.size).toBe(0);
   });
-  it('the retry (only for an unusable first answer) counts as a second call; when it is refused the request ends with nothing stored', async () => {
+  it('the retry and the claim check share the request\'s ONE unit: with one unit left a request that needs write + retry + check runs all three; the next request is refused', async () => {
     const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [], faq: [] };
     const r = rig({ model: scriptedModel([JSON.stringify(unusable), JSON.stringify(GOOD_JSON)]) });
-    for (let i = 0; i < 14; i++) await r.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, r.clock.t); // one call left
+    for (let i = 0; i < 14; i++) await r.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, r.clock.t); // one unit left
     const res = await r.call();
-    expect([r.model.calls.length, r.model.checks.length]).toEqual([1, 0]);
-    expect(res.body.status).toBe('not_generated'); expect(r.store.rows.size).toBe(0);
+    expect([res.body.status, r.model.calls.length, r.model.checks.length]).toEqual(['generated', 2, 1]); // 3 model calls = the hard ceiling, 1 unit
+    const next = rig({ siteData: site({}, ['Scalp Massage', 'Brow Tint']) });
+    for (let i = 0; i < 15; i++) await next.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, next.clock.t);
+    expect((await next.call({ titleKey: 'brow tint' })).code).toBe(429);
+    expect(next.model.calls.length).toBe(0);
   });
-  it('the claim check is one more counted call: with exactly one call left the write is served but the check is refused (429, nothing stored)', async () => {
-    const r = rig();
-    for (let i = 0; i < 14; i++) await r.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, r.clock.t);
-    const res = await r.call();
-    expect([res.code, res.body]).toEqual([429, { error: 'rate_limited', scope: 'site' }]);
-    expect([r.model.calls.length, r.model.checks.length, r.store.rows.size]).toEqual([1, 0, 0]);
+  it('a request never makes more than three model calls (write, one retry, one check)', async () => {
+    const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [], faq: [] };
+    const r = rig({ model: scriptedModel([JSON.stringify(unusable)]) });
+    await r.call();
+    expect(r.model.calls.length + r.model.checks.length).toBeLessThanOrEqual(3);
   });
-  it('a normal page spends exactly two counted calls, on the site and on the account counter', async () => {
+  it('a normal page spends exactly ONE unit, on the site and on the account counter', async () => {
     const r = rig();
     await r.call();
     const probe = async (key: string, cap: number): Promise<number> => { let n = 0; while (await r.limits.hit(key, cap, DAY_MS, r.clock.t)) n++; return n; };
-    expect(await probe(siteCounterKey(U1, 'draft-1'), 15)).toBe(13);
-    expect(await probe(accountCounterKey(U1), 50)).toBe(48);
+    expect(await probe(siteCounterKey(U1, 'draft-1'), 15)).toBe(14);
+    expect(await probe(accountCounterKey(U1), 50)).toBe(49);
   });
   it('a counter store that errors fails CLOSED: 503, no model call, no claim left', async () => {
     const r = rig();
@@ -258,7 +260,7 @@ describe('generateServiceCopy direct', () => {
     const r = rig();
     const f = (await import('../../lib/serviceCopy/facts')).serviceFacts(r.drafts.get(U1).site_data, 'scalp massage');
     if (!f.ok) throw new Error('facts');
-    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {} }, { userId: U1, draftId: 'draft-1' }, r.drafts.get(U1).site_data, f);
+    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true }, { userId: U1, draftId: 'draft-1' }, r.drafts.get(U1).site_data, f);
     expect(out.status).toBe('generated');
     expect((out as any).copy.at).toBe('2026-11-05T12:00:00.000Z');
   });

@@ -1,8 +1,15 @@
-// Writes the dedicated text of ONE service, once. Steps (none runs on the generate or publish path; the endpoint calls this on request):
-//   cache hit -> return it (no call, no quota)   |   pending claim -> in_progress   |   else claim -> count a call -> model ->
-//   check -> (one retry with the problems, counted as a second call) -> drop failing sentences (deterministic deny layer) ->
-//   the claim checker (a separate model call, counted too; any failure or doubt = nothing is stored) -> verify with the real renderer ->
-//   store -> return. Any store or counter failure ends in 'unavailable' BEFORE a model call is made. No prompt text is ever logged.
+// Two jobs, both on an explicit request from the signed-in owner, never on the generate or publish path:
+//
+// MODE A  classifyServiceFamily: the model is only a classifier. One call returns {family: <library guide id> | 'none'}. A family is
+//   cached per (site, service key) and the page then prints the library's own reviewed wording for it. 'none', a failure, a timeout
+//   or a malformed reply = default deny: nothing is cached and nothing a model wrote is ever rendered.
+//
+// MODE B  generateServiceCopy ("Write it for me"): cache hit -> return it (no call, no quota) | pending claim -> in_progress |
+//   else claim -> count ONE request unit -> model -> (one retry with the problems) -> drop failing sentences (deterministic deny
+//   layer) -> the claim checker (a separate model call, same unit; any failure or doubt = nothing is stored) -> verify with the real
+//   renderer -> store -> return. The result is a PROPOSAL (status 'proposal', never rendered) until the barber approves it
+//   (approveProposal), unless the server flag SERVICE_COPY_AUTO_PUBLISH is on (deps.autoPublish): then it is returned already
+//   stamped approval 'auto'. Any store or counter failure ends in 'unavailable' BEFORE a model call is made. No prompt text is ever logged.
 import { randomUUID } from 'node:crypto';
 import type { RateLimitStore } from '../bookings/rateLimit.js';
 import type { WebsiteData } from '../../types';
@@ -13,12 +20,17 @@ import { validSeoText } from '../render/seoText.js';
 import { estimateCostUsd, MAX_OUTPUT_TOKENS, MODEL_ID, MODEL_TIMEOUT_MS, ModelError, type ModelClient, type ModelTurn } from './model.js';
 import { retryMessage, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { claimCheck } from './check.js';
-import { LEASE_MS, StoreError, type CopyKey, type CopyStore } from './store.js';
+import { classifyTitle, ClassifyError, FAMILY_NONE } from './classify.js';
+import { GUIDE_IDS, type GuideId } from '../render/copyLibrary.js';
+import { isFamilyChoice, isTextEntry, LEASE_MS, StoreError, type CopyKey, type CopyStore } from './store.js';
 import { LimitStoreError, takeCall } from './limits.js';
 import type { FactsResult } from './facts.js';
 
 export type GenerateOutcome =
+  /** Renderable text: `copy.approval` is set ('auto' while the flag is on, 'owner' once the barber approved). */
   | { status: 'generated' | 'cached'; copy: SvcCopyEntry }
+  /** Model text waiting for the barber's "Looks right": no approval, never rendered, never indexed. */
+  | { status: 'proposal'; copy: SvcCopyEntry }
   | { status: 'not_generated' }
   | { status: 'in_progress' }
   | { status: 'rate_limited'; scope: 'site' | 'account' }
@@ -31,6 +43,8 @@ export interface GenerateDeps {
   now: () => number;
   log: (line: string) => void;
   token?: () => string;
+  /** SERVICE_COPY_AUTO_PUBLISH is on. Default (absent) = off: Mode B text is a proposal until the owner approves it. */
+  autoPublish?: boolean;
 }
 
 /** Total time the two writing calls may take together; the retry is skipped past this. */
@@ -60,7 +74,7 @@ export async function generateServiceCopy(
     // 1. cache and claim (idempotency: one call per site and service, however many taps)
     const row = await deps.store.get(key);
     if (row) {
-      if (row.state === 'done' && row.copy && row.factsHash === f.hash) return { status: 'cached', copy: row.copy };
+      if (row.state === 'done' && isTextEntry(row.copy) && row.factsHash === f.hash) return deliver(row.copy, row.approval, deps.autoPublish === true);
       if (row.state === 'done') await deps.store.remove(key); // facts changed (niche): the old text is not about this service any more
       else if (t0 - row.claimedAt < LEASE_MS) return { status: 'in_progress' };
       else if (!(await deps.store.takeover(key, token, f.hash, t0))) return { status: 'in_progress' };
@@ -71,18 +85,15 @@ export async function generateServiceCopy(
       claimed = true;
     }
 
-    // 2. the model, with at most one retry; each call is counted first
+    // 2. ONE counted unit for the whole request (write + optional retry + claim check: at most three model calls), then the model
+    const unit = await takeCall(deps.limits, who.userId, who.draftId, deps.now());
+    if (unit !== 'ok') { await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'rate_limited', scope: unit }; }
     const allow = serviceWordsIn(f.subject.title);
     const turns: ModelTurn[] = [{ role: 'user', content: userMessage(f.facts) }];
     let best: { entry: SvcCopyEntry; kept: number; written: number } | null = null;
     let problems: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt++) {
       if (attempt === 2 && (deps.now() - t0 > RETRY_DEADLINE_MS || !problems.length)) break;
-      const verdict = await takeCall(deps.limits, who.userId, who.draftId, deps.now());
-      if (verdict !== 'ok') {
-        if (attempt === 1) { await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'rate_limited', scope: verdict }; }
-        break; // the retry is refused: judge the first answer
-      }
       let text: string;
       try {
         const r = await deps.model.complete({ system: SYSTEM_PROMPT, messages: turns, maxTokens: MAX_OUTPUT_TOKENS, timeoutMs: MODEL_TIMEOUT_MS });
@@ -118,8 +129,6 @@ export async function generateServiceCopy(
     //     Every failure (budget, deadline, call, malformed reply) is DEFAULT DENY: nothing is stored and the page stays thin.
     const denyAll = async (why: string): Promise<GenerateOutcome> => { logCost(why); await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'not_generated' }; };
     if (deps.now() - t0 > CHECK_DEADLINE_MS) return denyAll('check_deadline');
-    const verdict = await takeCall(deps.limits, who.userId, who.draftId, deps.now());
-    if (verdict !== 'ok') { logCost('check_not_counted'); await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'rate_limited', scope: verdict }; }
     let cleared: Set<string>;
     try {
       checks++;
@@ -134,15 +143,16 @@ export async function generateServiceCopy(
     if (!final || !verified(site, f, final)) return denyAll('check_dropped_too_much');
     logCost('text');
 
-    // 3. store or leave nothing behind
+    // 3. store or leave nothing behind. The stored text never carries an approval; it is attached only on the way out.
     const entry: SvcCopyEntry = { ...final, at: new Date(deps.now()).toISOString() };
-    if (!(await deps.store.finish(key, token, entry, { tokensIn, tokensOut }))) {
+    const auto = deps.autoPublish === true;
+    if (!(await deps.store.finish(key, token, entry, { tokensIn, tokensOut, approval: auto ? 'auto' : null }))) {
       claimed = false; // the claim was lost (the lease ran out): whoever holds the row decides
       const now = await deps.store.get(key);
-      return now?.state === 'done' && now.copy ? { status: 'cached', copy: now.copy } : { status: 'in_progress' };
+      return now?.state === 'done' && isTextEntry(now.copy) ? deliver(now.copy, now.approval, auto) : { status: 'in_progress' };
     }
     claimed = false;
-    return { status: 'generated', copy: entry };
+    return auto ? { status: 'generated', copy: { ...entry, approval: 'auto' } } : { status: 'proposal', copy: entry };
   } catch (e) {
     if (claimed) await deps.store.release(key, token).catch(() => {});
     if (calls + checks > 0 || tokensIn + tokensOut > 0) logCost('error');
@@ -166,6 +176,114 @@ function withMeta(e: SvcCopyEntry, f: Extract<FactsResult, { ok: true }>): SvcCo
 
 /** The candidate must print through the real renderer path for this site (tokens resolved, enough sentences). */
 function verified(site: WebsiteData, f: Extract<FactsResult, { ok: true }>, entry: SvcCopyEntry): boolean {
-  const d: WebsiteData = { ...site, extraPages: { on: [], ...(site.extraPages as object), serviceGuides: true, svcCopy: { [f.titleKey]: entry } } as WebsiteData['extraPages'], source: 'web-app' };
-  return aiPageFor(lenientEnv(d, { place: '' }), f.subject) !== null;
+  // The text rules are judged as the text would print once approved: approval itself is a separate gate (aiPageFor), tested apart.
+  const printed: SvcCopyEntry = { ...entry, approval: 'owner' };
+  const { svcFamily: _f, ...rest } = ((site.extraPages ?? {}) as Record<string, unknown>);
+  const d: WebsiteData = { ...site, extraPages: { on: [], ...rest, serviceGuides: true, svcCopy: { [f.titleKey]: printed } } as WebsiteData['extraPages'], source: 'web-app' };
+  return aiPageFor(lenientEnv(d, { place: '' }), { ...f.subject, guide: null }) !== null;
 }
+
+/**
+ * What a stored write row becomes on the way out: renderable ('cached', approval stamped) only for an owner-approved row, or for any
+ * row while the auto flag is on; otherwise it is still a proposal. An 'auto' row is NOT trusted once the flag is off.
+ */
+export function deliver(copy: SvcCopyEntry, rowApproval: 'owner' | 'auto' | null, autoPublish: boolean): GenerateOutcome {
+  const { approval: _drop, ...bare } = copy;
+  if (rowApproval === 'owner') return { status: 'cached', copy: { ...bare, approval: 'owner' } };
+  if (autoPublish) return { status: 'cached', copy: { ...bare, approval: 'auto' } };
+  return { status: 'proposal', copy: bare };
+}
+
+export type ApproveOutcome =
+  | { status: 'approved'; copy: SvcCopyEntry }
+  | { status: 'no_proposal' | 'proposal_stale' | 'not_renderable' | 'unavailable' };
+
+/**
+ * "Looks right": the owner approves the stored proposal for this exact service. The row must exist, be finished, match the current
+ * facts and still print through the real renderer; only then is it flipped to approval 'owner' and returned for the editor to commit.
+ * Approving an already approved row returns it again (idempotent). No model call, no quota.
+ */
+export async function approveProposal(
+  deps: Pick<GenerateDeps, 'store' | 'log'>, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
+): Promise<ApproveOutcome> {
+  const key: CopyKey = { userId: who.userId, draftId: who.draftId, titleKey: f.titleKey };
+  try {
+    const row = await deps.store.get(key);
+    if (!row || row.state !== 'done' || !isTextEntry(row.copy)) return { status: 'no_proposal' };
+    if (row.factsHash !== f.hash) { await deps.store.remove(key); return { status: 'proposal_stale' }; }
+    const { approval: _drop, ...bare } = row.copy;
+    if (!verified(site, f, bare)) { await deps.store.remove(key); return { status: 'not_renderable' }; }
+    if (row.approval === 'owner') return { status: 'approved', copy: { ...bare, approval: 'owner' } };
+    if (!(await deps.store.approve(key))) {
+      const again = await deps.store.get(key);
+      return again?.state === 'done' && again.approval === 'owner' && isTextEntry(again.copy) ? { status: 'approved', copy: { ...bare, approval: 'owner' } } : { status: 'no_proposal' };
+    }
+    return { status: 'approved', copy: { ...bare, approval: 'owner' } };
+  } catch (e) {
+    deps.log(`[service-copy] approve unavailable: ${e instanceof StoreError ? 'store' : 'error'}`);
+    return { status: 'unavailable' };
+  }
+}
+
+export type ClassifyOutcome =
+  | { status: 'family'; family: GuideId; cached: boolean }
+  | { status: 'not_generated' }
+  | { status: 'in_progress' }
+  | { status: 'rate_limited'; scope: 'site' | 'account' }
+  | { status: 'unavailable' };
+
+/**
+ * MODE A. One classifier call (one counted unit) for a custom title. The only thing kept is a library guide id; the family is cached
+ * per (site, service key) so a second tap costs nothing. 'none', a malformed reply, a failed or timed-out call: nothing is cached.
+ */
+export async function classifyServiceFamily(
+  deps: GenerateDeps, who: { userId: string; draftId: string }, f: Extract<FactsResult, { ok: true }>,
+): Promise<ClassifyOutcome> {
+  const key: CopyKey = { userId: who.userId, draftId: who.draftId, titleKey: f.titleKey, kind: 'family' };
+  const token = (deps.token ?? randomUUID)();
+  const t0 = deps.now();
+  let claimed = false;
+  let usage = { input: 0, output: 0 };
+  const logCost = (result: string): void => deps.log(`[service-copy] mode=classify model=${MODEL_ID} in=${usage.input} out=${usage.output} cost_usd=${estimateCostUsd(usage).toFixed(5)} result=${result}`);
+  try {
+    const row = await deps.store.get(key);
+    if (row) {
+      if (row.state === 'done' && isFamilyChoice(row.copy) && row.factsHash === f.hash && (FAMILY_IDS as readonly string[]).includes(row.copy.family)) return { status: 'family', family: row.copy.family, cached: true };
+      if (row.state === 'done') await deps.store.remove(key);
+      else if (t0 - row.claimedAt < LEASE_MS) return { status: 'in_progress' };
+      else if (!(await deps.store.takeover(key, token, f.hash, t0))) return { status: 'in_progress' };
+      else claimed = true;
+    }
+    if (!claimed) {
+      if (!(await deps.store.claim(key, token, f.hash, t0))) return { status: 'in_progress' };
+      claimed = true;
+    }
+    const unit = await takeCall(deps.limits, who.userId, who.draftId, deps.now());
+    if (unit !== 'ok') { await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'rate_limited', scope: unit }; }
+    let family: GuideId | typeof FAMILY_NONE;
+    try {
+      const r = await classifyTitle(deps.model, f.facts.serviceTitle);
+      usage = r.usage; family = r.family;
+    } catch (e) {
+      if (e instanceof ModelError && e.usage) usage = e.usage;
+      if (e instanceof ClassifyError) { logCost('malformed'); await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'not_generated' }; }
+      throw e;
+    }
+    if (family === FAMILY_NONE) { logCost('none'); await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'not_generated' }; }
+    if (!(await deps.store.finish(key, token, { v: 1, family }, { tokensIn: usage.input, tokensOut: usage.output }))) {
+      claimed = false;
+      const now = await deps.store.get(key);
+      return now?.state === 'done' && isFamilyChoice(now.copy) && (FAMILY_IDS as readonly string[]).includes(now.copy.family) ? { status: 'family', family: now.copy.family, cached: true } : { status: 'in_progress' };
+    }
+    claimed = false;
+    logCost(`family=${family}`);
+    return { status: 'family', family, cached: false };
+  } catch (e) {
+    if (claimed) await deps.store.release(key, token).catch(() => {});
+    if (usage.input + usage.output > 0) logCost('error');
+    deps.log(`[service-copy] classify unavailable: ${e instanceof LimitStoreError || e instanceof StoreError || e instanceof ModelError ? e.message : 'unexpected'}`);
+    return { status: 'unavailable' };
+  }
+}
+
+const FAMILY_IDS = GUIDE_IDS;

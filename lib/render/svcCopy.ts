@@ -29,6 +29,12 @@ export interface SvcCopyEntry {
   metaDescription?: string;
   /** ISO time the text was written (display only). */
   at?: string;
+  /**
+   * Who let this model text go public. Model text (aiGenerated true) is printed ONLY with an approval: 'owner' (the barber tapped
+   * "Looks right" on the proposal) or 'auto' (the server flag SERVICE_COPY_AUTO_PUBLISH was on when it was written). Without one
+   * the entry is a proposal: never printed, never indexed. The barber's own words (aiGenerated false) carry none.
+   */
+  approval?: 'owner' | 'auto';
 }
 
 export const LIMITS = {
@@ -40,7 +46,7 @@ export const MIN_SENTENCES = 4;
 /** Share of the written sentences that must survive. */
 export const MIN_SURVIVAL = 0.5;
 
-const KEYS = new Set(['v', 'aiGenerated', 'heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription', 'at']);
+const KEYS = new Set(['v', 'aiGenerated', 'heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription', 'at', 'approval']);
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 // ── plain text only ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +175,7 @@ export function checkEntryShape(raw: unknown): { ok: true; entry: SvcCopyEntry }
   if (own(raw, 'metaTitle') && !str(raw.metaTitle, LIMITS.metaTitle)) return { ok: false, reason: 'metaTitle' };
   if (own(raw, 'metaDescription') && !str(raw.metaDescription, LIMITS.metaDescription)) return { ok: false, reason: 'metaDescription' };
   if (own(raw, 'at') && !str(raw.at, 40)) return { ok: false, reason: 'at' };
+  if (own(raw, 'approval') && ((raw.approval !== 'owner' && raw.approval !== 'auto') || raw.aiGenerated !== true)) return { ok: false, reason: 'approval' };
   if (!Array.isArray(raw.sections) || raw.sections.length > LIMITS.sectionsMax) return { ok: false, reason: 'sections' };
   if (!Array.isArray(raw.faq) || raw.faq.length > LIMITS.faqMax) return { ok: false, reason: 'faq' };
   const sections: SvcSection[] = [];
@@ -186,6 +193,7 @@ export function checkEntryShape(raw: unknown): { ok: true; entry: SvcCopyEntry }
   if (own(raw, 'metaTitle')) entry.metaTitle = raw.metaTitle as string;
   if (own(raw, 'metaDescription')) entry.metaDescription = raw.metaDescription as string;
   if (own(raw, 'at')) entry.at = raw.at as string;
+  if (own(raw, 'approval')) entry.approval = raw.approval as 'owner' | 'auto';
   const total = [entry.heading, entry.intro, entry.metaTitle, entry.metaDescription, ...sections.flatMap((s) => [s.h, s.p]), ...faq.flatMap((f) => [f.q, f.a])]
     .reduce((n, t) => n + (t ? Array.from(t).length : 0), 0);
   if (total > LIMITS.total) return { ok: false, reason: 'total length' };
@@ -259,6 +267,7 @@ export function lintEntry(e: SvcCopyEntry, allow: readonly VocabGroup[], cleared
   const md = e.metaDescription ? lintParagraph(e.metaDescription, allow, cleared) : null;
   if (md && md.written === 1 && md.kept === 1) out.metaDescription = md.text; else if (md) problems.push(...md.problems);
   if (e.at) out.at = e.at;
+  if (e.approval) out.approval = e.approval;
   const total = kept;
   if (!intro || total < MIN_SENTENCES || written === 0 || total / written < MIN_SURVIVAL) return { entry: null, written, kept, problems };
   return { entry: out, written, kept, problems };

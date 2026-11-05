@@ -1,15 +1,24 @@
-// POST /api/web-app/service-copy  { titleKey: string, draftId?: string }
-// Writes the dedicated page text for ONE service the library has no guide for, once, on an explicit request from the signed-in owner.
-// Answers: 200 { status: 'generated' | 'cached' | 'exists' | 'not_generated', titleKey, copy? }, 202 { status: 'in_progress' },
-// 4xx for a request that cannot be served, 429 { error: 'rate_limited', scope }, 503 { error: 'ai_unavailable' }.
+// POST /api/web-app/service-copy  { titleKey: string, draftId?: string, mode?: 'classify' | 'write' | 'approve' }
+// For ONE service the library has no guide for, on an explicit request from the signed-in owner with an active paid web plan:
+//   mode 'classify' (default, MODE A)  the model only classifies the title into a library guide family: 200 { status: 'family', family }
+//                                      (the page then prints the library's own reviewed wording) or { status: 'not_generated' } (none / any failure).
+//                                      Nothing a model wrote is ever returned or rendered.
+//   mode 'write'    (MODE B)           free-form text. DEFAULT: a PROPOSAL, 200 { status: 'proposal', copy } - never rendered or indexed until the
+//                                      barber approves it. With SERVICE_COPY_AUTO_PUBLISH=1 the answer is 'generated' / 'cached' with copy.approval 'auto'.
+//   mode 'approve'                     "Looks right": flips the stored proposal to owner-approved and returns { status: 'approved', copy } for the editor to commit.
+// Other answers: 200 { status: 'exists' | 'not_generated' }, 202 { status: 'in_progress' }, 402 no plan, 4xx for a request that cannot be served,
+// 429 { error: 'rate_limited', scope }, 503 { error: 'ai_unavailable' }.
 // Never a body that carries a message, a stack, a prompt or a secret. The server never writes site data: the editor commits `copy`.
 import { memoryStore, supabaseRateStore, type RateLimitStore } from '../bookings/rateLimit.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
+import { sbRest } from '../webApp/webAppServer.js';
 import { serviceTextOn, svcTitleKey } from '../render/guides.js';
 import { callerFrom, webAppCheckoutOn, webAppCors } from '../webApp/webAppServer.js';
-import { readDraft, reliabilityOn, type Draft } from '../webApp/reliability.js';
+import { modeOf, readDraft, reliabilityOn, type Draft } from '../webApp/reliability.js';
 import { serviceFacts } from './facts.js';
-import { generateServiceCopy, type GenerateDeps } from './generate.js';
+import { approveProposal, classifyServiceFamily, generateServiceCopy, type GenerateDeps } from './generate.js';
+import { serviceCopyAutoPublish } from './flags.js';
+import { isEntitledStatus } from '../webApp/stripeCore.js';
 import { liveModelClient, type ModelClient } from './model.js';
 import { tableCopyStore, type CopyStore } from './store.js';
 
@@ -19,6 +28,10 @@ export interface HandlerDeps {
   enabled: () => boolean;
   caller: (authorization: unknown) => Promise<{ id: string } | null>;
   draft: (userId: string) => Promise<Draft | null>;
+  /** An active paid web plan in the current Stripe mode (what publish requires). Throws on a failed lookup: the request then fails closed with 503. */
+  entitled: (userId: string) => Promise<boolean>;
+  /** SERVICE_COPY_AUTO_PUBLISH is on (read per request). */
+  autoPublish: () => boolean;
   model: () => ModelClient;
   store: CopyStore;
   limits: RateLimitStore;
@@ -34,6 +47,11 @@ export function liveDeps(): HandlerDeps {
     enabled: serviceCopyEnabled,
     caller: (a) => callerFrom(a),
     draft: readDraft,
+    entitled: async (uid) => {
+      const rows = await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(uid)}&environment=eq.${modeOf()}&status=in.(active,trialing,past_due)&select=status&order=created_at.desc&limit=1`);
+      return Array.isArray(rows) && rows.length > 0 && isEntitledStatus(String(rows[0]?.status));
+    },
+    autoPublish: () => serviceCopyAutoPublish(),
     model: () => liveModelClient(),
     store: tableCopyStore,
     limits: supabaseRateStore(),
@@ -53,7 +71,11 @@ export function makeHandler(deps: HandlerDeps) {
       const user = await deps.caller(req.headers?.authorization);
       if (!user) return res.status(401).json({ error: 'unauthorized' });
       if (!(await deps.requests.hit(`svccopy-req:${user.id}`, REQUESTS_PER_MINUTE, 60_000, deps.now()))) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'rate_limited', scope: 'requests' }); }
+      // A paid web plan, as publish requires. A failed lookup fails closed (the catch below answers 503); no plan = 402 so the editor can offer checkout.
+      if (!(await deps.entitled(user.id))) return res.status(402).json({ error: 'subscription-inactive' });
       const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const mode = body.mode === undefined ? 'classify' : body.mode;
+      if (mode !== 'classify' && mode !== 'write' && mode !== 'approve') return res.status(400).json({ error: 'invalid_request' });
       const titleKey = typeof body.titleKey === 'string' ? body.titleKey : '';
       if (!titleKey || titleKey.length > 100 || titleKey !== svcTitleKey(titleKey)) return res.status(400).json({ error: 'invalid_request' });
       if (body.draftId !== undefined && typeof body.draftId !== 'string') return res.status(400).json({ error: 'invalid_request' });
@@ -66,17 +88,34 @@ export function makeHandler(deps: HandlerDeps) {
       const site = draft.site_data;
       if (!site || typeof site !== 'object' || !hasPagesV2(site) || !isWebCreated(site) || !serviceTextOn(site)) return res.status(403).json({ error: 'not_available' });
 
-      // Text that already exists (the model's or the barber's own) is never written again.
-      const stored = site.extraPages?.svcCopy;
-      if (stored && typeof stored === 'object' && !Array.isArray(stored) && Object.prototype.hasOwnProperty.call(stored, titleKey)) return res.status(200).json({ status: 'exists', titleKey });
+      // Text that already exists (approved model text or the barber's own) is never written again; a family already chosen is not asked for again.
+      const has = (o: unknown): boolean => !!o && typeof o === 'object' && !Array.isArray(o) && Object.prototype.hasOwnProperty.call(o, titleKey);
+      if (has(site.extraPages?.svcCopy) || (mode === 'classify' && has(site.extraPages?.svcFamily))) return res.status(200).json({ status: 'exists', titleKey });
 
       const f = serviceFacts(site, titleKey);
       if ('reason' in f) return res.status(f.reason === 'no_such_service' ? 404 : 422).json({ error: f.reason });
 
-      const gen: GenerateDeps = { model: deps.model(), store: deps.store, limits: deps.limits, now: deps.now, log: deps.log };
-      const out = await generateServiceCopy(gen, { userId: user.id, draftId: draft.draft_id }, site, f);
+      const who = { userId: user.id, draftId: draft.draft_id };
+      if (mode === 'approve') {
+        const a = await approveProposal({ store: deps.store, log: deps.log }, who, site, f);
+        if (a.status === 'approved') return res.status(200).json({ status: 'approved', titleKey, copy: a.copy });
+        if (a.status === 'unavailable') return res.status(503).json({ error: 'ai_unavailable' });
+        return res.status(a.status === 'no_proposal' ? 404 : 409).json({ error: a.status });
+      }
+      const gen: GenerateDeps = { model: deps.model(), store: deps.store, limits: deps.limits, now: deps.now, log: deps.log, autoPublish: deps.autoPublish() };
+      if (mode === 'classify') {
+        const c = await classifyServiceFamily(gen, who, f);
+        switch (c.status) {
+          case 'family': return res.status(200).json({ status: 'family', titleKey, family: c.family });
+          case 'not_generated': return res.status(200).json({ status: 'not_generated', titleKey });
+          case 'in_progress': res.setHeader('Retry-After', '5'); return res.status(202).json({ status: 'in_progress', titleKey });
+          case 'rate_limited': res.setHeader('Retry-After', '3600'); return res.status(429).json({ error: 'rate_limited', scope: c.scope });
+          default: return res.status(503).json({ error: 'ai_unavailable' });
+        }
+      }
+      const out = await generateServiceCopy(gen, who, site, f);
       switch (out.status) {
-        case 'generated': case 'cached': return res.status(200).json({ status: out.status, titleKey, copy: out.copy });
+        case 'generated': case 'cached': case 'proposal': return res.status(200).json({ status: out.status, titleKey, copy: out.copy });
         case 'not_generated': return res.status(200).json({ status: 'not_generated', titleKey });
         case 'in_progress': res.setHeader('Retry-After', '5'); return res.status(202).json({ status: 'in_progress', titleKey });
         case 'rate_limited': res.setHeader('Retry-After', '3600'); return res.status(429).json({ error: 'rate_limited', scope: out.scope });

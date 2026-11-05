@@ -59,6 +59,9 @@ describe('specifics', () => {
     expect(denyProblems('Tell your barber what you want.')).toEqual([]);
     expect(denyProblems('What should you bring?', 'question')).toEqual([]);
     expect(denyProblems('Tell your barber what you want.', 'question').join()).toContain('question mark');
+    // review 6b NIT 2: a question is judged by its shape too (an advice verb is not a question opener)
+    expect(denyProblems('Tell me about {service}?', 'question').join()).toContain('D:shape');
+    expect(denyProblems('Hair length matters?', 'question').join()).toContain('D:shape');
   });
   it('headings may not end with a full stop and sentences must', () => {
     expect(denyProblems('How to prepare.', 'heading').join()).toContain('final stop');

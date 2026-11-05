@@ -6,7 +6,7 @@ import type { WebsiteData } from '../../types';
 
 const svc = (title: string, extra: Record<string, unknown> = {}) => ({ title, subtitle: '', description: '', icon: 'scissors' as const, imageUrl: '', ...extra });
 const GOOD: SvcCopyEntry = {
-  v: 1, aiGenerated: true, heading: 'What to expect from {service}',
+  v: 1, aiGenerated: true, approval: 'owner', heading: 'What to expect from {service}',
   intro: 'Learn what the service involves before you decide. Tell your barber what you would like to change. Bring a photo of the style you have in mind.',
   sections: [
     { h: 'Before you arrive', p: 'Think about how you wear your hair. Wear loose clothes that are easy to move in.' },
@@ -151,7 +151,7 @@ describe('the renderer', () => {
   });
   it('the barber\'s own edit (aiGenerated false) is printed escaped as written, not linted, no tokens', () => {
     const own = { ...GOOD, aiGenerated: false, intro: 'We are the best <b>team</b> with 20 years. {service}', metaDescription: undefined };
-    delete (own as any).metaDescription;
+    delete (own as any).metaDescription; delete (own as any).approval;
     const html = page(shop({}, { 'scalp massage': own }));
     expect(html).toContain('We are the best &lt;b&gt;team&lt;/b&gt; with 20 years. {service}');
     expect(html).not.toContain('<b>team</b>');

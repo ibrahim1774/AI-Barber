@@ -24,7 +24,19 @@ describe('table store', () => {
     await tableCopyStore.remove(k);
     expect(calls.list[0].path).toContain(encodeURIComponent(k.titleKey));
     await tableCopyStore.removeMany('u1', 'd1', ['a,b', 'c"d)']);
-    expect(decodeURIComponent(calls.list[1].path)).toContain('title_key=in.("a,b","c\\"d)")');
+    expect(decodeURIComponent(calls.list[1].path)).toContain('title_key=in.("a,b","family:a,b","c\\"d)","family:c\\"d)")');
+  });
+  it('approve flips only a finished, not yet owner-approved row, to owner; a family row is a separate key', async () => {
+    calls.list = []; calls.next = [{ title_key: 'x' }];
+    expect(await tableCopyStore.approve(k)).toBe(true);
+    const ap = calls.list[0];
+    expect([ap.init.method, ap.init.body]).toEqual(['PATCH', { approval: 'owner' }]);
+    expect(ap.path).toContain('state=eq.done');
+    expect(decodeURIComponent(ap.path)).toContain('or=(approval.is.null,approval.eq.auto)');
+    calls.next = [];
+    expect(await tableCopyStore.approve(k)).toBe(false);
+    await tableCopyStore.get({ ...k, kind: 'family' });
+    expect(decodeURIComponent(calls.list[calls.list.length - 1].path)).toContain(`title_key=eq.family:${k.titleKey}`);
   });
   it('any failure (a missing table before migration 028) is a StoreError, never a raw error', async () => {
     calls.fail = true;

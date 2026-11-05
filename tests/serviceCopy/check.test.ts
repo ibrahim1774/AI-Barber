@@ -46,7 +46,7 @@ describe('the review 6 end-to-end proof inputs no longer publish', () => {
     for (const call of r.model.checks) for (const c of PROOF_CLAIMS) expect(call.messages[0].content, c).not.toContain(c);
   });
   it('the same entry stored by the editor (forged or old) prints none of the claims at render time', () => {
-    const forged: SvcCopyEntry = { v: 1, aiGenerated: true, heading: REVIEW_PROOF.heading, intro: REVIEW_PROOF.intro, sections: REVIEW_PROOF.sections, faq: REVIEW_PROOF.faq, metaTitle: REVIEW_PROOF.metaTitle, metaDescription: REVIEW_PROOF.metaDescription };
+    const forged: SvcCopyEntry = { v: 1, aiGenerated: true, approval: 'owner', heading: REVIEW_PROOF.heading, intro: REVIEW_PROOF.intro, sections: REVIEW_PROOF.sections, faq: REVIEW_PROOF.faq, metaTitle: REVIEW_PROOF.metaTitle, metaDescription: REVIEW_PROOF.metaDescription };
     const d = { ...site({}), services: site().services };
     d.extraPages = { ...d.extraPages, svcCopy: { 'scalp massage': forged } };
     const files = renderSiteBundle(d, { siteBaseUrl: 'https://fresh.example.com' }).pages.map((p) => p.html).join('\n');
@@ -273,11 +273,11 @@ describe('boundaries and the renderer gate (should-fix 7, nit 6)', () => {
     const f = serviceFacts(d, 'scalp massage');
     if (!f.ok) throw new Error('facts');
     const wrong = { ...f, subject: { ...f.subject, index: 7 } }; // a service that is not on the site: aiPageFor refuses it
-    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {} }, { userId: U1, draftId: 'draft-1' }, d, wrong);
+    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true }, { userId: U1, draftId: 'draft-1' }, d, wrong);
     expect(out.status).toBe('not_generated');
     expect(r.store.rows.size).toBe(0);
     // the same facts with the right subject do print
-    const ok2 = await generateServiceCopy({ model: scriptedModel(), store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {} }, { userId: U1, draftId: 'draft-1' }, d, f);
+    const ok2 = await generateServiceCopy({ model: scriptedModel(), store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true }, { userId: U1, draftId: 'draft-1' }, d, f);
     expect(ok2.status).toBe('generated');
     const page = aiPageFor(lenientEnv({ ...d, extraPages: { ...d.extraPages, svcCopy: { 'scalp massage': (ok2 as any).copy } } }, { place: '' }), titledServices(d).find((s) => s.title === 'Scalp Massage')!);
     expect(page).not.toBeNull();

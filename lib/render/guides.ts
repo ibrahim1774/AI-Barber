@@ -57,13 +57,37 @@ export const isKidsTitle = (title: unknown): boolean => guideIdForTitle(title) =
 /** A service of the site with a title (editor markers removed). */
 export interface Svc { index: number; title: string; price: string; duration: string; guide: GuideId | null }
 
-export function titledServices(d: Pick<WebsiteData, 'services'>): Svc[] {
+export function titledServices(d: Pick<WebsiteData, 'services'> & Partial<Pick<WebsiteData, 'extraPages' | 'source'>>): Svc[] {
   const out: Svc[] = [];
   (Array.isArray(d.services) ? d.services : []).forEach((s, index) => {
     const title = plain(s?.title);
-    if (title) out.push({ index, title, price: plain(s?.price), duration: plain(s?.duration), guide: guideIdForTitle(title) });
+    if (title) out.push({ index, title, price: plain(s?.price), duration: plain(s?.duration), guide: guideForTitle(d, title) });
   });
   return out;
+}
+
+/**
+ * The family a custom service was assigned (Mode A: a model only CLASSIFIED the title into one of the closed set of library
+ * guides, nothing it wrote is ever printed). Stored at extraPages.svcFamily[titleKey]. Honoured only on web-created pages-v2 sites with
+ * service guides on, only for a title the library does not match, only with a real guide id, and never when the service has text of
+ * its own (svcCopy) - the barber's own wording or approved text wins. Anything else is ignored.
+ */
+export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
+  const ep = d.extraPages as { svcFamily?: unknown; svcCopy?: unknown } | undefined;
+  if (!ep || !serviceTextOn(d as Pick<WebsiteData, 'extraPages' | 'source'>)) return null;
+  const fam = ep.svcFamily;
+  if (!fam || typeof fam !== 'object' || Array.isArray(fam)) return null;
+  const key = svcTitleKey(title);
+  if (!key || !Object.prototype.hasOwnProperty.call(fam, key)) return null;
+  const copy = ep.svcCopy;
+  if (copy && typeof copy === 'object' && !Array.isArray(copy) && Object.prototype.hasOwnProperty.call(copy, key)) return null;
+  const g = (fam as Record<string, unknown>)[key];
+  return isGuideId(g) ? g : null;
+}
+
+/** The guide a service title gets on this site: the library match first, else the family the barber (or the classifier, approved by the barber) assigned. */
+export function guideForTitle(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
+  return guideIdForTitle(title) ?? familyFor(d, title);
 }
 
 /**
@@ -77,7 +101,7 @@ export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>,
   const used = new Set<GuideId>();
   const services = Array.isArray(d.services) ? d.services : [];
   for (const index of pagedIndexes) {
-    const g = guideIdForTitle(services[index]?.title);
+    const g = guideForTitle(d, services[index]?.title);
     if (g && !used.has(g)) { used.add(g); out.set(index, g); }
   }
   return out;
@@ -133,7 +157,7 @@ export function serviceAltFor(d: Pick<WebsiteData, 'services' | 'extraPages' | '
   const services = Array.isArray(d.services) ? d.services : [];
   for (const index of pagedIndexes) {
     if (first.has(index)) continue;
-    const g = guideIdForTitle(services[index]?.title);
+    const g = guideForTitle(d, services[index]?.title);
     if (g) out.set(index, g);
   }
   return out;
@@ -464,7 +488,13 @@ function customItems(kind: BlockKind, text: string): Seg[][] {
 
 /** One block as the page prints it, or null when nothing of it can be said (or it is empty). */
 export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = null): ResolvedBlock | null {
-  const e = entryFor(key);
+  let e = entryFor(key);
+  if (!e) {
+    // `svc.<titleKey>.alt` of a service that got its guide from a family (the title itself matches none).
+    const m = /^svc\.(.+)\.alt$/.exec(key);
+    const fam = m && m[1] === svcTitleKey(m[1]) ? (subject && svcTitleKey(subject.title) === m[1] ? subject : serviceOfKey(env.d, key))?.guide ?? null : null;
+    if (fam && key.length <= SVC_KEY_MAX + 12) e = { block: SERVICE_ALT[fam], allow: [...GUIDES[fam].allow], scope: fam, kind: 'service', strict: true };
+  }
   if (!e) return null;
   if (e.special) return null; // a line of a block, not a block (copyDefault / howOftenRows serve it)
   const { block } = e;
@@ -663,6 +693,8 @@ export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
       metaDescription: e.metaDescription ?? null, metaTitle: e.metaTitle ?? null,
     };
   }
+  // Model text prints only with an approval (the barber's "Looks right", or the server's auto-publish flag at write time). A proposal never prints.
+  if (e.approval !== 'owner' && e.approval !== 'auto') return null;
   const allow = serviceWordsIn(subject.title);
   let count = 0;
   const para = (t: string): string[] => { const l = lintParagraph(t, allow); const r = l.text ? resolveAiSentences(env, l.text, allow, subject) : []; count += r.length; return r.length ? [r.join(' ')] : []; };

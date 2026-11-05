@@ -14,7 +14,7 @@ export const RETRY_WAIT_MAX_MS = 5_000;
 export const PRICE_PER_MTOK = { input: 0.10, output: 0.50 } as const;
 
 export interface ModelTurn { role: 'user' | 'assistant'; content: string }
-export interface ModelRequest { system: string; messages: ModelTurn[]; maxTokens: number; timeoutMs: number; /** JSON schema of the reply; the text schema when absent. */ schema?: object }
+export interface ModelRequest { system: string; messages: ModelTurn[]; maxTokens: number; timeoutMs: number; /** JSON schema of the reply; the text schema when absent. */ schema?: object; /** output_config.effort; 'low' when absent. */ effort?: 'low' | 'medium' | 'high' }
 export interface ModelUsage { input: number; output: number }
 export interface ModelResult { text: string; usage: ModelUsage }
 export interface ModelClient { complete(req: ModelRequest): Promise<ModelResult> }
@@ -41,7 +41,7 @@ export function liveModelClient(env: Record<string, string | undefined> = proces
             headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': ANTHROPIC_VERSION },
             body: JSON.stringify({
               model: MODEL_ID, max_tokens: req.maxTokens, system: req.system, messages: req.messages,
-              output_config: { effort: 'low', format: { type: 'json_schema', schema: req.schema ?? MODEL_OUTPUT_SCHEMA } },
+              output_config: { effort: req.effort ?? 'low', format: { type: 'json_schema', schema: req.schema ?? MODEL_OUTPUT_SCHEMA } },
             }),
             signal: AbortSignal.timeout(req.timeoutMs),
           });

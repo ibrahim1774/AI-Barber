@@ -47,6 +47,8 @@ export interface ExtraPagesModel {
   moved?: Record<string, string>;
   /** Dedicated text for services the library has no guide for, keyed by svcTitleKey(title). Written by the web editor from api/web-app/service-copy.ts. Shape: lib/render/svcCopy.ts (SvcCopyEntry). */
   svcCopy?: Record<string, unknown>;
+  /** Mode A: the library guide family a custom service was assigned (a classifier choice, set by the web editor from api/web-app/service-copy.ts; the owner can change or clear it). Keyed by svcTitleKey(title); a real guide id, else ignored. */
+  svcFamily?: Record<string, string>;
 }
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */
