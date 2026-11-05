@@ -1,8 +1,9 @@
 // Step 3: JSON-LD for web-created pages-v2 multi-page sites. LocalBusiness on Home/Location/Contact; Service + BreadcrumbList
 // on each indexable service page; nothing that the page does not show (no ratings, reviews, FAQ, price ranges).
 import { describe, expect, it } from 'vitest';
-import { renderSiteBundle } from '../../lib/render/site';
-import { businessTypeOf, cleanName, geoOf, jsonLdString, minutesOf, offerOf, openingHours, ownPhotoUrl, parseAddress } from '../../lib/render/jsonLd';
+import { createHash } from 'node:crypto';
+import { imageUrlMapOf, renderSiteBundle } from '../../lib/render/site';
+import { businessTypeOf, jsonLdString, labelOf, minutesOf, nameOf, offerOf, openingHours, ownPhotoUrl, parseAddress, placeOf, telephoneOf } from '../../lib/render/jsonLd';
 import { RICH_SITE } from './helpers/richSite';
 import { IOS_SITES } from './helpers/iosSites';
 import { DEMO_GALLERY_STOCK } from '../../lib/stockImages';
@@ -51,21 +52,52 @@ const mobile = (): WebsiteData => sparse({
 const FIXTURES: Record<string, () => WebsiteData> = { sparse: () => sparse(), rich, mobile };
 
 describe('what each page type carries', () => {
-  it('Home, Location and Contact carry one LocalBusiness node with the same @id', () => {
+  it('Home carries the full LocalBusiness node; Location adds no photos; Contact has name, url, phone and address only', () => {
     const ld = ldOf(bundle(rich()));
-    const biz = ['index.html', 'location/index.html', 'contact/index.html'].map((p) => ld[p]);
-    for (const n of biz) {
-      expect(n).toMatchObject({ '@context': 'https://schema.org', '@type': 'HairSalon', '@id': 'https://fresh.example.com/#business', name: 'Fresh Cuts', url: 'https://fresh.example.com/', telephone: '(512) 555-0100' });
+    const [home, loc, contact] = ['index.html', 'location/index.html', 'contact/index.html'].map((p) => ld[p]);
+    for (const n of [home, loc, contact]) {
+      expect(n).toMatchObject({ '@context': 'https://schema.org', '@type': 'HairSalon', '@id': 'https://fresh.example.com/#business', name: 'Fresh Cuts', url: 'https://fresh.example.com/', telephone: '+1 (512) 555-0100' });
       expect(n.address).toEqual({ '@type': 'PostalAddress', streetAddress: '1 Main St', addressLocality: 'Brooklyn', addressRegion: 'NY', postalCode: '11201' });
-      expect(n.openingHoursSpecification).toEqual([
-        { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Monday', opens: '09:00', closes: '17:00' },
-        { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Tuesday', opens: '09:00', closes: '17:00' },
-        { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Wednesday', opens: '09:00', closes: '17:00' },
-      ]);
-      expect(n.image[0]).toBe('https://img.example.com/hero.jpg');
     }
-    expect(biz[1]).toEqual(biz[0]);
-    expect(biz[2]).toEqual(biz[0]);
+    const hours = [
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Monday', opens: '09:00:00', closes: '17:00:00' },
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Tuesday', opens: '09:00:00', closes: '17:00:00' },
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Wednesday', opens: '09:00:00', closes: '17:00:00' },
+    ];
+    expect(home.openingHoursSpecification).toEqual(hours); // luxe prints its hours on Home
+    expect(loc.openingHoursSpecification).toEqual(hours);
+    expect(contact).not.toHaveProperty('openingHoursSpecification');
+    expect(home.image[0]).toBe('https://img.example.com/hero.jpg');
+    expect(loc).not.toHaveProperty('image');
+    expect(contact).not.toHaveProperty('image');
+  });
+  it('every property is backed by what that page prints: Home photos are in the Home HTML, hours only where shown', () => {
+    for (const t of ['luxe', 'prime', 'euphoria'] as const) {
+      const b = bundle(rich(), t);
+      const ld = ldOf(b);
+      const urls = imageUrlMapOf(rich());
+      const html = (p: string) => b.pages.find((x) => x.path === p)!.html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, '').replace(/\{\{(\w+)\}\}/g, (m, k: string) => urls[k] ?? m);
+      for (const u of ld['index.html'].image as string[]) expect(html('index.html'), `${t} ${u}`).toContain(u);
+      for (const p of ['index.html', 'location/index.html', 'contact/index.html']) {
+        expect(html(p), `${t} ${p} address`).toContain('1 Main St');
+        expect(html(p), `${t} ${p} phone`).toContain('555-0100');
+      }
+      // Home lists hours only where the design prints them (Euphoria's Home prints none).
+      if (t === 'euphoria') expect(ld['index.html']).not.toHaveProperty('openingHoursSpecification');
+      else { expect(html('index.html'), t).toContain('9:00 AM'); expect(ld['index.html'].openingHoursSpecification, t).toHaveLength(3); }
+      expect(html('location/index.html')).toContain('9:00 AM');
+      expect(html('contact/index.html')).not.toMatch(/9:00 AM|hero\.jpg/);
+      expect(html('location/index.html')).not.toContain('hero.jpg');
+    }
+  });
+  it('a hidden Location hours section takes the hours out of the Location node (Home keeps them)', () => {
+    const d = { ...rich(), pageSections: { location: { hidden: ['hours', 'map'] } } } as WebsiteData;
+    const ld = ldOf(bundle(d));
+    expect(ld['location/index.html']).not.toHaveProperty('openingHoursSpecification');
+    expect(ld['index.html'].openingHoursSpecification).toBeDefined();
+    expect(ldOf(bundle(rich(), 'euphoria'))['index.html'], 'Euphoria Home prints no hours').not.toHaveProperty('openingHoursSpecification');
+    expect(ldOf(bundle(rich(), 'euphoria'))['location/index.html'].openingHoursSpecification).toBeDefined();
+    expect(ldOf(bundle(rich()))['location/index.html'].openingHoursSpecification).toBeDefined();
   });
   it('every other page type carries nothing', () => {
     const ld = ldOf(bundle(rich()));
@@ -94,12 +126,13 @@ describe('what each page type carries', () => {
     expect(ld['services/skin-fade/index.html']['@graph'][0].offers).toEqual({ '@type': 'Offer', price: '35', priceCurrency: 'USD' });
     expect(ld['services/taper/index.html']['@graph'][0].offers).toEqual({ '@type': 'Offer', price: '30', priceCurrency: 'USD' });
     for (const p of ['beard-trim', 'kids-cut', 'line-up']) expect(ld[`services/${p}/index.html`]['@graph'][0], p).not.toHaveProperty('offers');
-    for (const v of ['$25-$40', '$25+', 'from $20', 'Free', '', '$0', '0', '~$30', '25 <b>']) expect(offerOf(v, true), v).toBeNull();
-    expect(offerOf('$25.50', true)).toEqual({ '@type': 'Offer', price: '25.50', priceCurrency: 'USD' });
-    expect(offerOf('£30', false)).toEqual({ '@type': 'Offer', price: '30', priceCurrency: 'GBP' });
-    expect(offerOf('€30', false)).toEqual({ '@type': 'Offer', price: '30', priceCurrency: 'EUR' });
-    expect(offerOf('250 MXN', false)).toEqual({ '@type': 'Offer', price: '250', priceCurrency: 'MXN' });
-    expect(offerOf('$30', false), 'a "$" is USD only when the shop is known to be in the US').toBeNull();
+    for (const v of ['$25-$40', '$25+', 'from $20', 'Free', '', '$0', '0', '~$30', '25 <b>']) expect(offerOf(v, 'US'), v).toBeNull();
+    expect(offerOf('$25.50', 'US')).toEqual({ '@type': 'Offer', price: '25.50', priceCurrency: 'USD' });
+    expect(offerOf('£30', null)).toEqual({ '@type': 'Offer', price: '30', priceCurrency: 'GBP' });
+    expect(offerOf('€30', null)).toEqual({ '@type': 'Offer', price: '30', priceCurrency: 'EUR' });
+    expect(offerOf('250 MXN', 'MX')).toEqual({ '@type': 'Offer', price: '250', priceCurrency: 'MXN' });
+    expect(offerOf('$30', 'CA')).toEqual({ '@type': 'Offer', price: '30', priceCurrency: 'CAD' });
+    for (const c of [null, 'MX', 'GB', 'FR']) expect(offerOf('$30', c), `a "$" with country ${c} has no currency`).toBeNull();
   });
   it('all three designs emit it', () => {
     for (const t of ['luxe', 'prime', 'euphoria'] as const) {
@@ -134,20 +167,22 @@ describe('thin pages and indexability', () => {
 });
 
 describe('absent when the data is missing or not valid', () => {
-  it('a mobile barber with no street address has no address, no hours; the rest is there', () => {
-    const n = ldOf(bundle(mobile()))['index.html'];
-    expect(n.name).toBe('Tony Cuts Mobile');
-    expect(n.telephone).toBe('(512) 555-0100');
-    for (const k of ['address', 'openingHoursSpecification', 'geo', 'image']) expect(n, k).not.toHaveProperty(k);
+  it('a mobile barber with no street address gets NO business node (Google requires address), on any page; services still get Service nodes without areaServed', () => {
+    const ld = ldOf(bundle(mobile()));
+    for (const p of ['index.html', 'location/index.html', 'contact/index.html']) expect(ld[p], p).toBeUndefined();
+    const svc1 = ld['services/house-call-cut/index.html']['@graph'][0];
+    expect(svc1).not.toHaveProperty('areaServed');
+    expect(svc1).not.toHaveProperty('offers'); // "$60" with no known country
+    expect(svc1.provider).toEqual({ '@type': 'HairSalon', name: 'Tony Cuts Mobile', url: 'https://fresh.example.com/' });
   });
-  it('no phone, no hours, no photo: only name, url and id', () => {
-    const n = ldOf(bundle(sparse({ phone: '', hours: [], contact: { address: '', email: '' } })))['index.html'];
-    expect(Object.keys(n).sort()).toEqual(['@context', '@id', '@type', 'name', 'url']);
+  it('no phone, no hours, no photo: name, url, id and the address only', () => {
+    const n = ldOf(bundle(sparse({ phone: '', hours: [], contact: { address: '12 Main St, Austin, TX 78701', email: '' } })))['index.html'];
+    expect(Object.keys(n).sort()).toEqual(['@context', '@id', '@type', 'address', 'name', 'url']);
   });
-  it('a phone with words, a city-only address and sample photos are left out', () => {
-    const n = ldOf(bundle(sparse({ phone: 'Call or text 512-555-0100', contact: { address: 'Austin, TX', email: '' } })))['index.html'];
+  it('a phone with words is left out; a city-only address means no business node', () => {
+    const n = ldOf(bundle(sparse({ phone: 'Call or text 512-555-0100' })))['index.html'];
     expect(n).not.toHaveProperty('telephone');
-    expect(n).not.toHaveProperty('address');
+    expect(ldOf(bundle(sparse({ contact: { address: 'Austin, TX', email: '' } })))['index.html']).toBeUndefined();
     expect(ownPhotoUrl(DEMO_GALLERY_STOCK[0]), 'a sample photo is never the shop\'s image').toBeNull();
     expect(ownPhotoUrl('https://x.example.com/own.jpg')).toBe('https://x.example.com/own.jpg');
     expect(ownPhotoUrl('http://x.example.com/a.jpg')).toBeNull();
@@ -165,18 +200,72 @@ describe('absent when the data is missing or not valid', () => {
     expect(ld['index.html']).toBeUndefined();
     expect(ld['services/skin-fade/index.html']).toBeUndefined();
   });
-  it('areaServed only when the shop has a real place', () => {
-    const ld = ldOf(bundle(sparse({ area: '' })));
-    expect(ld['services/skin-fade/index.html']['@graph'][0]).not.toHaveProperty('areaServed');
+  it('areaServed comes from the parsed address only, never from owner free text', () => {
+    // No city/state parsed -> no areaServed.
+    expect(ldOf(bundle(sparse({ contact: { address: '12 Main St, Austin', email: '' } })))['services/skin-fade/index.html']['@graph'][0]).not.toHaveProperty('areaServed');
     expect(ldOf(bundle(sparse()))['services/skin-fade/index.html']['@graph'][0].areaServed).toBe('Austin, TX');
+    // Marketing copy in `area` or the pgPlace label is ignored.
+    const d = sparse({ area: 'Best barber in all of NYC & NJ', labels: { pgPlace: 'Serving Brooklyn, Queens and all NYC' } as WebsiteData['labels'] });
+    const svc1 = ldOf(bundle(d))['services/skin-fade/index.html']['@graph'][0];
+    expect(svc1.areaServed).toBe('Austin, TX');
+    expect(placeOf(parseAddress('1 Main St, Brooklyn, NY 11201'))).toBe('Brooklyn, NY');
+    expect(placeOf(parseAddress('10 High St, Camden, London, UK'))).toBeNull();
+    expect(placeOf(null)).toBeNull();
   });
   it('parseAddress', () => {
-    expect(parseAddress('12 Main St, Austin, TX 78701, USA')).toEqual({ node: { '@type': 'PostalAddress', streetAddress: '12 Main St', addressLocality: 'Austin', addressRegion: 'TX', postalCode: '78701', addressCountry: 'US' }, us: true });
+    expect(parseAddress('12 Main St, Austin, TX 78701, USA')).toEqual({ node: { '@type': 'PostalAddress', streetAddress: '12 Main St', addressLocality: 'Austin', addressRegion: 'TX', postalCode: '78701', addressCountry: 'US' }, country: 'US' });
     expect(parseAddress('12 Main St, Austin')?.node).toEqual({ '@type': 'PostalAddress', streetAddress: '12 Main St, Austin' });
+    expect(parseAddress('12 Main St, Austin')?.country).toBeNull();
     expect(parseAddress('Suite 4, 12 Main St, Austin, TX')?.node.streetAddress).toBe('Suite 4, 12 Main St');
+    expect(parseAddress('12 Main St, Austin, TX')?.country, 'a state code alone does not make the country known').toBeNull();
     expect(parseAddress('12 Main St., Austin, TX 78701')?.node.streetAddress).toBe('12 Main St.');
     expect(parseAddress('100 King St W, Toronto, ON, Canada')?.node).toMatchObject({ addressLocality: 'Toronto', addressRegion: 'ON', addressCountry: 'CA' });
+    expect(parseAddress('100 King St W, Toronto, ON M5V 2T6')).toMatchObject({ country: 'CA', node: { addressRegion: 'ON', postalCode: 'M5V 2T6' } });
     for (const v of ['Austin, TX', 'Mobile - I come to you', '', '<b>12 Main St</b>', '12 Main St\nAustin', null, 5, 'PO Box 12 Main']) expect(parseAddress(v), String(v)).toBeNull();
+  });
+  it('the country is never wrong: an explicit country wins, a zip rule needs a real state code', () => {
+    // Mexico, with and without the country, accented or not.
+    expect(parseAddress('12 Av Juárez, Monterrey, NL 64000, Mexico')).toMatchObject({ country: 'MX', node: { addressCountry: 'MX' } });
+    expect(parseAddress('450 Calle Hidalgo, Guadalajara, JA 44100, México')).toMatchObject({ country: 'MX', node: { addressCountry: 'MX', streetAddress: '450 Calle Hidalgo, Guadalajara, JA 44100' } });
+    expect(parseAddress('12 Av Juárez, Monterrey, NL 64000')?.country).toBeNull();
+    expect(parseAddress('12 Rue Royale, Paris, FR 75008')?.country).toBeNull();
+    expect(parseAddress('12 Rue Royale, Paris, FR 75008')?.node).not.toHaveProperty('addressRegion');
+    // An explicit US/Canada never gets overridden by a lookalike.
+    expect(parseAddress('1 Main St, Austin, TX 78701, Canada')?.country).toBe('CA');
+    expect(parseAddress('1 Main St, Toronto, ON M5V 2T6, USA')?.country).toBe('US');
+    // UK: no district-as-city guess.
+    expect(parseAddress('10 High St, Camden, London, UK')).toMatchObject({ country: 'GB', node: { streetAddress: '10 High St, Camden, London' } });
+  });
+  it('a "$" price gets a currency only when the country is certain (Mexico/Canada/UK/US addresses)', () => {
+    const price = (address: string) => {
+      const d = sparse({ contact: { address, email: '' }, services: [svc('Skin Fade', { price: '$150', description: LONG })] });
+      return ldOf(bundle(d))['services/skin-fade/index.html']['@graph'][0].offers;
+    };
+    expect(price('12 Av Juárez, Monterrey, NL 64000, Mexico'), 'Mexico named').toBeUndefined();
+    expect(price('450 Calle Hidalgo, Guadalajara, JA 44100, México'), 'México named').toBeUndefined();
+    expect(price('12 Av Juárez, Monterrey, NL 64000'), 'no country, not a US state').toBeUndefined();
+    expect(price('12 Rue Royale, Paris, FR 75008')).toBeUndefined();
+    expect(price('10 High St, Camden, London, UK'), 'UK').toBeUndefined();
+    expect(price('12 Main St, Austin, TX'), 'a state code without a zip or country').toBeUndefined();
+    expect(price('12 Main St, Austin, TX 78701, Mexico'), 'explicit Mexico beats a US-looking zip').toBeUndefined();
+    expect(price('12 Main St, Austin, TX 78701')).toEqual({ '@type': 'Offer', price: '150', priceCurrency: 'USD' });
+    expect(price('12 Main St, Austin, TX 78701, USA')).toEqual({ '@type': 'Offer', price: '150', priceCurrency: 'USD' });
+    expect(price('100 King St W, Toronto, ON, Canada')).toEqual({ '@type': 'Offer', price: '150', priceCurrency: 'CAD' });
+    expect(price('100 King St W, Toronto, ON M5V 2T6')).toEqual({ '@type': 'Offer', price: '150', priceCurrency: 'CAD' });
+  });
+  it('a pound or euro sign and an explicit code keep their currency, whatever the address', () => {
+    const d = sparse({ contact: { address: '12 Av Juárez, Monterrey, NL 64000, Mexico', email: '' }, services: [svc('Skin Fade', { price: '£40', description: LONG }), svc('Taper', { price: '90 MXN', description: LONG })] });
+    const ld = ldOf(bundle(d));
+    expect(ld['services/skin-fade/index.html']['@graph'][0].offers).toEqual({ '@type': 'Offer', price: '40', priceCurrency: 'GBP' });
+    expect(ld['services/taper/index.html']['@graph'][0].offers).toEqual({ '@type': 'Offer', price: '90', priceCurrency: 'MXN' });
+  });
+  it('telephoneOf adds +1 only for a known US/Canada number of ten digits', () => {
+    expect(telephoneOf('(512) 555-0100', 'US')).toBe('+1 (512) 555-0100');
+    expect(telephoneOf('(512) 555-0100', 'CA')).toBe('+1 (512) 555-0100');
+    expect(telephoneOf('(512) 555-0100', null)).toBe('(512) 555-0100');
+    expect(telephoneOf('(512) 555-0100', 'MX')).toBe('(512) 555-0100');
+    expect(telephoneOf('+44 20 7946 0958', 'US')).toBe('+44 20 7946 0958');
+    expect(telephoneOf('555-0100', 'US')).toBe('555-0100');
   });
   it('openingHours and minutesOf', () => {
     expect(minutesOf('09:00')).toBe(540);
@@ -188,21 +277,31 @@ describe('absent when the data is missing or not valid', () => {
       { day: 'Mon', open: '09:00', close: '17:00' }, { day: 'Monday', open: '09:00', close: '17:00' }, { day: 'Tue', open: '09:00', close: '17:00', closed: true },
       { day: 'Wed', open: '17:00', close: '09:00' }, { day: 'Funday', open: '9', close: '5' }, { day: 'Thu', open: 'x', close: 'y' }, { day: 'Fri', open: '9am', close: '5pm' }, null,
     ])).toEqual([
-      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Monday', opens: '09:00', closes: '17:00' },
-      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Friday', opens: '09:00', closes: '17:00' },
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Monday', opens: '09:00:00', closes: '17:00:00' },
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Friday', opens: '09:00:00', closes: '17:00:00' },
     ]);
     expect(openingHours('nope')).toEqual([]);
   });
-  it('geo only from real, valid coordinates (the site model has none today)', () => {
-    expect(geoOf({})).toBeNull();
-    expect(geoOf({ geo: { lat: 30.2672, lng: -97.7431 } })).toEqual({ '@type': 'GeoCoordinates', latitude: 30.2672, longitude: -97.7431 });
-    for (const g of [{ lat: 0, lng: 0 }, { lat: 91, lng: 0 }, { lat: 1, lng: 181 }, { lat: NaN, lng: 1 }, { lat: '30', lng: '-97' }, { lat: 30.123456789, lng: 1 }]) expect(geoOf({ geo: g }), JSON.stringify(g)).toBeNull();
-    expect(ldOf(bundle({ ...sparse(), geo: { lat: 30.2672, lng: -97.7431 } } as WebsiteData))['index.html'].geo).toBeDefined();
-    expect(ldOf(bundle(sparse()))['index.html']).not.toHaveProperty('geo');
+  it('names go through the name whitelist: omit, never repair', () => {
+    expect(nameOf('Fresh Cuts')).toBe('Fresh Cuts');
+    expect(nameOf('St. Louis Cuts')).toBe('St. Louis Cuts');
+    for (const v of ['', '   ', '💈', 'A\nB', 'x'.repeat(121), null, 5, 'Best barber!!! 💈 CALL NOW 555-0100', 'Cuts <b>x</b>']) expect(nameOf(v), String(v)).toBeNull();
+    expect(labelOf('Home')).toBe('Home');
+    expect(labelOf('Home!!! Click here now please')).toBeNull();
   });
-  it('cleanName', () => {
-    expect(cleanName('  Fresh   Cuts ')).toBe('Fresh Cuts');
-    for (const v of ['', '   ', '💈', 'A\nB', 'x'.repeat(121), null, 5]) expect(cleanName(v), String(v)).toBeNull();
+  it('a stuffed shop or service name gets no node', () => {
+    const ld = ldOf(bundle(sparse({ shopName: 'Best barber!!! 💈 CALL NOW 555-0100' })));
+    expect(ld['index.html']).toBeUndefined();
+    expect(ld['services/skin-fade/index.html']).toBeUndefined();
+    const ld2 = ldOf(bundle(sparse({ services: [svc('Fade!!! 💈 BEST IN TOWN', { price: '$35', description: LONG }), svc('Skin Fade', { price: '$35', description: LONG })] })));
+    expect(ld2['services/skin-fade/index.html']).toBeDefined();
+    expect(Object.keys(ld2).filter((k) => k.startsWith('services/'))).toEqual(['services/skin-fade/index.html']);
+  });
+  it('the breadcrumb Home item uses the site\'s own nav label when it passes the whitelist', () => {
+    const crumbs = (labels: Record<string, string>) => ldOf(bundle(sparse({ labels: labels as WebsiteData['labels'] })))['services/skin-fade/index.html']['@graph'][1].itemListElement;
+    expect(crumbs({ navHome: 'Welcome' })[0].name).toBe('Welcome');
+    expect(crumbs({ navHome: 'Welcome!!! 💈 Click' })[0].name).toBe('Home');
+    expect(crumbs({})[0].name, 'the default label is not copied').toBe('Home');
   });
 });
 
@@ -266,10 +365,11 @@ describe('escaping', () => {
     expect(s).toContain('\\u003c/script\\u003e');
     expect(JSON.parse(s)).toEqual(v);
   });
-  it('a hostile shop name renders as plain data in the business node', () => {
+  it('a hostile shop name never reaches the JSON (it fails the name whitelist, so no node)', () => {
     const d = sparse({ shopName: 'Cuts </script><script>alert(1)</script>' });
-    const name = ldOf(bundle(d))['index.html'].name;
-    expect(name).toBe('Cuts </script><script>alert(1)</script>');
+    const b = bundle(d);
+    expect(ldOf(b)['index.html']).toBeUndefined();
+    for (const p of b.pages) expect(blocks(p.html).join('')).not.toContain('alert');
   });
   it('the editor markers never reach the JSON', () => {
     const ld = ldOf(bundle(sparse({ shopName: '\u2063shopName\u2063Fresh Cuts\u2063/\u2063' })));
@@ -303,6 +403,30 @@ describe('gating: only web-created pages-v2 multi-page sites', () => {
       none(renderSiteBundle(JSON.parse(JSON.stringify({ ...site, template: t })), BASE));
       none(renderSiteBundle(JSON.parse(JSON.stringify({ ...site, template: t })), { siteBaseUrl: 'https://fresh.example.com', customDomain: 'https://shop.example.org' }));
     }
+  });
+});
+
+describe('gated-off output stays byte-identical (hash of every page, sitemap and robots)', () => {
+  // Locked from the renderer before step 3 (measured equal to 5100352 over 2124 pages); any change to these outputs fails here.
+  const hashOf = (d: WebsiteData, t: 'luxe' | 'prime' | 'euphoria', opts: Record<string, unknown>): string => {
+    const b = renderSiteBundle({ ...d, template: t }, opts);
+    const h = createHash('sha256');
+    for (const p of b.pages) h.update(`${p.path}\n${p.html.replace(/(<meta name="published-at" content=")\d+/, '$10')}\n`); // the publish time is the only clock in the output
+    h.update(`${b.sitemap ?? ''}\n${b.robots ?? ''}`);
+    return h.digest('hex').slice(0, 16);
+  };
+  const OPTS: Record<string, Record<string, unknown>> = { none: {}, base: BASE, domain: { ...BASE, customDomain: 'https://shop.example.org' } };
+  const { source: _s, ...noSource } = sparse();
+  const { extraPages: _e, ...noV2 } = sparse();
+  const { pages: _p, ...single } = sparse();
+  const gatedOff: Record<string, WebsiteData> = {
+    ios: noSource as WebsiteData, otherSource: sparse({ source: 'ios' }), noV2: noV2 as WebsiteData, single: single as WebsiteData,
+    ...Object.fromEntries(Object.entries(IOS_SITES).map(([k, v]) => [`ios:${k}`, JSON.parse(JSON.stringify(v)) as WebsiteData])),
+  };
+  it('matches the locked hashes', () => {
+    const out: Record<string, string> = {};
+    for (const [name, d] of Object.entries(gatedOff)) for (const t of ['luxe', 'prime', 'euphoria'] as const) for (const [on, o] of Object.entries(OPTS)) out[`${name}/${t}/${on}`] = hashOf(d, t, o);
+    expect(out).toMatchSnapshot();
   });
 });
 

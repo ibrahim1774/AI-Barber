@@ -8,8 +8,19 @@
 // makesOffer. Thin (`noindex`) service pages get nothing. Every optional property goes through a strict whitelist (the
 // spliceable gates plus the parsers below) and is OMITTED when the value does not pass: nothing is repaired or guessed.
 //
-// BarberShop is a real schema.org type, but its presence could not be verified offline when this was written, so a barber
-// shop is typed HairSalon (a type every consumer knows). To change that, edit TYPE_BY_NICHE only.
+// schema.org has no BarberShop (checked 2026-11-05: schema.org/BarberShop is a 404); HairSalon is the closest subtype, NailSalon
+// the one for nails. To change a type, edit TYPE_BY_NICHE only.
+//
+// Rules that keep the markup honest:
+//   - A property is emitted only when the page it sits on prints that content: the full node (hours, photos) is on Home only
+//     (a photo only when Home prints its slot), Location adds hours only while its hours section is shown, Contact
+//     carries name, url, phone and address.
+//   - The business node needs an address (Google requires it): a shop without a street address gets NO business node.
+//   - Owner text (shop name, service name, labels) goes through the spliceable whitelist or is omitted. areaServed comes from
+//     the parsed address, never from free text.
+//   - priceCurrency only when it is certain: an explicit ISO code, GBP for a pound sign, EUR for a euro sign, and USD/CAD for a
+//     dollar sign only when the address names the US or Canada (or has a real state/province code plus its ZIP/postal code).
+//     Anything else (Mexico, the UK, no country, an unknown country) leaves the offer out.
 //
 // The JSON is embedded in a <script type="application/ld+json">: `<`, `>`, `&`, U+2028 and U+2029 are written as \u escapes,
 // so no value can close the tag or start markup, and the output is deterministic (fixed key order, no clock, no random).
@@ -17,8 +28,9 @@
 // Pure, no DOM, no Node.
 import type { WebsiteData } from '../../types';
 import { isStockImage } from '../stockImages.js';
-import { displayPrice, nicheOf } from './honest.js';
+import { displayPrice, nicheOf, to12h } from './honest.js';
 import { isMoney, spliceable } from './spliceable.js';
+import { pageSectionsOf } from './sections.js';
 import { plainText, type PageFile, type PageSet } from './pages.js';
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
@@ -42,12 +54,10 @@ export const jsonLdScript = (node: JsonValue): string => `<script type="applicat
 
 // ── Whitelists ──
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2060\ufeff]/;
-/** A shop, place or service name: the editor markers removed, spaces collapsed; null when empty, over the cap, holding a control character or no letter/digit. */
-export function cleanName(v: unknown, max = 120): string | null {
-  const s = plainText(v).replace(/[ \t\u00a0]+/g, ' ').trim();
-  if (!s || s.length > max || CONTROL.test(s) || !/[\p{L}\p{N}]/u.test(s)) return null;
-  return s;
-}
+/** A shop or service name as typed (editor markers removed): only when it passes the `name` whitelist, otherwise null (omit). Never repaired. */
+export const nameOf = (v: unknown): string | null => spliceable('name', plainText(v));
+/** A short label (the Home and Services labels of the breadcrumb) through the `label` whitelist; null when it fails. */
+export const labelOf = (v: unknown): string | null => spliceable('label', plainText(v));
 /** An https URL of a photo the barber uploaded (never a sample photo); null otherwise. */
 export function ownPhotoUrl(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -56,34 +66,56 @@ export function ownPhotoUrl(v: unknown): string | null {
   try { const u = new URL(s); return u.protocol === 'https:' && u.hostname.includes('.') ? s : null; } catch { return null; }
 }
 
-const COUNTRIES: Record<string, string> = { usa: 'US', 'u.s.a.': 'US', 'u.s.a': 'US', us: 'US', 'u.s.': 'US', 'united states': 'US', 'united states of america': 'US', canada: 'CA', mexico: 'MX', uk: 'GB', 'united kingdom': 'GB' };
-const US_STATE_ZIP = /^([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?$/;
+const COUNTRIES: Record<string, string> = { usa: 'US', 'u.s.a.': 'US', 'u.s.a': 'US', us: 'US', 'u.s.': 'US', 'united states': 'US', 'united states of america': 'US', canada: 'CA', mexico: 'MX', 'méxico': 'MX', uk: 'GB', 'united kingdom': 'GB' };
+// Closed lists: a two-letter region only counts when it is a real state / province / territory code.
+const US_STATES = new Set('AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC PR GU VI AS MP'.split(' '));
+const CA_PROVINCES = new Set('AB BC MB NB NL NS NT NU ON PE QC SK YT'.split(' '));
+const US_REGION = /^([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?$/;
+const CA_REGION = /^([A-Z]{2})(?:\s+([A-Z]\d[A-Z]\s?\d[A-Z]\d))?$/;
 
-export interface ParsedAddress { node: JsonNode; us: boolean }
+export interface ParsedAddress {
+  node: JsonNode;
+  /** ISO country when KNOWN: named in the address, or a real US state + ZIP / Canadian province + postal code. Otherwise null (never guessed). */
+  country: string | null;
+}
 /** The street address as a PostalAddress. A value that is not a street address (a city, "Mobile - I come to you") gives null. */
 export function parseAddress(raw: unknown): ParsedAddress | null {
   const v = spliceable('address', plainText(raw));
   if (v === null) return null;
   const parts = v.split(',').map((p) => p.trim()).filter(Boolean);
-  let country: string | null = null;
-  if (parts.length > 1 && COUNTRIES[parts[parts.length - 1].toLowerCase()]) country = COUNTRIES[parts.pop()!.toLowerCase()];
+  let named: string | null = null;
+  if (parts.length > 1 && COUNTRIES[parts[parts.length - 1].toLowerCase()]) named = COUNTRIES[parts.pop()!.toLowerCase()];
   const node: JsonNode = { '@type': 'PostalAddress' };
-  let us = country === 'US';
-  if (parts.length >= 3) {
+  let country = named;
+  if (parts.length >= 3 && (named === null || named === 'US' || named === 'CA')) {
     const last = parts[parts.length - 1];
     const locality = parts[parts.length - 2];
-    const sz = US_STATE_ZIP.exec(last);
-    if (!/\d/.test(locality) && (sz || (!/\d/.test(last) && last.length <= 30))) {
+    const us = named !== 'CA' ? US_REGION.exec(last) : null;
+    const ca = !us || !US_STATES.has(us[1]) ? (named !== 'US' ? CA_REGION.exec(last) : null) : null;
+    const hit = us && US_STATES.has(us[1]) ? { code: us[1], zip: us[2], cc: 'US' } : ca && CA_PROVINCES.has(ca[1]) ? { code: ca[1], zip: ca[2], cc: 'CA' } : null;
+    if (hit && !/\d/.test(locality)) {
       node.streetAddress = parts.slice(0, -2).join(', ');
       node.addressLocality = locality;
-      node.addressRegion = sz ? sz[1] : last;
-      if (sz?.[2]) node.postalCode = sz[2];
-      if (sz?.[2]) us = true;
+      node.addressRegion = hit.code;
+      if (hit.zip) { node.postalCode = hit.zip; if (country === null) country = hit.cc; }
     }
   }
   if (!node.streetAddress) node.streetAddress = parts.join(', ');
-  if (country) node.addressCountry = country;
-  return { node, us };
+  if (named) node.addressCountry = named;
+  return { node, country };
+}
+
+/** "Brooklyn, NY": the shop's place, only when the address parsed into a city and a region. Never free text. */
+export function placeOf(a: ParsedAddress | null): string | null {
+  const loc = a?.node.addressLocality;
+  const reg = a?.node.addressRegion;
+  return typeof loc === 'string' && typeof reg === 'string' ? `${loc}, ${reg}` : null;
+}
+
+/** "+1 " in front of a North American number, only when the country is known to be the US or Canada and the number is plainly 10 digits. */
+export function telephoneOf(phone: string, country: string | null): string {
+  if (country !== 'US' && country !== 'CA') return phone;
+  return /^[\d\s().-]+$/.test(phone) && phone.replace(/\D/g, '').length === 10 ? `+1 ${phone}` : phone;
 }
 
 const DAYS: Record<string, string> = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
@@ -104,7 +136,7 @@ export function minutesOf(raw: unknown): number | null {
   if (m[3]) { if (h < 1 || h > 12) return null; h = (h % 12) + (m[3] === 'pm' ? 12 : 0); } else if (h > 23) return null;
   return h * 60 + min;
 }
-const hhmm = (mins: number): string => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+const hhmm = (mins: number): string => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}:00`;
 
 /** Open rows that parse and run forward in one day; closed rows, bad days and bad times are left out. Exact duplicates once. */
 export function openingHours(rows: unknown): JsonNode[] {
@@ -124,25 +156,16 @@ export function openingHours(rows: unknown): JsonNode[] {
   return out;
 }
 
-/** Coordinates, when the site carries real ones (`geo: {lat, lng}`): in range, not 0/0, at most 7 decimals. The site model has no such field today, so this is normally null. */
-export function geoOf(d: unknown): JsonNode | null {
-  const g = (d as { geo?: { lat?: unknown; lng?: unknown } } | null)?.geo;
-  if (!g || typeof g.lat !== 'number' || typeof g.lng !== 'number') return null;
-  const { lat, lng } = g;
-  const dec = (n: number): boolean => (String(n).split('.')[1] ?? '').length <= 7;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0) || !dec(lat) || !dec(lng)) return null;
-  return { '@type': 'GeoCoordinates', latitude: lat, longitude: lng };
-}
-
 const SYMBOL_CURRENCY: Record<string, string> = { '£': 'GBP', '€': 'EUR' };
-/** One real numeric price as an Offer. A range, "25+", "from $20", a price of zero, or a "$" on a shop not known to be in the US gives null. */
-export function offerOf(rawPrice: unknown, usShop: boolean): JsonNode | null {
+const DOLLAR_CURRENCY: Record<string, string> = { US: 'USD', CA: 'CAD' };
+/** One real numeric price as an Offer. A range, "25+", "from $20", a price of zero, or a "$" when the shop's country is not US/CA (known) gives null. */
+export function offerOf(rawPrice: unknown, country: string | null): JsonNode | null {
   const shown = displayPrice(typeof rawPrice === 'string' ? plainText(rawPrice) : '');
   const v = spliceable('price', shown);
   if (v === null || !isMoney(v)) return null;
   let amount: RegExpExecArray | null;
   let currency: string | null = null;
-  if ((amount = /^([$£€])\s?(\d{1,5})(?:\.(\d{1,2}))?$/.exec(v))) currency = amount[1] === '$' ? (usShop ? 'USD' : null) : SYMBOL_CURRENCY[amount[1]];
+  if ((amount = /^([$£€])\s?(\d{1,5})(?:\.(\d{1,2}))?$/.exec(v))) currency = amount[1] === '$' ? (country ? DOLLAR_CURRENCY[country] ?? null : null) : SYMBOL_CURRENCY[amount[1]];
   else if ((amount = /^(\d{1,5})(?:\.(\d{1,2}))?\s?(USD|CAD|GBP|EUR|MXN)$/i.exec(v))) currency = amount[3].toUpperCase();
   if (!amount || !currency) return null;
   const whole = /^[^\d]*(\d+)/.exec(v)![1];
@@ -158,8 +181,10 @@ export interface JsonLdContext {
   set: PageSet;
   /** https origin of the site (canonicalBase). Without one nothing is emitted: every @id and url is absolute. */
   base: string;
-  /** The shop's real place ("Brooklyn, NY"), '' when it has none. */
-  place: string;
+  /** The Home page HTML as rendered (photos are still `{{key}}` placeholders): a photo is listed only when Home prints its placeholder. */
+  homeHtml: string;
+  /** Home link label of the breadcrumb (the site's own nav label). */
+  homeLabel: string;
   /** Services page title as printed, for the breadcrumb. */
   servicesTitle: string;
   /** Placeholder key -> real photo URL. */
@@ -170,50 +195,58 @@ export interface JsonLdContext {
 
 const businessId = (base: string): string => `${base}/#business`;
 
-/** The LocalBusiness node, or null when the shop has no usable name. */
-export function businessNode(c: JsonLdContext): JsonNode | null {
+/**
+ * The LocalBusiness node of Home, Location or Contact, or null when the shop has no whitelisted name or no street address
+ * (Google requires `address`; a mobile shop gets no node rather than an invalid one). Home carries the full node (hours rows only as the design prints them); Location
+ * adds hours only while its hours section is shown; Contact has name, url, phone and address only.
+ */
+export function businessNode(c: JsonLdContext, page: 'home' | 'location' | 'contact' = 'home'): JsonNode | null {
   const { d, base } = c;
-  const name = cleanName(d.shopName);
-  if (!name) return null;
+  const name = nameOf(d.shopName);
+  const addr = parseAddress(d.contact?.address);
+  if (!name || !addr) return null;
   const node: JsonNode = { '@type': businessTypeOf(d), '@id': businessId(base), name, url: `${base}/` };
   const phone = spliceable('phone', plainText(d.phone));
-  if (phone) node.telephone = phone;
-  const addr = parseAddress(d.contact?.address);
-  if (addr) node.address = addr.node;
-  const hours = openingHours(d.hours);
+  if (phone) node.telephone = telephoneOf(phone, addr.country);
+  node.address = addr.node;
+  // Hours: Location while its hours section is shown; Home only for the rows the design really prints there (Euphoria prints none).
+  const rows: unknown[] = Array.isArray(d.hours) ? d.hours : [];
+  const shownRows = page === 'home'
+    ? rows.filter((r) => { const o = r as { open?: unknown; close?: unknown } | null; return !!o && c.homeHtml.includes(`${to12h(plainText(o.open))} – ${to12h(plainText(o.close))}`); })
+    : page === 'location' && !pageSectionsOf(d, 'location').find((x) => x.id === 'hours')?.hidden ? rows : [];
+  const hours = openingHours(shownRows);
   if (hours.length) node.openingHoursSpecification = hours;
-  const geo = geoOf(d);
-  if (geo) node.geo = geo;
-  const imgs: string[] = [];
-  for (const k of ['hero', 'about', ...Object.keys(c.imageUrls).filter((x) => /^gallery\d+$/.test(x)).sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)))]) {
-    const u = ownPhotoUrl(c.imageUrls[k]);
-    if (u && !imgs.includes(u)) imgs.push(u);
-    if (imgs.length >= 4) break;
+  if (page === 'home') {
+    const imgs: string[] = [];
+    for (const k of ['hero', 'about', ...Object.keys(c.imageUrls).filter((x) => /^gallery\d+$/.test(x)).sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)))]) {
+      const u = ownPhotoUrl(c.imageUrls[k]);
+      if (u && c.homeHtml.includes(`{{${k}}}`) && !imgs.includes(u)) imgs.push(u);
+      if (imgs.length >= 4) break;
+    }
+    if (imgs.length) node.image = imgs;
   }
-  if (imgs.length) node.image = imgs;
   return { '@context': 'https://schema.org', ...node };
 }
 
-/** Service + BreadcrumbList for a service page, or null (thin page, no name, no base). */
+/** Service + BreadcrumbList for a service page, or null (thin page, no whitelisted name, no base). */
 export function serviceNodes(c: JsonLdContext, file: PageFile): JsonNode[] | null {
   if (file.key !== 'services' || !file.child || c.thin.has(file.href)) return null;
   const s = c.d.services?.[file.child.index];
-  const name = cleanName(s?.title);
-  const shop = cleanName(c.d.shopName);
+  const name = nameOf(s?.title);
+  const shop = nameOf(c.d.shopName);
   if (!s || !name || !shop) return null;
   const url = `${c.base}${file.href}`;
-  const service: JsonNode = {
-    '@type': 'Service', '@id': `${url}#service`, name, url,
-    provider: { '@type': businessTypeOf(c.d), '@id': businessId(c.base), name: shop, url: `${c.base}/` },
-  };
-  const place = cleanName(c.place, 60);
+  const addr = parseAddress(c.d.contact?.address);
+  // The business node exists on Home only with an address; refer to it by @id only then.
+  const provider: JsonNode = { '@type': businessTypeOf(c.d), ...(addr ? { '@id': businessId(c.base) } : {}), name: shop, url: `${c.base}/` };
+  const service: JsonNode = { '@type': 'Service', '@id': `${url}#service`, name, url, provider };
+  const place = placeOf(addr);
   if (place) service.areaServed = place;
-  const us = parseAddress(c.d.contact?.address)?.us ?? false;
-  const offer = offerOf(s.price, us);
+  const offer = offerOf(s.price, addr?.country ?? null);
   if (offer) service.offers = offer;
-  const crumbs: JsonNode[] = [{ '@type': 'ListItem', position: 1, name: 'Home', item: `${c.base}/` }];
+  const crumbs: JsonNode[] = [{ '@type': 'ListItem', position: 1, name: labelOf(c.homeLabel) ?? 'Home', item: `${c.base}/` }];
   const svcPage = c.set.files.find((f) => f.key === 'services' && !f.child);
-  if (svcPage) crumbs.push({ '@type': 'ListItem', position: crumbs.length + 1, name: cleanName(c.servicesTitle, 60) ?? 'Services', item: `${c.base}${svcPage.href}` });
+  if (svcPage) crumbs.push({ '@type': 'ListItem', position: crumbs.length + 1, name: labelOf(c.servicesTitle) ?? 'Services', item: `${c.base}${svcPage.href}` });
   crumbs.push({ '@type': 'ListItem', position: crumbs.length + 1, name, item: url });
   return [service, { '@type': 'BreadcrumbList', '@id': `${url}#breadcrumb`, itemListElement: crumbs }];
 }
@@ -222,7 +255,7 @@ export function serviceNodes(c: JsonLdContext, file: PageFile): JsonNode[] | nul
 export function jsonLdHtml(c: JsonLdContext, file: PageFile): string {
   if (!c.base) return '';
   if (BUSINESS_PAGES.includes(file.key) && !file.child) {
-    const n = businessNode(c);
+    const n = businessNode(c, file.key as 'home' | 'location' | 'contact');
     return n ? jsonLdScript(n) : '';
   }
   const nodes = serviceNodes(c, file);

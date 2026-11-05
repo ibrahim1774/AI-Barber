@@ -173,7 +173,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
 
   // JSON-LD (jsonLd.ts): same gate as the SEO rules above, and only with a public base (every @id is absolute).
   const ld: JsonLdContext | null = seoV2 && base
-    ? { d, set, base, place: plainLabel(d.labels, 'pgPlace', niche, d), servicesTitle: plainLabel(d.labels, 'pgServicesTitle', niche, d), imageUrls: map, thin: thinHrefs }
+    ? { d, set, base, homeHtml: home, homeLabel: typeof (d.labels as Record<string, unknown> | undefined)?.[navLabelKey(template, 'home')] === 'string' ? plainText((d.labels as Record<string, string>)[navLabelKey(template, 'home')]) : '', servicesTitle: plainLabel(d.labels, 'pgServicesTitle', niche, d), imageUrls: map, thin: thinHrefs }
     : null;
   const homeLd = ld ? jsonLdHtml(ld, set.files.find((f) => f.key === 'home')!) : '';
   if (homeLd) pages[0] = { path: 'index.html', html: home.replace('</head>', () => `  ${homeLd}\n</head>`) };
