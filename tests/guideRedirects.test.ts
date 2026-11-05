@@ -32,14 +32,15 @@ const guideOnly = (p: string[]) => p.filter((x) => x.startsWith('/guides/'));
 describe('guide paths are recorded like any page', () => {
   it('the published paths of a sparse site hold the hub and 10 guides (sorted, valid page paths)', () => {
     const p = pathsOf(shop(THREE));
-    expect(guideOnly(p)).toHaveLength(11);
+    expect(guideOnly(p)).toHaveLength(12);
     expect(p).toContain('/guides/');
+    expect(p).not.toContain('/faq/');
     expect(p).toEqual([...p].sort());
     expect(parsePublishedPaths({ v: 1, paths: p, redirects: [] })!.paths).toEqual(p);
   });
   it('a site that reaches 21 on its own records no guide path', () => {
     const many = ['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'];
-    const d = shop(many, { bookingUrl: '/book', shopUrl: '/shop' }); // 22 + /book + /shop... real = 10 + 9 + 2 = 21
+    const d = shop(many, { bookingUrl: '/book', shopUrl: '/shop', about: { heading: 'About', description: ['We cut hair here.'], imageUrl: '' } }); // 9 + 9 + /book + /shop + About = 21
     expect(guideOnly(pathsOf(d))).toEqual([]);
   });
 });
@@ -75,10 +76,21 @@ describe('a removed guide page is redirected to the hub while the hub stays', ()
   });
 });
 
+describe('the old /faq/ of a web site', () => {
+  it('a /faq/ published before is redirected to the hub (live) or /services/, and the deploy carries the 308 rules', () => {
+    const live = pathsOf(shop(THREE));
+    const plan = planPublishedPaths({ v: 1, paths: [...live, '/faq/'], redirects: [] }, live);
+    expect(plan.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(redirectRules(plan.redirects).map((r) => r.source)).toEqual(['/faq', '/faq/', '/faq/index.html']);
+    const rich = pathsOf(shop(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'], { bookingUrl: '/book', shopUrl: '/shop', about: { heading: 'About', description: ['We cut hair here.'], imageUrl: '' } }));
+    expect(planPublishedPaths({ v: 1, paths: [...rich, '/faq/'], redirects: [] }, rich).redirects).toEqual([{ from: '/faq/', to: '/services/' }]);
+  });
+});
+
 describe('a vanished hub leaves plain 404s', () => {
   it('reaching 21 pages removes every guide: no redirect is created, none points anywhere', () => {
     const before = { v: 1 as const, paths: pathsOf(shop(THREE)), redirects: [] };
-    const rich = shop(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'], { bookingUrl: '/book', shopUrl: '/shop' });
+    const rich = shop(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'], { bookingUrl: '/book', shopUrl: '/shop', about: { heading: 'About', description: ['We cut hair here.'], imageUrl: '' } });
     const after = pathsOf(rich);
     expect(guideOnly(after)).toEqual([]);
     const plan = planPublishedPaths(before, after);
@@ -86,7 +98,7 @@ describe('a vanished hub leaves plain 404s', () => {
     expect(plan.paths).not.toContain('/guides/');
   });
   it('a stored guide redirect whose hub is gone is dropped, NOT re-pointed at /services/ (a service redirect with the same trouble still is)', () => {
-    const live = pathsOf(shop(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'], { bookingUrl: '/book', shopUrl: '/shop' }));
+    const live = pathsOf(shop(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'], { bookingUrl: '/book', shopUrl: '/shop', about: { heading: 'About', description: ['We cut hair here.'], imageUrl: '' } }));
     const plan = planPublishedPaths({ v: 1, paths: [], redirects: [{ from: G('face-shape'), to: G() }, { from: '/services/old/', to: '/services/gone/' }] }, live);
     expect(plan.redirects).toEqual([{ from: '/services/old/', to: '/services/' }]);
   });
@@ -145,9 +157,9 @@ describe('through publishSite', () => {
   it('first publish records the guide paths and ships them as noindex pages outside the sitemap; the second ships the hub redirect when a guide is hidden', async () => {
     const { s, get } = fakeStore();
     const first = await go(THREE, s);
-    expect(guideOnly(get()!.paths)).toHaveLength(11);
+    expect(guideOnly(get()!.paths)).toHaveLength(12);
     expect(first.redirects).toBeUndefined();
-    expect(first.pages.filter((p: any) => p.path.startsWith('guides/'))).toHaveLength(11);
+    expect(first.pages.filter((p: any) => p.path.startsWith('guides/'))).toHaveLength(12);
     expect(first.sitemap).not.toContain('guides');
     expect(first.pages.filter((p: any) => p.path.startsWith('guides/')).every((p: any) => p.html.includes('<meta name="robots" content="noindex,follow">'))).toBe(true);
     const second = await go(THREE, s, { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, guidesHidden: ['hair-types'] } });

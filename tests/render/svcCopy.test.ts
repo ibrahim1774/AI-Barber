@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
 import { aiSentenceProblems, candidateFromModel, checkEntryShape, lintEntry, lintParagraph, plainTextProblem, type SvcCopyEntry } from '../../lib/render/svcCopy';
+import { MODEL_OUTPUT_SCHEMA } from '../../lib/render/svcCopy';
+import { SYSTEM_PROMPT } from '../../lib/serviceCopy/prompt';
 import type { WebsiteData } from '../../types';
 
 const svc = (title: string, extra: Record<string, unknown> = {}) => ({ title, subtitle: '', description: '', icon: 'scissors' as const, imageUrl: '', ...extra });
@@ -12,7 +14,6 @@ const GOOD: SvcCopyEntry = {
     { h: 'Before you arrive', p: 'Think about how you wear your hair. Wear loose clothes that are easy to move in.' },
     { h: 'During the visit', p: 'Speak up if you would like a change. Check that the plan matches what you asked for.' },
   ],
-  faq: [{ q: 'What should you bring to the visit?', a: 'Bring a photo of the look you like. Ask your barber if you have a question.' }],
   metaTitle: 'What to know about {service}', metaDescription: 'Learn what a visit for {service} involves and how to prepare.',
 };
 const shop = (extra: Partial<WebsiteData> = {}, svcCopy?: unknown): WebsiteData => ({
@@ -74,9 +75,9 @@ describe('paragraphs and entries', () => {
     expect(lintEntry(a.entry!, []).entry).toEqual(a.entry);
   });
   it('too little survives -> null (no entry)', () => {
-    const bad = { ...GOOD, intro: 'Our licensed team. Fully insured. Twenty years of experience.', sections: [{ h: 'Why us', p: 'We are the best. We guarantee it.' }], faq: [] };
+    const bad = { ...GOOD, intro: 'Our licensed team. Fully insured. Twenty years of experience.', sections: [{ h: 'Why us', p: 'We are the best. We guarantee it.' }] };
     expect(lintEntry(bad, []).entry).toBeNull();
-    const half = { ...GOOD, intro: 'A calm visit. Backed by 20 years of experience.', sections: [{ h: 'Before you arrive', p: 'Think about time. We are the best. Ours is better than others. It costs $40.' }], faq: [] };
+    const half = { ...GOOD, intro: 'A calm visit. Backed by 20 years of experience.', sections: [{ h: 'Before you arrive', p: 'Think about time. We are the best. Ours is better than others. It costs $40.' }] };
     expect(lintEntry(half, []).entry).toBeNull(); // survival under half
   });
   it('a failing section heading drops the section; a failing meta is omitted', () => {
@@ -92,17 +93,37 @@ describe('shape', () => {
   for (const [name, f] of [
     ['unknown key', (o: any) => { o.extra = 1; }], ['wrong version', (o: any) => { o.v = 2; }], ['aiGenerated not boolean', (o: any) => { o.aiGenerated = 'yes'; }],
     ['intro too long', (o: any) => { o.intro = 'a'.repeat(801); }], ['empty intro', (o: any) => { o.intro = ''; }], ['too many sections', (o: any) => { o.sections = Array(5).fill(o.sections[0]); }],
-    ['section extra key', (o: any) => { o.sections[0].x = 1; }], ['faq answer not text', (o: any) => { o.faq[0].a = 5; }], ['meta title too long', (o: any) => { o.metaTitle = 'a'.repeat(61); }],
+    ['section extra key', (o: any) => { o.sections[0].x = 1; }], ['faq key present', (o: any) => { o.faq = []; }], ['meta title too long', (o: any) => { o.metaTitle = 'a'.repeat(61); }],
     ['array root', (o: any) => { o.sections = {}; }],
   ] as [string, (o: any) => void][]) it(`refuses: ${name}`, () => expect(mutate(f).ok).toBe(false));
   it('refuses non-objects', () => { for (const v of [null, 'x', 5, [], undefined]) expect(checkEntryShape(v).ok).toBe(false); });
   it('model output: empty meta strings count as omitted; missing or extra keys are refused', () => {
-    const m = { heading: 'H', intro: GOOD.intro, sections: GOOD.sections, faq: GOOD.faq, metaTitle: '', metaDescription: '' };
+    const m = { heading: 'H', intro: GOOD.intro, sections: GOOD.sections, metaTitle: '', metaDescription: '' };
     const r = candidateFromModel(m);
     expect(r.ok && r.entry.metaTitle).toBeFalsy();
     expect(candidateFromModel({ ...m, extra: 1 }).ok).toBe(false);
-    const { faq, ...rest } = m;
+    const { heading, ...rest } = m;
     expect(candidateFromModel(rest).ok).toBe(false);
+  });
+});
+
+describe('no faq field anywhere in the step-6 schema', () => {
+  it('checkEntryShape rejects a stored entry that carries a faq key', () => {
+    expect(checkEntryShape({ ...GOOD, faq: [] }).ok).toBe(false);
+    expect(checkEntryShape({ ...GOOD, faq: [{ q: 'What should you bring?', a: 'A photo of the look you like.' }] }).ok).toBe(false);
+  });
+  it('candidateFromModel rejects model output with a faq key', () => {
+    const m = { heading: 'H', intro: GOOD.intro, sections: GOOD.sections, metaTitle: '', metaDescription: '' };
+    expect(candidateFromModel(m).ok).toBe(true);
+    expect(candidateFromModel({ ...m, faq: [] }).ok).toBe(false);
+    expect(candidateFromModel({ ...m, faq: [{ q: 'What should you bring?', a: 'A photo of the look you like.' }] }).ok).toBe(false);
+  });
+  it('MODEL_OUTPUT_SCHEMA has no faq property and the system prompt never mentions faq', () => {
+    const props = (MODEL_OUTPUT_SCHEMA as any).properties ?? {};
+    expect(Object.keys(props)).not.toContain('faq');
+    expect((MODEL_OUTPUT_SCHEMA as any).required ?? []).not.toContain('faq');
+    expect(JSON.stringify(MODEL_OUTPUT_SCHEMA).toLowerCase()).not.toContain('faq');
+    expect(SYSTEM_PROMPT.toLowerCase()).not.toContain('faq');
   });
 });
 
@@ -122,7 +143,7 @@ describe('the renderer', () => {
     expect(sitemap(shop())).not.toContain('/services/scalp-massage/');
   });
   it('a hostile stored entry is omitted whole or lint-dropped, never printed', () => {
-    const forged = { ...GOOD, intro: '<script>alert(1)</script>. Licensed and insured since 1999. We guarantee the best result.', sections: [], faq: [] };
+    const forged = { ...GOOD, intro: '<script>alert(1)</script>. Licensed and insured since 1999. We guarantee the best result.', sections: [] };
     const html = page(shop({}, { 'scalp massage': forged }));
     expect(html).not.toContain('<script>alert');
     expect(html).not.toContain('guarantee');

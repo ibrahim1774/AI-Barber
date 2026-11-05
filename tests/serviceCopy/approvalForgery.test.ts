@@ -78,7 +78,7 @@ describe('the signature itself', () => {
     const e = sign();
     const bad: any[] = [
       { ...e, intro: e.intro.replace('Learn', 'Lear') }, { ...e, heading: 'Something else' }, { ...e, at: '2026-11-06T12:00:00.000Z' },
-      { ...e, sections: [...e.sections].reverse() }, { ...e, faq: [] }, { ...e, metaTitle: 'x' },
+      { ...e, sections: [...e.sections].reverse() }, { ...e, metaTitle: 'x' },
       { ...e, approval: 'auto' }, { ...e, approvalSig: e.approvalSig.replace(/^./, e.approvalSig[0] === 'a' ? 'b' : 'a') }, { ...e, approvalScope: userScope(TEST_SECRET, U2) },
       { ...e, approvalSig: undefined }, { ...e, approvalScope: undefined }, { ...e, approvalRef: siteRef(SLUG) }, { ...e, approvalRef: undefined }, { ...e, approvalAt: e.approvalAt + 1 }, { ...e, approvalAt: undefined }, { ...e, aiGenerated: false }, { ...e, approvalSig: 'x'.repeat(64) },
     ];
@@ -260,7 +260,7 @@ describe('forging approval on every path: nothing prints', () => {
     } finally { process.env.SERVICE_COPY_SIGNING_SECRET = prev; }
   });
   it('the barber\'s own words (aiGenerated false) are not model text: they print without any signature, and cannot carry approval fields', () => {
-    const own = { v: 1, aiGenerated: false, intro: 'My own words about the massage.', sections: [], faq: [] };
+    const own = { v: 1, aiGenerated: false, intro: 'My own words about the massage.', sections: [] };
     expect(everything(deploy(withCopy({ 'scalp massage': own })))).toContain('My own words about the massage.');
     const stamped = svcCopySanitize(withCopy({ 'scalp massage': { ...own, approval: 'owner' } }), { secret: TEST_SECRET });
     expect(stampedDropped(stamped)).toBe(true);

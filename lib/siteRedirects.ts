@@ -101,12 +101,16 @@ export function movedMap(d: { extraPages?: unknown } | null | undefined): Map<st
   return out;
 }
 
+/** `/faq/`: the FAQ page web sites no longer have. A previously published one goes to the hub when it is live, else to /services/. */
+export const FAQ_PATH = '/faq/';
+
 const validRedirect = (r: unknown): r is SiteRedirect => {
   if (!r || typeof r !== 'object') return false;
   const { from, to } = r as SiteRedirect;
   if (from === to) return false;
   // A service page goes to /services/ or its renamed page; a guide page goes ONLY to the hub (never to /services/, never to another guide).
   if (isGuidePagePath(from)) return to === HUB;
+  if (from === FAQ_PATH) return to === HUB || to === '/services/';
   return isServicePath(from) && isRedirectTarget(to) && to !== HUB;
 };
 
@@ -166,13 +170,16 @@ export function planPublishedPaths(prev: PublishedPaths | null, newPaths: readon
   // A guide page that was published and is gone while the hub is live: to the hub. With the hub gone too, nothing (a plain 404).
   if (live.has(HUB)) for (const p of [...before].filter(isGuidePagePath).sort()) if (!live.has(p)) fresh.set(p, HUB);
 
+  // The FAQ page web sites no longer publish: if it was live before and is not now, to the hub when live, else to /services/, else a plain 404.
+  if (before.has(FAQ_PATH) && !live.has(FAQ_PATH)) { if (live.has(HUB)) fresh.set(FAQ_PATH, HUB); else if (hasServices) fresh.set(FAQ_PATH, '/services/'); }
+
   const out: SiteRedirect[] = [];
   for (const r of prev?.redirects ?? []) {
     if (live.has(r.from) || fresh.has(r.from)) continue;
     let to = r.to;
     for (let i = 0; i < 4 && !live.has(to) && fresh.has(to); i++) to = fresh.get(to)!;
     // A guide redirect whose hub is gone is dropped, never re-pointed at /services/.
-    if (!live.has(to)) { if (isGuidePagePath(r.from) || !hasServices) continue; to = '/services/'; }
+    if (!live.has(to)) { if (isGuidePagePath(r.from) || !hasServices) continue; to = '/services/'; }  // (a /faq/ redirect whose hub is gone lands here: /services/)
     out.push({ from: r.from, to });
   }
   for (const [from, to] of fresh) out.push({ from, to });

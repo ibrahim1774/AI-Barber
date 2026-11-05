@@ -2,7 +2,7 @@
 // countPages), and the markup is checked with parsers written here (robots meta, sitemap <loc>, JSON-LD blocks), not with the code under test.
 import { describe, expect, it } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
-import { buildPageSet, assertSiteFilePath, isPageKey, PAGE_KEYS, EXTRA_KEYS, RESERVED_PATHS } from '../../lib/render/pages';
+import { buildPageSet, extraPageRows, assertSiteFilePath, isPageKey, PAGE_KEYS, EXTRA_KEYS, RESERVED_PATHS } from '../../lib/render/pages';
 import { guidesApply, countPages, countRealPages, GUIDE_ADDED_CAP, guideCopySanitize, guideOverrides, guideSettings, PAGE_FLOOR, planGuides, resolveGuide, styleMatchesTitle } from '../../lib/render/guidePages';
 import { GUIDE_PAGE_IDS, isGuideFile } from '../../lib/render/guideIds';
 import { GUIDE_LIBRARY } from '../../lib/render/guideLibrary';
@@ -42,9 +42,9 @@ const mainOf = (h: string): string => /<section class="ab-sec">([\s\S]*?)<\/sect
 const stable = (pages: { path: string; html: string }[]) => pages.map((p) => ({ path: p.path, html: p.html.replace(/published-at" content="\d+"/, '') }));
 
 // The hand-written page lists of the fixtures (real pages only).
-const SPARSE3 = ['index.html', 'services/index.html', 'services/haircut/index.html', 'services/skin-fade/index.html', 'services/beard-trim/index.html', 'hours/index.html', 'location/index.html', 'contact/index.html', 'faq/index.html', 'first-visit/index.html'];
+const SPARSE3 = ['index.html', 'services/index.html', 'services/haircut/index.html', 'services/skin-fade/index.html', 'services/beard-trim/index.html', 'hours/index.html', 'location/index.html', 'contact/index.html', 'first-visit/index.html'];
 const svcPages = (slugs: string[]) => slugs.map((s) => `services/${s}/index.html`);
-const SPARSE6 = ['index.html', 'services/index.html', ...svcPages(['haircut', 'skin-fade', 'beard-trim', 'kids-haircut', 'line-up', 'hot-towel-shave']), 'hours/index.html', 'location/index.html', 'contact/index.html', 'faq/index.html', 'first-visit/index.html'];
+const SPARSE6 = ['index.html', 'services/index.html', ...svcPages(['haircut', 'skin-fade', 'beard-trim', 'kids-haircut', 'line-up', 'hot-towel-shave']), 'hours/index.html', 'location/index.html', 'contact/index.html', 'first-visit/index.html'];
 
 const sparse3 = () => shop();
 const sparse6 = () => shop({ services: SIX.map((t) => svc(t)) });
@@ -57,36 +57,36 @@ const bookShop = () => shop({ bookingUrl: '/book', shopUrl: '/shop' });
 const rich = () => ({ ...RICH_SITE, source: 'web-app', extraPages: { on: ['faq', 'first-visit', 'hair-care', 'beard-care'], serviceGuides: true, seed: 11 } }) as WebsiteData;
 
 describe('countPages: real pages, worked out by hand', () => {
-  it('sparse 3-service shop = 10 real pages (Home, Services, 3 services, Hours, Location, Contact, FAQ, First visit)', () => {
+  it('sparse 3-service shop = 9 real pages (Home, Services, 3 services, Hours, Location, Contact, First visit; a web site has no FAQ)', () => {
     expect(paths(bundle(sparse3())).filter((p) => !p.startsWith('guides/'))).toEqual(SPARSE3);
-    expect(countPages(sparse3())).toBe(10);
+    expect(countPages(sparse3())).toBe(9);
   });
-  it('sparse 6-service shop = 13', () => {
+  it('sparse 6-service shop = 12', () => {
     expect(paths(bundle(sparse6())).filter((p) => !p.startsWith('guides/'))).toEqual(SPARSE6);
-    expect(countPages(sparse6())).toBe(13);
+    expect(countPages(sparse6())).toBe(12);
   });
-  it('a shop with no address and no hours loses Location and Hours (and First visit): 6 services = 10, 3 services = 7', () => {
-    expect(countPages(noAddress6())).toBe(10); // Home, Services, 6 services, Contact (phone), FAQ
-    expect(countPages(noAddress3())).toBe(7); // Home, Services, 3 services, Contact, FAQ
-    expect(paths(bundle(noAddress3())).filter((p) => !p.startsWith('guides/'))).toEqual(['index.html', 'services/index.html', ...svcPages(['haircut', 'skin-fade', 'beard-trim']), 'contact/index.html', 'faq/index.html']);
+  it('a shop with no address and no hours loses Location and Hours (and First visit): 6 services = 9, 3 services = 6', () => {
+    expect(countPages(noAddress6())).toBe(9); // Home, Services, 6 services, Contact (phone)
+    expect(countPages(noAddress3())).toBe(6); // Home, Services, 3 services, Contact
+    expect(paths(bundle(noAddress3())).filter((p) => !p.startsWith('guides/'))).toEqual(['index.html', 'services/index.html', ...svcPages(['haircut', 'skin-fade', 'beard-trim']), 'contact/index.html']);
   });
-  it('a solo barber: whatever the page set says. With a staff entry that has a bio there is a Team page AND the barber\'s own page (+2 = 12); with a name only there is a Team page and no barber page (+1 = 11); with no staff entry neither (10). Team eligibility is not special-cased (that would break parity)', () => {
-    expect(countPages(solo())).toBe(12);
-    expect(countPages(soloNoBio())).toBe(11);
-    expect(countPages(shop({ staff: [] } as Partial<WebsiteData>))).toBe(10);
+  it('a solo barber: whatever the page set says. With a staff entry that has a bio there is a Team page AND the barber\'s own page (+2 = 11); with a name only there is a Team page and no barber page (+1 = 10); with no staff entry neither (9). Team eligibility is not special-cased (that would break parity)', () => {
+    expect(countPages(solo())).toBe(11);
+    expect(countPages(soloNoBio())).toBe(10);
+    expect(countPages(shop({ staff: [] } as Partial<WebsiteData>))).toBe(9);
   });
-  it('/book is a page when it is in the nav and /shop only when it is the site\'s own shop: the proxied pages add 2 (12), an external shop link adds 0 (11 with /book)', () => {
-    expect(countPages(bookShop())).toBe(12);
-    expect(countPages(shop({ bookingUrl: '/book', shopUrl: 'https://shop.example.com' }))).toBe(11);
-    expect(countPages(shop({ bookingUrl: '/book' }))).toBe(11);
+  it('/book is a page when it is in the nav and /shop only when it is the site\'s own shop: the proxied pages add 2 (11), an external shop link adds 0 (10 with /book)', () => {
+    expect(countPages(bookShop())).toBe(11);
+    expect(countPages(shop({ bookingUrl: '/book', shopUrl: 'https://shop.example.com' }))).toBe(10);
+    expect(countPages(shop({ bookingUrl: '/book' }))).toBe(10);
   });
   it('a hidden page does not count', () => {
-    expect(countPages(shop({ pages: { order: [], hidden: ['faq', 'first-visit'] } }))).toBe(8);
-    // (hiding Hours also keeps Location off on a setup saved before Location existed, so that pair is 3 pages fewer, not 2)
-    expect(countPages(shop({ pages: { order: [], hidden: ['hours'] } }))).toBe(8);
+    expect(countPages(shop({ pages: { order: [], hidden: ['first-visit', 'contact'] } }))).toBe(7);
+    // (hiding Hours also keeps Location off on a setup saved before Location existed, so that pair is 2 pages fewer)
+    expect(countPages(shop({ pages: { order: [], hidden: ['hours'] } }))).toBe(7);
   });
   it('a thin (noindex) service page still counts', () => {
-    expect(countPages(shop({ services: [svc('Enhancement'), svc('Facial'), svc('Wash & Style')] }))).toBe(10);
+    expect(countPages(shop({ services: [svc('Enhancement'), svc('Facial'), svc('Wash & Style')] }))).toBe(9);
   });
   it('a site that is not multi-page is one page', () => {
     const { pages: _p, ...single } = shop();
@@ -94,8 +94,8 @@ describe('countPages: real pages, worked out by hand', () => {
   });
   it('countRealPages is the page set\'s files plus the proxied pages and nothing else', () => {
     const set = buildPageSet(bookShop());
-    expect(set.files).toHaveLength(10);
-    expect(countRealPages(set)).toBe(12);
+    expect(set.files).toHaveLength(9);
+    expect(countRealPages(set)).toBe(11);
   });
 });
 
@@ -106,11 +106,11 @@ describe('the floor of 21', () => {
     expect(PAGE_FLOOR - GUIDE_ADDED_CAP).toBe(9);
   });
   const cases: [string, () => WebsiteData, number][] = [
-    ['sparse 3 (10 real)', sparse3, 10], ['sparse 6 (13 real)', sparse6, 13], ['no address, 6 services (10 real)', noAddress6, 10],
-    ['solo barber (12 real)', solo, 12], ['solo, name only (11 real)', soloNoBio, 11], ['bookings and store (12 real)', bookShop, 12],
+    ['sparse 3 (9 real)', sparse3, 9], ['sparse 6 (12 real)', sparse6, 12], ['no address, 6 services (9 real)', noAddress6, 9],
+    ['solo barber (11 real)', solo, 11], ['solo, name only (10 real)', soloNoBio, 10], ['bookings and store (11 real)', bookShop, 11],
   ];
   for (const [name, make, real] of cases) {
-    it(`${name}: exactly 21 pages, the hub plus ${20 - real} guide pages`, () => {
+    it(`${name}: exactly 21 pages, the hub plus ${20 - real} guide pages (never more than 11 guides)`, () => {
       const d = make();
       const b = bundle(d);
       expect(total(d)).toBe(21);
@@ -119,45 +119,45 @@ describe('the floor of 21', () => {
       expect(guidePaths(b).length - 1).toBeLessThanOrEqual(11);
     });
   }
-  it('a rich shop that already has 21 or more real pages gets no guides at all (24 here)', () => {
+  it('a rich shop that already has 21 or more real pages gets no guides at all (23 here)', () => {
     const d = rich();
-    expect(countPages(d)).toBe(24); // Home, About, Services + 6, Team + 3, Gallery, Reviews, Hours, Location, Contact, FAQ, First visit, Hair care, Beard care, Book, Shop
+    expect(countPages(d)).toBe(23); // Home, About, Services + 6, Team + 3, Gallery, Reviews, Hours, Location, Contact, First visit, Hair care, Beard care, Book, Shop (a web site has no FAQ)
     expect(guidePaths(bundle(d))).toEqual([]);
     expect(planGuides(d, buildPageSet(d))).toBeNull();
     expect(bundle(d).pages.some((p) => p.html.includes('/guides/'))).toBe(false);
   });
-  it('exactly 21 real pages: no guides; 20 real pages: the hub and ONE guide (22 pages, the only overshoot); 19: hub + 1 guide (21)', () => {
+  it('21 real pages: no guides; 20: the hub and ONE guide (22 pages, the only overshoot); 19: hub + 1 guide (21); 18: hub + 2 (21)', () => {
     const mk = (n: number): WebsiteData => shop({ services: Array.from({ length: n }, (_x, i) => svc(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'][i])) });
-    // 10 + (n - 3) real pages for n services
-    expect(countPages(mk(12))).toBe(19);
-    const d19 = mk(12);
-    expect(guidePaths(bundle(d19))).toHaveLength(2); // hub + 1 guide
-    expect(total(d19)).toBe(21);
-    const d20 = { ...mk(12), bookingUrl: '/book' } as WebsiteData; // + /book = 20 real
+    const d18 = mk(12); // 9 + 9 more services
+    expect(countPages(d18)).toBe(18);
+    expect(guidePaths(bundle(d18))).toHaveLength(3); expect(total(d18)).toBe(21);
+    const d19 = { ...d18, bookingUrl: '/book' } as WebsiteData;
+    expect(countPages(d19)).toBe(19);
+    expect(guidePaths(bundle(d19))).toHaveLength(2); expect(total(d19)).toBe(21);
+    const d20 = { ...d19, shopUrl: '/shop' } as WebsiteData;
     expect(countPages(d20)).toBe(20);
-    expect(guidePaths(bundle(d20))).toHaveLength(2);
-    expect(total(d20)).toBe(22);
-    const d21 = { ...d20, shopUrl: '/shop' } as WebsiteData; // + /shop = 21 real
+    expect(guidePaths(bundle(d20))).toHaveLength(2); expect(total(d20)).toBe(22);
+    const d21 = { ...d20, about: { heading: 'About', description: ['We cut hair on this corner.'], imageUrl: '' } } as WebsiteData;
     expect(countPages(d21)).toBe(21);
     expect(guidePaths(bundle(d21))).toEqual([]);
   });
-  it('9 real pages reach 21 with the hub and 11 guides; fewer than 9 end below 21 and are never padded (7 real -> 19, 5 real -> 17)', () => {
-    const nine = shop({ services: SIX.map((t) => svc(t)), hours: [], contact: { address: '', email: '' }, phone: '', pages: { order: [], hidden: ['faq'] } });
-    expect(countPages(nine)).toBe(9); // Home, Services, 6 services, Contact (booking link)
+  it('9 real pages reach 21 with the hub and 11 guides; fewer than 9 end below 21 and are never padded (6 real -> 18, 4 real -> 16)', () => {
+    const nine = noAddress6();
+    expect(countPages(nine)).toBe(9); // Home, Services, 6 services, Contact
     expect(guidePaths(bundle(nine))).toHaveLength(12);
     expect(total(nine)).toBe(21);
-    expect(countPages(noAddress3())).toBe(7);
+    expect(countPages(noAddress3())).toBe(6);
     expect(guidePaths(bundle(noAddress3()))).toHaveLength(12);
-    expect(total(noAddress3())).toBe(19);
-    expect(countPages(tiny())).toBe(5);
+    expect(total(noAddress3())).toBe(18);
+    expect(countPages(tiny())).toBe(4);
     expect(guidePaths(bundle(tiny()))).toHaveLength(12);
-    expect(total(tiny())).toBe(17);
+    expect(total(tiny())).toBe(16);
   });
   it('the guide count flexes: more services, fewer guides; the same data always gives the same plan', () => {
     const a = guidePaths(bundle(sparse3())).length;
     const b = guidePaths(bundle(sparse6())).length;
-    expect(a).toBe(11);
-    expect(b).toBe(8);
+    expect(a).toBe(12);
+    expect(b).toBe(9);
     expect(guidePaths(bundle(sparse3()))).toEqual(guidePaths(bundle(sparse3())));
     // the guides of a smaller plan are the first guides of a larger one for the same services (a prefix): a page that appears later only drops the tail
     const big = guidePaths(bundle(sparse3()));
@@ -179,7 +179,7 @@ describe('guide pages are filler: noindex, no sitemap, no JSON-LD, not in the me
     it(`${t}: every guide page and the hub carry robots noindex,follow and a self canonical`, () => {
       const b = bundle(sparse3(), t);
       const g = guidePaths(b);
-      expect(g).toHaveLength(11);
+      expect(g).toHaveLength(12);
       for (const p of g) {
         expect(robotsMeta(html(b, p)), p).toBe('noindex,follow');
         const href = p === 'guides/index.html' ? '/guides/' : `/${p.replace('/index.html', '/')}`;
@@ -245,6 +245,31 @@ describe('guide pages are filler: noindex, no sitemap, no JSON-LD, not in the me
   });
 });
 
+describe('web-created pages-v2 sites have no FAQ page (iOS and legacy keep it)', () => {
+  const withFaq = (d: WebsiteData): WebsiteData => ({ ...d, extraPages: { ...(d.extraPages as object), on: ['faq', 'first-visit'] } } as WebsiteData);
+  it('no /faq/ file, menu item, footer link, sitemap entry or JSON-LD mention, even with faq in extraPages.on and plenty of data', () => {
+    for (const t of ['luxe', 'prime', 'euphoria'] as const) {
+      const b = bundle(withFaq(shop({ policy: { title: 'Policy', body: 'Be on time.' } } as Partial<WebsiteData>)), t);
+      expect(paths(b)).not.toContain('faq/index.html');
+      for (const p of b.pages) expect(p.html.includes('/faq/'), `${t} ${p.path}`).toBe(false);
+      expect(locs(b.sitemap).some((u) => u.includes('faq'))).toBe(false);
+      expect(JSON.stringify(b.pages.flatMap((p) => ldBlocks(p.html)))).not.toContain('faq');
+    }
+  });
+  it('the Pages sheet lists it as unavailable', () => {
+    const row = extraPageRows(withFaq(sparse3())).find((r) => r.key === 'faq')!;
+    expect([row.on, row.eligible]).toEqual([false, false]);
+    expect(extraPageRows(withFaq(shop({ source: 'ios' } as Partial<WebsiteData>))).find((r) => r.key === 'faq')!.eligible).toBe(true);
+  });
+  it('an iOS-made, a legacy (no marker) and a pre-pages-v2 multi-page site still get /faq/ with the same data', () => {
+    expect(paths(bundle(withFaq(shop({ source: 'ios' } as Partial<WebsiteData>))))).toContain('faq/index.html');
+    expect(paths(bundle(withFaq(shop({ source: undefined } as Partial<WebsiteData>))))).toContain('faq/index.html');
+  });
+  it('a web site that used to have the FAQ now counts one page less, so guides fill the gap (9 real for the 3-service shop)', () => {
+    expect(paths(bundle(withFaq(sparse3()))).filter((p) => !p.startsWith('guides/'))).toEqual(SPARSE3);
+  });
+});
+
 describe('reserved path /guides', () => {
   it('no page key, extra key or reserved word is "guides", so nothing else can take the path', () => {
     expect((PAGE_KEYS as readonly string[]).includes('guides')).toBe(false);
@@ -279,7 +304,7 @@ describe('the gate: guides only for web-created pages-v2 multi-page barber sites
   });
   it('a non-barber niche gets none (the library talks to the reader about "your barber")', () => {
     for (const niche of ['nails', 'lashes', 'hair', 'medspa', 'tattoo']) expect(guidePaths(bundle(shop({ niche } as Partial<WebsiteData>))), niche).toEqual([]);
-    expect(guidePaths(bundle(shop({ niche: 'barber' } as Partial<WebsiteData>)))).toHaveLength(11);
+    expect(guidePaths(bundle(shop({ niche: 'barber' } as Partial<WebsiteData>)))).toHaveLength(12);
   });
   it('decided: the serviceGuides flag does NOT decide this feature (it controls the About-this-service text), so a web site with it off still reaches 21', () => {
     const d = shop({ extraPages: { on: ['faq', 'first-visit'], serviceGuides: false, seed: 7 } });
@@ -291,7 +316,7 @@ describe('the gate: guides only for web-created pages-v2 multi-page barber sites
     expect(bundle(off).pages.some((p) => p.html.includes('/guides/'))).toBe(false);
     const hid = shop({ extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 7, guidesHidden: ['face-shape', 'hair-types'] } });
     const g = guidePaths(bundle(hid));
-    expect(g).toHaveLength(9); // two of the 10 guides removed, NOT backfilled
+    expect(g).toHaveLength(10); // two of the 11 guides removed, NOT backfilled
     expect(g).not.toContain('guides/face-shape/index.html');
     expect(total(hid)).toBe(19);
   });

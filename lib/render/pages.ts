@@ -19,6 +19,7 @@ import { pageSectionsOf } from './sections.js';
 import { faqDataQuestions, hasOpenDay, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 import { GUIDES_DIR, isGuideFile } from './guideIds.js';
+import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 
 /** One file of the deployed site. `path` is validated by assertSiteFilePath before it is written. */
 export interface SiteFile {
@@ -334,6 +335,12 @@ function allSectionsHidden(key: ExtraKey, d: WebsiteData): boolean {
   return pageSectionsOf(d, key).every((s) => s.hidden || s.id === 'hero' || s.id === 'cta');
 }
 
+/**
+ * Web-created pages-v2 sites have NO FAQ page (Ibrahim, 2026-11-05): `/faq/` is never a file, a menu item, a sitemap entry or a link for them. Every other
+ * site (iOS-made, legacy, pages v1, single page) keeps it exactly as on origin/main. A previously published /faq/ is redirected (siteRedirects.ts).
+ */
+export const faqRemoved = (d: { extraPages?: unknown; source?: unknown } | null | undefined): boolean => hasPagesV2(d) && isWebCreated(d);
+
 /** The data floor of one extra page (plan 1c) on the cleaned site: true when the page has the real data it needs. */
 function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {
   const titled = (Array.isArray(d.services) ? d.services : []).filter((s) => has(s?.title));
@@ -357,6 +364,7 @@ export function extraPageRows(input: WebsiteData, _ctx?: PageContext): { key: Ex
   const on = cleanExtraPages(d.extraPages).on;
   const hidden = cleanPagesModel(d.pages).hidden;
   return EXTRA_KEYS.map((key) => {
+    if (key === 'faq' && faqRemoved(d)) return { key, on: false, eligible: false, reason: 'Web sites have no FAQ page' };
     const floor = extraFloorMet(key, d);
     const noSections = floor && allSectionsHidden(key, d);
     const eligible = floor && !noSections;
@@ -378,7 +386,7 @@ export function eligiblePages(input: WebsiteData, ctx?: PageContext): PageKey[] 
   if (has(d.phone) || contactEmail(d) || has(d.contact?.address) || safeHref(d.bookingUrl)) out.push('contact');
   // Extra pages exist only when the barber turned them on (extraPages.on), they have their data floor and their copy.
   const on = cleanExtraPages(d.extraPages).on;
-  for (const k of EXTRA_KEYS) if (on.includes(k) && extraFloorMet(k, d) && !allSectionsHidden(k, d)) out.push(k);
+  for (const k of EXTRA_KEYS) if (!(k === 'faq' && faqRemoved(d)) && on.includes(k) && extraFloorMet(k, d) && !allSectionsHidden(k, d)) out.push(k);
   if (isSiteBookLink(d.bookingUrl)) out.push('book');
   if (safeHref(d.shopUrl)) out.push('shop');
   return out;

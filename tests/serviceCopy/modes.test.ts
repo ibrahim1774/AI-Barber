@@ -273,7 +273,7 @@ describe('MODE B with SERVICE_COPY_AUTO_PUBLISH OFF (the default): free-form tex
     const r = off();
     await r.call({ titleKey: 'scalp massage', mode: 'write' });
     const row = [...r.store.rows.values()][0] as any;
-    row.copy = { ...row.copy, intro: 'Our licensed team has twenty years of experience. Fully insured. Guaranteed.', sections: [], faq: [] };
+    row.copy = { ...row.copy, intro: 'Our licensed team has twenty years of experience. Fully insured. Guaranteed.', sections: [] };
     const res = await r.call({ titleKey: 'scalp massage', mode: 'approve' });
     expect([res.code, res.body]).toEqual([409, { error: 'not_renderable' }]);
     expect(r.store.rows.size).toBe(0);
@@ -410,8 +410,7 @@ describe('caps: ONE unit per generation request (15 per site and 50 per account 
 // ── The 89 benign / 369 hostile corpora, adapted to Mode B ─────────────────────────────────────────────────
 const place = (kind: string, text: string): object => {
   const j = JSON.parse(JSON.stringify(GOOD_JSON));
-  if (kind === 'question') j.faq[0].q = text;
-  else if (kind === 'heading') j.sections[0].h = text;
+  if (kind === 'question' || kind === 'heading') j.sections[0].h = text;
   else j.sections[0].p = `${j.sections[0].p} ${text}`;
   return j;
 };

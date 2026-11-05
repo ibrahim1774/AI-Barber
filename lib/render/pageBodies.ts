@@ -208,7 +208,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     // Dedicated text written for a service with no library guide (svcCopy.ts): stored text is re-checked, resolved and escaped here.
     const ai = subject ? aiPageFor(copyEnv, subject) : null;
     const aiHtml = ai
-      ? `<h2 class="ab-h2" style="margin-top:32px">${ai.heading ? esc(ai.heading) : L('pgGuideHeading')}</h2><div class="ab-copy ab-prose">${ai.intro.map((t) => `<p>${esc(t)}</p>`).join('')}${ai.sections.map((x) => `<h3 class="ab-copy-h">${esc(x.h)}</h3>${x.p.map((t) => `<p>${esc(t)}</p>`).join('')}`).join('')}${ai.faq.map((x) => `<h3 class="ab-copy-h">${esc(x.q)}</h3>${x.a.map((t) => `<p>${esc(t)}</p>`).join('')}`).join('')}</div>`
+      ? `<h2 class="ab-h2" style="margin-top:32px">${ai.heading ? esc(ai.heading) : L('pgGuideHeading')}</h2><div class="ab-copy ab-prose">${ai.intro.map((t) => `<p>${esc(t)}</p>`).join('')}${ai.sections.map((x) => `<h3 class="ab-copy-h">${esc(x.h)}</h3>${x.p.map((t) => `<p>${esc(t)}</p>`).join('')}`).join('')}</div>`
       : '';
     const guideShown = !pageSectionsOf(d, 'service').find((x) => x.id === 'guide')?.hidden;
     const aiMeta = ai && guideShown && ai.metaDescription ? validSeoText('description', ai.metaDescription) ?? '' : '';

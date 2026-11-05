@@ -25,7 +25,6 @@ const PROPOSAL: SvcCopyEntry = {
     { h: 'Before you arrive', p: 'Think about how you wear your hair. Wear loose clothes that are easy to move in.' },
     { h: 'During the visit', p: 'Speak up if you would like a change. Check that the plan matches what you asked for.' },
   ],
-  faq: [{ q: 'What should you bring to the visit?', a: 'Bring a photo of the look you like. Ask your barber if you have a question.' }],
   metaTitle: 'What to know about {service}', metaDescription: 'Learn what a visit for {service} involves and how to prepare.',
 };
 /** Model text signed by the server for this service key and the test owner (what the approve endpoint returns). */
@@ -215,16 +214,16 @@ describe('Mode B: model text prints only with an approval; a proposal never rend
     expect(serviceCopyAutoPublish({ SERVICE_COPY_AUTO_PUBLISH: '1' })).toBe(true);
     expect(serviceCopyAutoPublish({})).toBe(false);
   });
-  it('S3: a stored heading or question that only the deny layer catches is not printed at render time, even when every sentence is clean', () => {
+  it('S3: a stored heading that only the deny layer catches is not printed at render time, even when every sentence is clean', () => {
     // 'Spotless towels' and 'Will this reduce shedding?' pass the library rules (copyRules) and fail the deny layer (svcDeny), so only the render-time line lint stops them.
-    const d = withEntry({ ...PROPOSAL, approval: 'owner', heading: 'Spotless towels', sections: [{ h: 'Spotless towels', p: PROPOSAL.sections[0].p }, PROPOSAL.sections[1]], faq: [{ q: 'Will this reduce shedding?', a: 'Bring a photo of the look you like. Ask your barber if you have a question.' }, PROPOSAL.faq[0]] });
+    const d = withEntry({ ...PROPOSAL, approval: 'owner', heading: 'Spotless towels', sections: [{ h: 'Spotless towels', p: PROPOSAL.sections[0].p }, { h: 'Will this reduce shedding?', p: 'Bring a photo of the look you like. Ask your barber if you have a question.' }, PROPOSAL.sections[1]] });
     const h = html(d);
     expect(h).toContain(MARK); // the clean text still prints
-    expect(h).toContain('What should you bring to the visit?'); // and the clean question
+    expect(h).toContain('During the visit'); // and the clean heading
     expect(h).not.toContain('Spotless towels');
     expect(h).not.toContain('reduce shedding');
     // and the plain claims are stopped too
-    const e = html(withEntry({ ...PROPOSAL, approval: 'owner', heading: 'Licensed best barber in town', faq: [{ q: 'Will this cure hair loss?', a: PROPOSAL.faq[0].a }, PROPOSAL.faq[0]] }));
+    const e = html(withEntry({ ...PROPOSAL, approval: 'owner', heading: 'Licensed best barber in town', sections: [{ h: 'Will this cure hair loss?', p: PROPOSAL.sections[0].p }, PROPOSAL.sections[1]] }));
     expect(e).not.toContain('Licensed best barber'); expect(e).not.toContain('cure hair loss');
   });
 });

@@ -12,7 +12,7 @@ afterEach(() => { expect(net).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
 const json = (o: object) => JSON.stringify(o);
 const withIntro = (intro: string, more: Record<string, unknown> = {}) => json({ ...GOOD_JSON, intro, ...more });
 const run = async (script: string[]) => { const r = rig({ model: scriptedModel(script) }); const res = await r.call(); return { r, res }; };
-const allText = (c: any) => [c.heading, c.intro, c.metaTitle, c.metaDescription, ...c.sections.flatMap((s: any) => [s.h, s.p]), ...c.faq.flatMap((f: any) => [f.q, f.a])].join(' ');
+const allText = (c: any) => [c.heading, c.intro, c.metaTitle, c.metaDescription, ...c.sections.flatMap((s: any) => [s.h, s.p])].join(' ');
 
 describe('the exact request', () => {
   it('sends the pinned system prompt, one delimited fact block, a token cap and no sampling params', async () => {
@@ -94,7 +94,7 @@ describe('hostile model outputs', () => {
     });
   }
   it('wrong JSON / empty / huge / extra keys: retry once, then not generated, and nothing is stored', async () => {
-    for (const bad of ['not json at all', '', '[]', '{"heading":1}', json({ ...GOOD_JSON, extra: 'x' }), json({ ...GOOD_JSON, intro: 'x'.repeat(900) }), json({ ...GOOD_JSON, sections: Array(9).fill(GOOD_JSON.sections[0]) }), '{' + '"a":1,'.repeat(5000) + '}', json({ ...GOOD_JSON, faq: [{ q: 'q?', a: 'a', z: 1 }] })]) {
+    for (const bad of ['not json at all', '', '[]', '{"heading":1}', json({ ...GOOD_JSON, extra: 'x' }), json({ ...GOOD_JSON, intro: 'x'.repeat(900) }), json({ ...GOOD_JSON, sections: Array(9).fill(GOOD_JSON.sections[0]) }), '{' + '"a":1,'.repeat(5000) + '}', json({ ...GOOD_JSON, faq: [{ q: 'q?', a: 'a' }] })]) {
       const { r, res } = await run([bad, bad]);
       expect([res.code, res.body.status], bad.slice(0, 30)).toEqual([200, 'not_generated']);
       expect(r.model.calls.length).toBe(2);
@@ -116,7 +116,7 @@ describe('hostile model outputs', () => {
     expect(r.store.rows.size).toBe(1);
   });
   it('all dropped -> not generated: nothing stored, the page stays thin (noindex), no fabricated fallback', async () => {
-    const bad = json({ heading: 'Why we are the best', intro: 'We are licensed. We are insured. We guarantee it.', sections: [{ h: 'Our years', p: 'Twenty years of experience. The best results. Call 555-0100.' }], faq: [{ q: 'How much?', a: 'It costs $40.' }], metaTitle: 'Best', metaDescription: 'Best in town' });
+    const bad = json({ heading: 'Why we are the best', intro: 'We are licensed. We are insured. We guarantee it.', sections: [{ h: 'Our years', p: 'Twenty years of experience. The best results. Call 555-0100.' }], metaTitle: 'Best', metaDescription: 'Best in town' });
     const { r, res } = await run([bad, bad]);
     expect(res.body).toEqual({ status: 'not_generated', titleKey: 'scalp massage' });
     expect(r.store.rows.size).toBe(0);

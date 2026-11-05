@@ -195,19 +195,19 @@ describe('generated defaults are unique per page', () => {
     expect(b.seo.length).toBe(b.pages.filter((p) => !p.path.startsWith('guides/')).length); // guide pages (Step 8) carry no seo entry
   });
   it('two owner overrides that match are reported (and printed as written)', () => {
-    const d = withCopy({ [seoKey('services', 'title')]: 'Fresh Cuts Barber', [seoKey('faq', 'title')]: 'fresh  cuts barber' });
+    const d = withCopy({ [seoKey('services', 'title')]: 'Fresh Cuts Barber', [seoKey('first-visit', 'title')]: 'fresh  cuts barber' });
     const b = bundle(d);
-    expect(seoDuplicates(b.seo).titles).toEqual([['services', 'faq']]);
-    expect(heads(file(b, 'faq/index.html')).title).toBe('fresh cuts barber');
+    expect(seoDuplicates(b.seo).titles).toEqual([['services', 'first-visit']]);
+    expect(heads(file(b, 'first-visit/index.html')).title).toBe('fresh cuts barber');
     expect(heads(file(b, 'services/index.html')).title).toBe('Fresh Cuts Barber');
   });
   it('an override equal to another page default is reported, the default is moved aside', () => {
     const base = bundle(shop());
-    const faq = base.seo.find((e) => e.id === 'faq')!;
+    const faq = base.seo.find((e) => e.id === 'first-visit')!;
     const d = withCopy({ [seoKey('services', 'title')]: faq.title });
     const b = bundle(d);
     expect(heads(file(b, 'services/index.html')).title).toBe(faq.title);
-    expect(b.seo.find((e) => e.id === 'faq')!.title).not.toBe(faq.title); // the later default gets "(2)" instead of colliding
+    expect(b.seo.find((e) => e.id === 'first-visit')!.title).not.toBe(faq.title); // the later default gets "(2)" instead of colliding
     expect(seoDuplicates(b.seo).titles).toEqual([]);
   });
 });

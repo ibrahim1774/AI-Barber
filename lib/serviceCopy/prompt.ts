@@ -48,7 +48,6 @@ Reply with exactly one JSON object and nothing else, with these keys:
 - "heading": a heading for the text, at most ${LIMITS.heading - 10} characters, no final stop;
 - "intro": 2 to 3 sentences, at most ${LIMITS.intro} characters;
 - "sections": 2 to ${LIMITS.sectionsMax} objects {"h","p"}: h is a short heading of at most ${LIMITS.sectionH - 20} characters with no final stop, p is 2 to 3 sentences of at most ${LIMITS.sectionP} characters;
-- "faq": 2 to ${Math.min(3, LIMITS.faqMax)} objects {"q","a"}: q is one question of at most ${LIMITS.faqQ - 20} characters that ends with a question mark, a is 1 to 2 sentences of at most ${LIMITS.faqA} characters;
 - "metaTitle": at most ${LIMITS.metaTitle - 5} characters, a heading for a browser tab (it may use {service}), no final stop;
 - "metaDescription": one sentence of at most ${LIMITS.metaDescription - 10} characters for a search result, shape 1 to 4 above.`;
 

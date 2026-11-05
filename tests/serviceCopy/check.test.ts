@@ -25,10 +25,7 @@ const REVIEW_PROOF = {
   sections: [
     { h: 'Before you arrive', p: 'Bring a photo of the look you like. The visit takes about thirty minutes. Tell your barber what you would like to change.' },
     { h: 'During the visit', p: 'No appointment is needed for most visits. Your barber holds a valid state license and follows strict safety standards. Speak up if you would like a change.' },
-  ],
-  faq: [
-    { q: 'What if you are not happy?', a: 'Your barber will make it right on your next visit.' },
-    { q: 'What should you bring to the visit?', a: 'Bring a photo of the look you like. Ask your barber if you have a question.' },
+    { h: 'What if you are not happy?', p: 'Your barber will make it right on your next visit.' },
   ],
   metaTitle: 'What to know about {service}',
   metaDescription: 'Ask for {service} to ease headaches, calm the mind and help your hair look fuller.',
@@ -46,7 +43,7 @@ describe('the review 6 end-to-end proof inputs no longer publish', () => {
     for (const call of r.model.checks) for (const c of PROOF_CLAIMS) expect(call.messages[0].content, c).not.toContain(c);
   });
   it('the same entry stored by the editor (forged or old) prints none of the claims at render time', () => {
-    const forged: SvcCopyEntry = { v: 1, aiGenerated: true, approval: 'owner', heading: REVIEW_PROOF.heading, intro: REVIEW_PROOF.intro, sections: REVIEW_PROOF.sections, faq: REVIEW_PROOF.faq, metaTitle: REVIEW_PROOF.metaTitle, metaDescription: REVIEW_PROOF.metaDescription };
+    const forged: SvcCopyEntry = { v: 1, aiGenerated: true, approval: 'owner', heading: REVIEW_PROOF.heading, intro: REVIEW_PROOF.intro, sections: REVIEW_PROOF.sections, metaTitle: REVIEW_PROOF.metaTitle, metaDescription: REVIEW_PROOF.metaDescription };
     const d = { ...site({}), services: site().services };
     d.extraPages = { ...d.extraPages, svcCopy: { 'scalp massage': forged } };
     const files = renderSiteBundle(d, { siteBaseUrl: 'https://fresh.example.com' }).pages.map((p) => p.html).join('\n');
@@ -63,7 +60,7 @@ describe('the review 6 end-to-end proof inputs no longer publish', () => {
       'Your barber holds a valid state license.', 'Your barber is a member of the national barber association.', 'Your barber is fully vaccinated.', 'Your barber expertly works through each step.', 'An outstanding visit leaves you relaxed.',
       'Your barber has done this for ages.', 'No appointment is needed for {service}.', 'You do not need to book ahead.', 'Your barber uses a fresh blade on every visit.', 'The room is quiet, calm and spotless.',
       'The visit takes about an hour.', 'If you are not happy, your barber will make it right.', 'Book {service} with confidence knowing the work is backed.', 'Brooklyn has many barbers who offer {service}.', 'Plenty of people in brooklyn ask for {service}.'];
-    const e: SvcCopyEntry = { v: 1, aiGenerated: true, intro: lines.join(' '), sections: [], faq: [] };
+    const e: SvcCopyEntry = { v: 1, aiGenerated: true, intro: lines.join(' '), sections: [] };
     const out = lintEntry(e, []);
     expect(out.entry).toBeNull(); expect(out.kept).toBe(0);
   });
@@ -174,7 +171,7 @@ describe('cost and token accounting', () => {
     expect(t.logs.find((l) => l.includes('cost_usd'))).toContain('in=700 out=5000');
   });
   it('a worst-case page (retry + check) is three counted calls', async () => {
-    const unusable = json({ ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [], faq: [] });
+    const unusable = json({ ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [] });
     const r = rig({ model: scriptedModel([unusable, json(GOOD_JSON)]) });
     const res = await r.call();
     expect([res.body.status, r.model.calls.length, r.model.checks.length]).toEqual(['generated', 2, 1]);
@@ -252,7 +249,7 @@ describe('live client (should-fix 6, nits 2 and 3)', () => {
 });
 
 describe('boundaries and the renderer gate (should-fix 7, nit 6)', () => {
-  const base = (intro: string, extra: Partial<SvcCopyEntry> = {}): SvcCopyEntry => ({ v: 1, aiGenerated: true, intro, sections: [], faq: [], ...extra });
+  const base = (intro: string, extra: Partial<SvcCopyEntry> = {}): SvcCopyEntry => ({ v: 1, aiGenerated: true, intro, sections: [], ...extra });
   const ok = (n: number) => Array.from({ length: n }, (_, i) => ['Tell your barber what you want.', 'Ask about {service} before the visit.', 'Bring a photo of the style you have in mind.', 'Plan some extra time before the visit.', 'Check that the plan matches what you asked for.', 'Speak up if you would like a change.', 'Think about how you wear your hair.', 'Share what you like and what you do not like.'][i]);
   const badS = (n: number) => Array.from({ length: n }, () => 'The visit takes about an hour.');
   it('exactly MIN_SENTENCES kept and exactly half survive is accepted; one fewer sentence, or just under half, is not', () => {

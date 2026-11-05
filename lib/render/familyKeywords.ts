@@ -145,13 +145,6 @@ export const FAMILY_VOCAB: Partial<Record<GuideId, Vocab>> = {
   // No `color` entry (6f B1, 6g): no title guarantees "dye", "toner" or a method.
 };
 
-/** A plain haircut, for the FAQ "How much is a haircut?": only the generic words and who it is for. Not a named cut, not a fade. */
-const PLAIN_HAIRCUT: Vocab = { cores: ['haircut', 'haircuts', 'hair cut', 'hair cuts', 'cut', 'cuts'], mods: [...DEMO, ...LEVEL, 'for', 'only'] };
-/** The unqualified generic words only ("Haircut", "Hair Cut", "Cuts"). */
-const BARE_HAIRCUT: Vocab = { cores: ['haircut', 'haircuts', 'hair cut', 'hair cuts', 'cut', 'cuts'], mods: [] };
-/** A plain kids' haircut: an age word and the generic words only (no fade, taper, named cut). */
-const PLAIN_KIDS: Vocab = { cores: FAMILY_VOCAB['kids-cut']!.cores, needs: PLAIN_CORES, mods: [...LEVEL, 'for', 'only', 'little', 'big'] };
-
 const CONNECTORS: ReadonlySet<string> = new Set(['and', '&', '+', 'with', 'for', 'a', 'the']);
 const COMBO_JOINERS: ReadonlySet<string> = new Set(['and', '&', '+', 'with']);
 const ARTICLES: ReadonlySet<string> = new Set(['a', 'the']);
@@ -249,28 +242,6 @@ export function structuralGuide(title: unknown): GuideId | null {
   for (const id of GUIDE_IDS) { const v = FAMILY_VOCAB[id]; if (v && matchesVocab(tokens, v)) hit.push(id); }
   if (isCutBeard(tokens)) hit.push('cut-beard');
   return hit.length === 1 ? hit[0] : null;
-}
-
-/** True when the title is one plain haircut (generic word + who it is for), never a named cut, a fade, a kid's cut, a combo or a product. */
-export function plainHaircutTitle(title: unknown): boolean {
-  const t = fold(title).trim();
-  if (!t || t.length > 120 || FAMILY_VETO.test(t) || nonServiceTitle(t)) return false;
-  const tokens = tokensOf(dropQualifier(t));
-  return !!tokens && tokens.length <= 6 && structuralGuide(title) === 'haircut' && matchesVocab(tokens, PLAIN_HAIRCUT);
-}
-
-/** True when the title is the unqualified generic haircut ("Haircut", "Hair Cut", "Haircuts", "Cut"): no audience, no level, no qualifier. */
-export function bareHaircutTitle(title: unknown): boolean {
-  const t = fold(title).trim();
-  const tokens = t ? tokensOf(t) : null;
-  return !!tokens && structuralGuide(title) === 'haircut' && matchesVocab(tokens, BARE_HAIRCUT);
-}
-
-/** True when the title is a kids' cut made only of an age word and the generic words ("Kids Haircut", "Children's Cut", "Haircut for Kids"), not a fade, taper or named cut. */
-export function plainKidsTitle(title: unknown): boolean {
-  const t = fold(title).trim();
-  const tokens = t ? tokensOf(dropQualifier(t)) : null;
-  return !!tokens && tokens.length <= 6 && structuralGuide(title) === 'kids-cut' && matchesVocab(tokens, PLAIN_KIDS);
 }
 
 /**

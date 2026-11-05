@@ -26,8 +26,21 @@ describe('a removed service redirects to /services/', () => {
   });
   it('nothing disappeared: no redirect; a page that is not a service page is never redirected', () => {
     expect(planPublishedPaths(state(['fade']), paths(['fade'])).redirects).toEqual([]);
-    const prev: PublishedPaths = { v: 1, paths: ['/', '/services/', '/faq/', '/team/sam/', '/gallery/'], redirects: [] };
+    const prev: PublishedPaths = { v: 1, paths: ['/', '/services/', '/contact/', '/team/sam/', '/gallery/'], redirects: [] };
     expect(planPublishedPaths(prev, ['/', '/services/']).redirects).toEqual([]);
+  });
+  it('a web site\'s old /faq/ goes to the hub when it is live, else to /services/, else a plain 404; it is never a chain', () => {
+    const prev: PublishedPaths = { v: 1, paths: ['/', '/services/', '/faq/'], redirects: [] };
+    expect(planPublishedPaths(prev, ['/', '/services/', '/guides/', '/guides/face-shape/']).redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(planPublishedPaths(prev, ['/', '/services/']).redirects).toEqual([{ from: '/faq/', to: '/services/' }]);
+    expect(planPublishedPaths(prev, ['/', '/about/']).redirects).toEqual([]);
+    // still published: no redirect; a stored one whose hub is gone is re-pointed at /services/; one whose source is live again is dropped
+    expect(planPublishedPaths(prev, ['/', '/services/', '/faq/']).redirects).toEqual([]);
+    const stored: PublishedPaths = { v: 1, paths: ['/', '/services/', '/guides/'], redirects: [{ from: '/faq/', to: '/guides/' }] };
+    expect(planPublishedPaths(stored, ['/', '/services/']).redirects).toEqual([{ from: '/faq/', to: '/services/' }]);
+    expect(planPublishedPaths(stored, ['/', '/services/', '/faq/', '/guides/']).redirects).toEqual([]);
+    // only /faq/ -> hub or /services/ is valid
+    expect(parsePublishedPaths({ v: 1, paths: [], redirects: [{ from: '/faq/', to: '/about/' }, { from: '/faq/', to: '/faq/' }, { from: '/faq/', to: '/guides/' }] })!.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
   });
   it('no /services/ page any more (the group is hidden or empty): no redirect at all, a plain 404, and stored ones are dropped', () => {
     const prev = state(['fade', 'beard'], [R('old', '')]);

@@ -37,7 +37,6 @@ export const GOOD_JSON = {
     { h: 'Before you arrive', p: 'Think about how you wear your hair. Wear loose clothes that are easy to move in. Ask about {service} before the visit.' },
     { h: 'During the visit', p: 'Speak up if you would like a change. Check that the plan matches what you asked for.' },
   ],
-  faq: [{ q: 'What should you bring to the visit?', a: 'Bring a photo of the look you like. Ask your barber if you have a question.' }],
   metaTitle: 'What to know about {service}',
   metaDescription: 'Learn what a visit for {service} involves and how to prepare.',
 };

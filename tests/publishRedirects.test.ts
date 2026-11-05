@@ -78,7 +78,8 @@ describe('the first tracked publish records the paths and ships no redirect', ()
     expect(s.read).toHaveBeenCalledWith('fresh-cuts');
     expect(s.write).toHaveBeenCalledTimes(1);
     expect(get()!.v).toBe(1);
-    expect(get()!.paths).toEqual(expect.arrayContaining(['/', '/services/', '/services/fade/', '/services/beard-trim/', '/faq/', '/first-visit/']));
+    expect(get()!.paths).toEqual(expect.arrayContaining(['/', '/services/', '/services/fade/', '/services/beard-trim/', '/first-visit/']));
+    expect(get()!.paths).not.toContain('/faq/'); // web sites have no FAQ page
     expect(get()!.paths).toEqual([...get()!.paths].sort());
     expect(get()!.redirects).toEqual([]);
   });

@@ -17,7 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
-import { bareHaircutTitle, familyAllowed, plainHaircutTitle, plainKidsTitle, structuralGuide } from './familyKeywords.js';
+import { familyAllowed, structuralGuide } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -344,21 +344,6 @@ function serviceOfKey(d: WebsiteData, key: string): Svc | null {
 
 function subjectFor(env: CopyEnv, kind: NonNullable<Block['subject']>): Svc | null {
   const all = titledServices(env.d);
-  if (serviceTextOn(env.d)) {
-    // Review 6g: on a web-created site with service guides on a price, a time or "kids" is attributed ONLY to a service that is exactly
-    // what the question says: one plain haircut (generic word + who it is for), one kids' cut. Two candidates, a combo, a membership, a
-    // named cut, a fade or anything else answers nothing. A time is never borrowed from another service.
-    // Several candidates: the single unqualified one wins ("Haircut" beside "Senior Haircut", "Kids Haircut" beside "Kids Fade"); otherwise none.
-    if (kind === 'kids') {
-      const k = all.filter((s) => s.guide === 'kids-cut');
-      const pk = k.filter((s) => plainKidsTitle(s.title));
-      return k.length === 1 ? k[0] : pk.length === 1 ? pk[0] : null;
-    }
-    const plainOnes = all.filter((s) => s.guide === 'haircut' && plainHaircutTitle(s.title));
-    const bare = plainOnes.filter((s) => bareHaircutTitle(s.title));
-    const one = plainOnes.length === 1 ? plainOnes[0] : bare.length === 1 ? bare[0] : null;
-    return one && (kind === 'haircut' ? one.price : one.duration) ? one : null;
-  }
   if (kind === 'haircut') return all.find((s) => !!s.guide && PRICE_TYPE.has(s.guide) && s.price) ?? null;
   if (kind === 'kids') return all.find((s) => s.guide === 'kids-cut') ?? null;
   return all.find((s) => !!s.guide && PRICE_TYPE.has(s.guide) && s.duration) ?? all.find((s) => s.duration) ?? null;
@@ -533,6 +518,8 @@ export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = nu
     if (fam && key.length <= SVC_KEY_MAX + 12) e = { block: SERVICE_ALT[fam], allow: [...GUIDES[fam].allow], scope: fam, kind: 'service', strict: true };
   }
   if (!e) return null;
+  // Web-created pages-v2 sites have no FAQ (2026-11-05): no FAQ block resolves, so no FAQ question, price or time answer can ever be printed or suggested.
+  if (/^faq\./.test(key) && hasPagesV2(env.d) && isWebCreated(env.d)) return null;
   if (e.special) return null; // a line of a block, not a block (copyDefault / howOftenRows serve it)
   const { block } = e;
   // The barber's own question (`<page>.<id>.q`), when they wrote one.
@@ -682,7 +669,6 @@ export interface AiPage {
   heading: string | null;
   intro: string[];
   sections: { h: string; p: string[] }[];
-  faq: { q: string; a: string[] }[];
   /** One resolved, linted sentence; the caller still applies the seo description validator. */
   metaDescription: string | null;
   metaTitle: string | null;
@@ -726,7 +712,6 @@ export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
     return {
       own: true, heading: e.heading ?? null, intro: paras(e.intro),
       sections: e.sections.map((x) => ({ h: x.h, p: paras(x.p) })),
-      faq: e.faq.map((x) => ({ q: x.q, a: paras(x.a) })),
       metaDescription: e.metaDescription ?? null, metaTitle: e.metaTitle ?? null,
     };
   }
@@ -746,13 +731,11 @@ export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
   const intro = para(e.intro);
   const sections: AiPage['sections'] = [];
   for (const x of e.sections) { const h = line(x.h); const p = para(x.p); if (h !== null && p.length) sections.push({ h, p }); }
-  const faq: AiPage['faq'] = [];
-  for (const x of e.faq) { const q = line(x.q, 'question'); const a = para(x.a); if (q !== null && a.length) faq.push({ q, a }); }
   if (!intro.length || count < MIN_SENTENCES) return null;
   const md = e.metaDescription ? lintParagraph(e.metaDescription, allow) : null;
   const metaSents = md && md.written === 1 && md.kept === 1 ? resolveAiSentences(env, md.text, allow, subject) : [];
   return {
-    own: false, heading: e.heading ? line(e.heading) : null, intro, sections, faq,
+    own: false, heading: e.heading ? line(e.heading) : null, intro, sections,
     metaDescription: metaSents.length === 1 ? metaSents[0] : null,
     metaTitle: e.metaTitle && !lintLine(e.metaTitle, allow).length ? (() => { const g = resolveSentence(env, e.metaTitle!, allow, subject, true); return g ? segsText(g) : null; })() : null,
   };

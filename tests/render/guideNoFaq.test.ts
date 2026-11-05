@@ -32,9 +32,16 @@ describe('no new FAQ content from guides', () => {
       expect(g.html, g.path).not.toMatch(/<h[1-6][^>]*>[^<]*\?<\/h[1-6]>/);
     }
   });
-  it('with the existing FAQ page on, it is the same page as before and the guides still add none of their own', () => {
+  it('with faq in extraPages.on a web site still gets no FAQ page and no /faq/ link; an iOS site keeps its FAQ page', () => {
     const b = renderSiteBundle(site(['faq', 'first-visit']), { siteBaseUrl: 'https://fresh.example.com' });
-    expect(b.pages.filter((p) => /faq/i.test(p.path))).toHaveLength(1);
-    for (const g of b.pages.filter((p) => p.path.startsWith('guides/'))) expect(/<main[\s\S]*<\/main>/.exec(g.html)![0], g.path).not.toMatch(/faq/i);
+    expect(b.pages.filter((p) => /faq/i.test(p.path))).toHaveLength(0);
+    expect(b.pages.some((p) => p.html.includes('/faq/'))).toBe(false);
+    const ios = renderSiteBundle({ ...site(['faq', 'first-visit']), source: 'ios' } as WebsiteData, { siteBaseUrl: 'https://fresh.example.com' });
+    expect(ios.pages.map((p) => p.path)).toContain('faq/index.html');
+  });
+  it('no service page prints a Q&A block: an AI text entry that still carries a faq array is refused whole, never printed', () => {
+    const d = { ...site([]), extraPages: { on: [], serviceGuides: true, seed: 7, svcCopy: { 'scalp ritual': { v: 1, aiGenerated: false, intro: 'My own words about the ritual.', sections: [], faq: [{ q: 'Why?', a: 'Because.' }] } } }, services: [svc('Scalp Ritual'), svc('Haircut'), svc('Skin Fade')] } as unknown as WebsiteData;
+    const b = renderSiteBundle(d, { siteBaseUrl: 'https://fresh.example.com' });
+    expect(b.pages.find((p) => p.path === 'services/scalp-ritual/index.html')!.html).not.toContain('Because.');
   });
 });

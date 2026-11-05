@@ -16,7 +16,6 @@ import { copyProblems, type VocabGroup } from './copyRules.js';
 import { denyProblems, type DenyKind } from './svcDeny.js';
 
 export interface SvcSection { h: string; p: string }
-export interface SvcFaq { q: string; a: string }
 export interface SvcCopyEntry {
   v: 1;
   /** true until the barber edits the text (the editor badge reads this; an edit sets it false and the text is then the barber's own). */
@@ -24,7 +23,6 @@ export interface SvcCopyEntry {
   heading?: string;
   intro: string;
   sections: SvcSection[];
-  faq: SvcFaq[];
   metaTitle?: string;
   metaDescription?: string;
   /** ISO time the text was written (display only). */
@@ -50,15 +48,15 @@ export interface SvcCopyEntry {
 }
 
 export const LIMITS = {
-  heading: 80, intro: 800, sectionH: 80, sectionP: 700, faqQ: 120, faqA: 400, metaTitle: 60, metaDescription: 160,
-  sectionsMax: 4, faqMax: 4, total: 6000, keys: 12,
+  heading: 80, intro: 800, sectionH: 80, sectionP: 700, metaTitle: 60, metaDescription: 160,
+  sectionsMax: 4, total: 6000, keys: 12,
 } as const;
 /** Fewest sentences that must survive the lint for an entry to be kept (and printed). */
 export const MIN_SENTENCES = 4;
 /** Share of the written sentences that must survive. */
 export const MIN_SURVIVAL = 0.5;
 
-const KEYS = new Set(['v', 'aiGenerated', 'heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription', 'at', 'approval', 'approvalSig', 'approvalScope', 'approvalRef', 'approvalAt']);
+const KEYS = new Set(['v', 'aiGenerated', 'heading', 'intro', 'sections', 'metaTitle', 'metaDescription', 'at', 'approval', 'approvalSig', 'approvalScope', 'approvalRef', 'approvalAt']);
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 // ── plain text only ─────────────────────────────────────────────────────────────────────────────
@@ -192,25 +190,19 @@ export function checkEntryShape(raw: unknown): { ok: true; entry: SvcCopyEntry }
   if (hasSigField && (raw.aiGenerated !== true || !own(raw, 'approval') || typeof raw.approvalSig !== 'string' || !/^[0-9a-f]{64}$/.test(raw.approvalSig) || typeof raw.approvalScope !== 'string' || !/^[0-9a-f]{32}$/.test(raw.approvalScope)
     || typeof raw.approvalRef !== 'string' || !/^[ds]:[A-Za-z0-9._-]{1,100}$/.test(raw.approvalRef) || typeof raw.approvalAt !== 'number' || !Number.isSafeInteger(raw.approvalAt) || raw.approvalAt < 0)) return { ok: false, reason: 'approval signature' };
   if (!Array.isArray(raw.sections) || raw.sections.length > LIMITS.sectionsMax) return { ok: false, reason: 'sections' };
-  if (!Array.isArray(raw.faq) || raw.faq.length > LIMITS.faqMax) return { ok: false, reason: 'faq' };
   const sections: SvcSection[] = [];
   for (const s of raw.sections) {
     if (!isObj(s) || Object.keys(s).some((k) => k !== 'h' && k !== 'p') || !str(s.h, LIMITS.sectionH) || !str(s.p, LIMITS.sectionP)) return { ok: false, reason: 'section' };
     sections.push({ h: s.h, p: s.p });
   }
-  const faq: SvcFaq[] = [];
-  for (const f of raw.faq) {
-    if (!isObj(f) || Object.keys(f).some((k) => k !== 'q' && k !== 'a') || !str(f.q, LIMITS.faqQ) || !str(f.a, LIMITS.faqA)) return { ok: false, reason: 'faq item' };
-    faq.push({ q: f.q, a: f.a });
-  }
-  const entry: SvcCopyEntry = { v: 1, aiGenerated: raw.aiGenerated, intro: raw.intro, sections, faq };
+  const entry: SvcCopyEntry = { v: 1, aiGenerated: raw.aiGenerated, intro: raw.intro, sections };
   if (own(raw, 'heading')) entry.heading = raw.heading as string;
   if (own(raw, 'metaTitle')) entry.metaTitle = raw.metaTitle as string;
   if (own(raw, 'metaDescription')) entry.metaDescription = raw.metaDescription as string;
   if (own(raw, 'at')) entry.at = raw.at as string;
   if (own(raw, 'approval')) entry.approval = raw.approval as 'owner' | 'auto';
   if (own(raw, 'approvalSig')) { entry.approvalSig = raw.approvalSig as string; entry.approvalScope = raw.approvalScope as string; entry.approvalRef = raw.approvalRef as string; entry.approvalAt = raw.approvalAt as number; }
-  const total = [entry.heading, entry.intro, entry.metaTitle, entry.metaDescription, ...sections.flatMap((s) => [s.h, s.p]), ...faq.flatMap((f) => [f.q, f.a])]
+  const total = [entry.heading, entry.intro, entry.metaTitle, entry.metaDescription, ...sections.flatMap((s) => [s.h, s.p])]
     .reduce((n, t) => n + (t ? Array.from(t).length : 0), 0);
   if (total > LIMITS.total) return { ok: false, reason: 'total length' };
   return { ok: true, entry };
@@ -220,12 +212,11 @@ export function checkEntryShape(raw: unknown): { ok: true; entry: SvcCopyEntry }
 export const MODEL_OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription'],
+  required: ['heading', 'intro', 'sections', 'metaTitle', 'metaDescription'],
   properties: {
     heading: { type: 'string' },
     intro: { type: 'string' },
     sections: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['h', 'p'], properties: { h: { type: 'string' }, p: { type: 'string' } } } },
-    faq: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['q', 'a'], properties: { q: { type: 'string' }, a: { type: 'string' } } } },
     metaTitle: { type: 'string' },
     metaDescription: { type: 'string' },
   },
@@ -234,10 +225,10 @@ export const MODEL_OUTPUT_SCHEMA = {
 /** Model output (parsed JSON) -> the strict candidate entry, or a reason. Empty meta strings count as omitted. */
 export function candidateFromModel(raw: unknown): { ok: true; entry: SvcCopyEntry } | { ok: false; reason: string } {
   if (!isObj(raw)) return { ok: false, reason: 'not an object' };
-  const need = ['heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription'];
+  const need = ['heading', 'intro', 'sections', 'metaTitle', 'metaDescription'];
   for (const k of Object.keys(raw)) if (!need.includes(k)) return { ok: false, reason: `unknown key ${k.slice(0, 20)}` };
   for (const k of need) if (!own(raw, k)) return { ok: false, reason: `missing ${k}` };
-  const o: Record<string, unknown> = { v: 1, aiGenerated: true, intro: raw.intro, sections: raw.sections, faq: raw.faq };
+  const o: Record<string, unknown> = { v: 1, aiGenerated: true, intro: raw.intro, sections: raw.sections };
   for (const k of ['heading', 'metaTitle', 'metaDescription'] as const) {
     // The meta fields are optional extras: one that is empty, not text or over its cap is left out, it never sinks the text.
     if (typeof raw[k] !== 'string' || raw[k] === '' || Array.from(raw[k] as string).length > (k === 'heading' ? LIMITS.heading : k === 'metaTitle' ? LIMITS.metaTitle : LIMITS.metaDescription)) continue;
@@ -267,14 +258,7 @@ export function lintEntry(e: SvcCopyEntry, allow: readonly VocabGroup[], cleared
     written += r.written; problems.push(...r.problems);
     if (h !== null && r.text) { sections.push({ h, p: r.text }); kept += r.kept; }
   }
-  const faq: SvcFaq[] = [];
-  for (const f of e.faq) {
-    const q = line(f.q, 'question');
-    const r = lintParagraph(f.a, allow, cleared);
-    written += r.written; problems.push(...r.problems);
-    if (q !== null && r.text) { faq.push({ q, a: r.text }); kept += r.kept; }
-  }
-  const out: SvcCopyEntry = { v: 1, aiGenerated: true, intro, sections, faq };
+  const out: SvcCopyEntry = { v: 1, aiGenerated: true, intro, sections };
   const heading = e.heading ? line(e.heading, 'heading') : null;
   if (heading) out.heading = heading;
   // The meta fields get the honesty lint here; the seo validator (60 / 160, plain, no emoji) is applied by the caller.
@@ -299,7 +283,6 @@ export function entryTexts(e: SvcCopyEntry): { text: string; kind: DenyKind }[] 
   add(e.heading, 'heading');
   paras(e.intro);
   for (const s of e.sections) { add(s.h, 'heading'); paras(s.p); }
-  for (const f of e.faq) { add(f.q, 'question'); paras(f.a); }
   add(e.metaTitle, 'heading');
   if (e.metaDescription) paras(e.metaDescription);
   return out;

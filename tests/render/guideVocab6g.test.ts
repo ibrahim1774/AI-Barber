@@ -1,5 +1,5 @@
 // Review 6g: on a web-created pages-v2 site with service guides ON, the guide of every service title, the FAQ subject and the price / time
-// attribution come ONLY from the closed all-token vocabulary (familyKeywords.ts structuralGuide / plainHaircutTitle). This file is
+// attribution come ONLY from the closed all-token vocabulary (familyKeywords.ts structuralGuide); web-created sites have no FAQ at all. This file is
 //   1. the MATRIX: >= 300 titles through the REAL renderer (renderSiteBundle), each with its exact expected guide (or none), page robots and FAQ;
 //   2. the SENTENCE-TRUTH table: for every guide, every title the vocabulary can build satisfies a per-guide truth predicate;
 //   3. the vocabulary audit and property tests (an unknown word anywhere makes a title none);
@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { GUIDES, SERVICE_ALT } from '../../lib/render/copyLibrary';
 import { GUIDE_IDS, type GuideId } from '../../lib/render/copyRules';
-import { FAMILY_VETO, FAMILY_VOCAB, bareHaircutTitle, familyCandidates, nonServiceTitle, plainHaircutTitle, plainKidsTitle, structuralGuide } from '../../lib/render/familyKeywords';
+import { FAMILY_VETO, FAMILY_VOCAB, familyCandidates, nonServiceTitle, structuralGuide } from '../../lib/render/familyKeywords';
 import { blockText, guideForTitle, guideIdForTitle, lenientEnv, resolveBlock, svcTitleKey } from '../../lib/render/guides';
 import { renderSiteBundle } from '../../lib/render/site';
 import { baselineAvailable, loadBaseline } from './helpers/iosBaseline';
@@ -80,15 +80,6 @@ const NEGATIVE: [string, null][] = [
     'Hard Part Membership', 'Beard Cleanup Kit', 'Royal Haircut', 'Line Up & Beard', 'Teen Beard Trim', 'Kids Line Up', 'Shave and Hot Towel Package', 'Under Cut Clippers'),
 ];
 const MATRIX: [string, GuideId | null][] = [...POSITIVE, ...NEGATIVE];
-const PLAIN = new Set(['Haircut', "Men's Haircut", 'Mens Haircut', 'Adult Haircut', 'Regular Haircut', 'Classic Haircut', 'Standard Haircut', 'Senior Haircut', "Women's Haircut", 'Ladies Haircut', 'Hair Cut', 'Cut', 'Haircut for Men', "Gentlemen's Haircut", 'Basic Haircut',
-  'Haircuts', "Men's Haircuts", 'Hair Cuts', 'Haircut Only', 'Cut Only', 'Gents Haircut', "Gent's Cut", 'Haircut (Men)', 'Adult Haircut (13+)', 'Senior Haircut (65+)']);
-/** Plain AND unqualified: the generic word only. When several plain haircuts are listed, exactly one of these wins the FAQ price/time. */
-const BARE = new Set(['Haircut', 'Hair Cut', 'Cut', 'Haircuts', 'Hair Cuts']);
-/** A kids' cut that is only an age word and the generic words. When several kids' cuts are listed, exactly one of these wins the kids answer. */
-const PLAIN_KIDS_SET = new Set(['Kids Haircut', 'Kids Cut', "Kid's Haircut", "Kids' Haircut", "Children's Haircut", 'Childrens Haircut', 'Children Haircut', 'Child Haircut', "Child's Haircut", 'Boys Haircut', "Boy's Haircut", 'Boys Cut', 'Girls Haircut',
-  'Junior Haircut', 'Juniors Haircut', 'Toddler Haircut', 'Kids Hair Cut', 'Haircut for Kids', 'Haircut for Children', 'Kids Haircut (Under 12)', 'Kids Haircut 12 & Under', 'Kids Haircut (Ages 5-12)', 'Little Kids Cut', 'Childs Haircut']);
-const KIDS = new Set(POSITIVE.filter(([, g]) => g === 'kids-cut').map(([t]) => t));
-
 // ── Rendering helpers (the real renderer) ──────────────────────────────────────────────────────────
 type Svc = { title: string; price?: string; duration?: string };
 const siteWith = (services: Svc[], opts: { source?: string | null; guides?: boolean; family?: Record<string, GuideId> } = {}): WebsiteData => ({
@@ -119,7 +110,6 @@ for (const g of GUIDE_IDS) {
 const guidesOnPage = (text: string): GuideId[] => GUIDE_IDS.filter((g) => UNIQUE[g].some((s) => text.includes(s)));
 
 const serviceHtml = (b: ReturnType<typeof render>): string => b.pages.filter((p) => /^services\/[^/]+\/index\.html$/.test(p.path)).map((p) => p.html).join('\n');
-const faqText = (b: ReturnType<typeof render>): string => decode(b.pages.find((p) => p.path === 'faq/index.html')?.html ?? '');
 const faqBlock = (d: WebsiteData, id: 'price' | 'length' | 'kids'): string | null => { const r = resolveBlock(lenientEnv(d, { ignoreCopy: true }), `faq.${id}`); return r ? blockText(r) : null; };
 
 describe('the matrix has the size and shape the review asked for', () => {
@@ -151,43 +141,20 @@ describe('MATRIX through the real renderer: every title gets exactly the expecte
         expect(shown, 'no guide sentence on the page').toEqual([]);
         expect(html).toContain('name="robots" content="noindex');
       }
-      // FAQ: the plain-haircut price / time only for a plain haircut, with its own number; the kids answer only for a kids' cut.
-      const faq = faqText(b);
-      const price = faqBlock(d, 'price'), len = faqBlock(d, 'length'), kids = faqBlock(d, 'kids');
-      if (PLAIN.has(title)) {
-        expect(price, 'price answer').toContain('$10'); expect(price).toContain(title);
-        expect(len).toContain('20 min'); expect(faq).toContain('How much is a haircut?');
-      } else {
-        expect(price, 'no price answer').toBeNull(); expect(len, 'no time answer').toBeNull(); expect(faq).not.toContain('How much is a haircut?'); expect(faq).not.toContain('How long does a visit take?');
-      }
-      if (KIDS.has(title)) { expect(kids).toContain('$10'); expect(kids).toContain(title); } else expect(kids, 'no kids answer').toBeNull();
     });
   }
 });
 
-describe('FAQ attribution: never one service\'s price or time given to another service or to a generic category', () => {
-  for (const [title, expected] of MATRIX) {
-    if (title === 'Haircut') continue;
-    it(`${JSON.stringify(title)} $10 listed before Haircut $35 / Kids Haircut $20`, () => {
-      const d = siteWith([{ title, price: '$10', duration: '20 min' }, { title: 'Haircut', price: '$35', duration: '30 min' }, { title: 'Kids Haircut', price: '$20' }], { family: familyFor([title], expected ?? 'haircut') });
-      const price = faqBlock(d, 'price'), len = faqBlock(d, 'length'), kids = faqBlock(d, 'kids');
-      if (BARE.has(title)) { expect(price, 'two unqualified plain haircuts: no answer').toBeNull(); expect(len).toBeNull(); } else {
-        expect(price).toContain('$35'); expect(price).toContain('Haircut'); expect(price).not.toContain('$10'); expect(price).not.toContain(title);
-        expect(len).toContain('30 min'); expect(len).not.toContain('20 min');
-      }
-      // Several kids' cuts: only a single plain kids' cut ("Kids Haircut") may answer; beside a second plain one there is no answer.
-      if (PLAIN_KIDS_SET.has(title)) expect(kids, 'two plain kids cuts: no answer').toBeNull();
-      else if (KIDS.has(title)) { expect(kids, 'the one plain kids cut wins').toContain('$20'); expect(kids).toContain('Kids Haircut'); expect(kids).not.toContain('$10'); }
-      else { expect(kids).toContain('$20'); expect(kids).not.toContain('$10'); }
-    });
-  }
-  it('a plain haircut with no price answers nothing for the price and no time answer; its time is its own', () => {
-    expect(faqBlock(siteWith([{ title: 'Haircut', duration: '30 min' }]), 'price')).toBeNull();
-    expect(faqBlock(siteWith([{ title: 'Haircut', duration: '30 min' }]), 'length')).toContain('30 min');
-    expect(faqBlock(siteWith([{ title: 'Haircut', price: '$30' }]), 'length')).toBeNull();
-  });
-  it('no time is borrowed from another service (the old "first service with a time" fallback is gone on a gated site)', () => {
-    expect(faqBlock(siteWith([{ title: 'Beard Trim', duration: '15 min' }, { title: 'Skin Fade', duration: '25 min' }]), 'length')).toBeNull();
+describe('web-created gated sites have no FAQ at all (guides on AND off), whatever the title', () => {
+  it('for every matrix title: faq.price / faq.length / faq.kids are null, no faq/index.html and no /faq/ href, even with extraPages.on including faq', () => {
+    for (const [title, expected] of MATRIX) for (const guides of [true, false]) {
+      const d = siteWith([{ title, price: '$10', duration: '20 min' }, { title: 'Haircut', price: '$35', duration: '30 min' }, { title: 'Kids Haircut', price: '$20' }], { guides, family: familyFor([title], expected ?? 'haircut') });
+      expect((d.extraPages as unknown as { on: string[] }).on).toContain('faq');
+      for (const id of ['price', 'length', 'kids'] as const) expect(faqBlock(d, id), `${title} ${guides} ${id}`).toBeNull();
+      const b = render(d);
+      expect(b.pages.map((p) => p.path), `${title} ${guides}`).not.toContain('faq/index.html');
+      for (const p of b.pages) expect(p.html.includes('/faq/'), `${title} ${guides} ${p.path} has a /faq/ href`).toBe(false);
+    }
   });
 });
 
@@ -362,56 +329,57 @@ describe('PROPERTY: one unknown word anywhere makes a title none', () => {
     expect(structuralGuide('x'.repeat(5000))).toBeNull();
     expect(structuralGuide(undefined)).toBeNull(); expect(structuralGuide(42)).toBeNull(); expect(structuralGuide({})).toBeNull();
   });
-  it('plainHaircutTitle is true only for the generic words and who it is for', () => {
-    for (const t of PLAIN) expect(plainHaircutTitle(t), t).toBe(true);
-    for (const [t] of MATRIX) if (!PLAIN.has(t)) expect(plainHaircutTitle(t), t).toBe(false);
-  });
   it('familyCandidates is the same closed matcher: at most one guide, never for a none title', () => {
     for (const [t, g] of MATRIX) expect(familyCandidates(t), t).toEqual(g ? [g] : []);
   });
 });
 
-// ── 4. Parity: everything outside the gate is exactly origin/main 08186dc ──────────────────────────
-describe('PARITY: web-created sites with service guides OFF, iOS and legacy sites keep main\'s guides and FAQ exactly', () => {
+// ── 4. Parity: everything outside the gate is exactly origin/main 08186dc (web has no FAQ) ───────────
+describe('PARITY: web-created sites with service guides OFF keep main\'s guides; iOS and legacy sites keep main\'s guides and FAQ exactly', () => {
   const CONFIGS: Array<[string, { source: string | null; guides: boolean }]> = [['web guides off', { source: 'web-app', guides: false }], ['ios guides on', { source: 'ios', guides: true }], ['ios guides off', { source: 'ios', guides: false }], ['legacy guides on', { source: null, guides: true }]];
   for (const [label, cfg] of CONFIGS) {
-    it(`${label}: the guide of every matrix title is the library pattern's, and the FAQ follows main's rule`, () => {
+    it(`${label}: the guide of every matrix title is the library pattern's, and the FAQ ${cfg.source === 'web-app' ? 'is gone' : 'follows main\'s rule'}`, () => {
       const PT = new Set(['fade', 'taper', 'haircut']);
       for (const [t] of MATRIX) {
         const d = siteWith([{ title: t, price: '$10', duration: '20 min' }, { title: 'Haircut', price: '$35', duration: '30 min' }], { ...cfg, family: familyFor([t], 'haircut') });
         expect(guideForTitle(d, t), t).toBe(guideIdForTitle(t));
+        const price = faqBlock(d, 'price');
+        if (cfg.source === 'web-app') { expect(price, t).toBeNull(); continue; }
         // main's rule: the first service whose library guide is fade / taper / haircut and that has a price
         const svc = [{ t, price: '$10' }, { t: 'Haircut', price: '$35' }];
         const hit = svc.find((s) => { const g = guideIdForTitle(s.t); return !!g && PT.has(g) && s.price; });
-        const price = faqBlock(d, 'price');
         if (hit) { expect(price, t).toContain(hit.price); expect(price).toContain(hit.t); } else expect(price, t).toBeNull();
       }
     });
   }
-  it.skipIf(!baselineAvailable())('web guides OFF and iOS: the guide-bearing pages (FAQ, hair care, beard care, services, service pages) render exactly as origin/main 08186dc did (body, all matrix titles)', async () => {
+  it.skipIf(!baselineAvailable())('iOS: faq, hair care, beard care, services, service pages render byte-identically to origin/main 08186dc; web guides OFF: the same pages minus the guides line, Guides link and FAQ entries, and no faq page', async () => {
     const base = await loadBaseline();
     const body = (h: string): string => (/<body[^>]*>([^]*)<\/body>/.exec(h)?.[1] ?? h).replace(/<script[^>]*>[^]*?<\/script>/g, '').replace(/published-at" content="\d+"/, '');
     const PAGES = /^(?:faq|hair-care|beard-care|services)\//;
+    const FAQ_LI = '<li><a href="/faq/">FAQ</a></li>';
     let compared = 0;
     for (const [t] of MATRIX) {
       for (const cfg of [{ source: 'web-app', guides: false }, { source: 'ios', guides: true }]) {
+        const web = cfg.source === 'web-app';
         const d = siteWith([{ title: t, price: '$10', duration: '20 min' }, { title: 'Haircut', price: '$35', duration: '30 min' }, { title: 'Kids Haircut', price: '$20' }], cfg);
         const a = (base as unknown as { renderSiteBundle: typeof renderSiteBundle }).renderSiteBundle(JSON.parse(JSON.stringify(d)), { siteBaseUrl: 'https://fresh.example.com' });
         const b = render(d);
+        if (web) { expect(b.pages.map((x) => x.path), `${t} web has no faq page`).not.toContain('faq/index.html'); for (const x of b.pages) expect(x.html.includes('/faq/'), `${t} ${x.path} web /faq/ href`).toBe(false); }
         for (const p of a.pages.filter((x: { path: string }) => PAGES.test(x.path))) {
+          if (web && p.path === 'faq/index.html') continue; // removed on web by decision
           const q = b.pages.find((x) => x.path === p.path);
           expect(q, `${t} ${cfg.source} ${p.path} exists`).toBeDefined();
-          // Step 8 LIVE IMPACT (pinned, not loosened): a web-created site now also gets guide pages when it is under 21 pages, whatever its serviceGuides flag
-          // says, so the Services page carries ONE line linking to the hub and every footer one `Guides` link. Those two exact strings are removed from the
-          // web output before comparing, and must be there (literal check) so a missing or changed one fails here. iOS output is compared untouched.
-          let html = q!.html;
-          if (cfg.source === 'web-app') {
+          // A web-created site also gets guide pages: ONE line on the Services page and a footer `Guides` link. Those exact strings are removed from
+          // the web output before comparing, and must be there (literal check). The baseline's FAQ menu/footer entries are removed on web only. iOS is untouched.
+          let html = q!.html, baseHtml = p.html;
+          if (web) {
             const line = /<p class="ab-muted" data-guides-line>[^<]*<a href="\/guides\/">Hair and grooming guides<\/a><\/p>/;
             expect(html.includes('<li><a href="/guides/">Guides</a></li>'), `${t} footer link`).toBe(true);
             expect(line.test(html) ? p.path === 'services/index.html' : p.path !== 'services/index.html', `${t} ${p.path} services line only on Services`).toBe(true);
             html = html.replace(line, '').replace('<li><a href="/guides/">Guides</a></li>', '');
+            baseHtml = baseHtml.split(FAQ_LI).join('').replace(/<li class="ab-more-flat"><a href="\/faq\/">FAQ<\/a><\/li>/g, '');
           } else expect(html.includes('/guides/'), `${t} ios has no guide link`).toBe(false);
-          expect(body(html), `${t} ${cfg.source} ${p.path}`).toBe(body(p.html)); compared++;
+          expect(body(html), `${t} ${cfg.source} ${p.path}`).toBe(body(baseHtml)); compared++;
         }
       }
     }
@@ -419,9 +387,7 @@ describe('PARITY: web-created sites with service guides OFF, iOS and legacy site
   });
 });
 
-// ── 5. Review 6g follow-ups (6h): NITs and the pinned live behaviour ─────────────────────────────────
-const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, open: '09:00', close: '17:00' }));
-
+// ── 5. Review 6g follow-ups (6h) ───────────────────────────────────────────────────────────────────
 describe('6h NIT 1: a joiner inside a core ("high AND tight") is not a second joiner (mutant "exactly one joiner token" is killed)', () => {
   it('High and Tight combos with a beard are cut-beard in either order; two real joiners are still none', () => {
     for (const t of ['High and Tight & Beard', 'Beard & High and Tight', 'High & Tight and Beard Trim', 'Beard Trim with High and Tight', 'High and Tight + Beard']) expect(structuralGuide(t), t).toBe('cut-beard');
@@ -430,79 +396,36 @@ describe('6h NIT 1: a joiner inside a core ("high AND tight") is not a second jo
   });
 });
 
-describe('6h NIT 2/5: the single unqualified plain haircut / plain kids\' cut wins when several are listed; otherwise no answer', () => {
-  const sv = (...titles: Array<[string, string]>): Svc[] => titles.map(([title, price]) => ({ title, price, duration: '30 min' }));
-  it('"Haircut" beside "Senior Haircut" (either order) answers with the Haircut\'s own price and time; "Men\'s Haircut" beside "Women\'s Haircut" answers nothing', () => {
-    for (const list of [sv(['Haircut', '$35'], ['Senior Haircut', '$20']), sv(['Senior Haircut', '$20'], ['Haircut', '$35'])]) {
-      const d = siteWith(list);
-      expect(faqBlock(d, 'price')).toContain('$35'); expect(faqBlock(d, 'price')).not.toContain('$20'); expect(faqBlock(d, 'length')).toContain('30 min');
-    }
-    expect(faqBlock(siteWith(sv(["Men's Haircut", '$30'], ["Women's Haircut", '$40'])), 'price')).toBeNull();
-    expect(faqBlock(siteWith(sv(['Haircut', '$30'], ['Hair Cut', '$40'])), 'price'), 'two unqualified').toBeNull();
-    expect(faqBlock(siteWith(sv(['Haircut', '$30'], ['Haircut (Under 12)', '$20'])), 'price'), 'a qualifier is not "unqualified"').toContain('$30');
-  });
-  it('plurals: a shop whose only cut is "Haircuts" or "Men\'s Haircuts" gets the price answer, with its own price', () => {
-    expect(faqBlock(siteWith(sv(['Haircuts', '$25'])), 'price')).toContain('$25');
-    expect(faqBlock(siteWith(sv(["Men's Haircuts", '$25'])), 'price')).toContain('$25');
-    expect(bareHaircutTitle('Haircuts')).toBe(true); expect(bareHaircutTitle('Haircut (Men)')).toBe(false); expect(bareHaircutTitle("Men's Haircut")).toBe(false);
-  });
-  it('kids: "Kids Haircut" beside "Kids Fade" / "Toddler Cut" answers with the Kids Haircut; two plain kids\' cuts answer nothing', () => {
-    expect(faqBlock(siteWith(sv(['Kids Haircut', '$20'], ['Kids Fade', '$25'])), 'kids')).toContain('$20');
-    expect(faqBlock(siteWith(sv(['Kids Fade', '$25'], ['Kids Haircut', '$20'], ['Boys Taper', '$15'])), 'kids')).toContain('$20');
-    expect(faqBlock(siteWith(sv(['Kids Haircut', '$20'], ['Boys Haircut', '$22'])), 'kids')).toBeNull();
-    expect(faqBlock(siteWith(sv(['Kids Fade', '$25'], ['Boys Taper', '$15'])), 'kids'), 'no plain kids cut').toBeNull();
-    expect(plainKidsTitle('Kids Haircut')).toBe(true); expect(plainKidsTitle('Kids Fade')).toBe(false); expect(plainKidsTitle('Toddler Mohawk')).toBe(false);
-  });
-});
-
-describe('6h NIT 3 (pinned): a sole plain haircut that names an audience still answers, and the answer names that service', () => {
-  it('"Senior Haircut" alone: the answer says "Senior Haircut" with its own price (true, if loose)', () => {
-    for (const t of ['Senior Haircut', 'Ladies Haircut', 'Haircut for Women']) {
-      const a = faqBlock(siteWith([{ title: t, price: '$18' }]), 'price');
-      expect(a, t).toContain(t); expect(a).toContain('$18');
-    }
-  });
-});
-
-describe('6h NIT 4 (pinned): the FAQ page floor on a gated site with no plain haircut', () => {
-  const menu: Svc[] = [{ title: 'Skin Fade', price: '$25' }, { title: 'Low Taper', price: '$25' }, { title: 'Beard Trim', price: '$15' }];
-  it('a full 7-day week + address + booking link keeps /faq/ without any plain haircut', () => {
-    const d = siteWith(menu); d.hours = WEEK as never;
-    expect(render(d).pages.map((p) => p.path)).toContain('faq/index.html');
-  });
-  it('a one-row hours table, no policy and no plain haircut drops below the 3-question floor and loses /faq/ (pinned, deliberate)', () => {
-    expect(render(siteWith(menu)).pages.map((p) => p.path)).not.toContain('faq/index.html');
-  });
-});
-
-describe('6h NIT 7: iOS and web guides-off keep main\'s duration fallback when the menu has no fade, taper or haircut', () => {
-  for (const [label, cfg] of [['ios', { source: 'ios' }], ['web guides off', { source: 'web-app', guides: false }]] as const) {
-    for (const menu of [[{ title: 'Beard Trim', duration: '15 min' }], [{ title: 'Line Up', duration: '10 min' }, { title: 'Beard Trim', duration: '15 min' }], [{ title: 'Kids Haircut', duration: '20 min' }]]) {
-      it(`${label}: ${menu.map((m) => m.title).join(' + ')} still answers the first listed time (main's fallback)`, () => {
-        const a = faqBlock(siteWith(menu, cfg), 'length');
-        expect(a, 'a time is answered').toContain(`The ${menu[0].title} is listed as ${menu[0].duration}`);
-      });
-    }
+describe('6h NIT 7: iOS keeps main\'s duration fallback when the menu has no fade, taper or haircut; web (guides on or off) has no FAQ answer', () => {
+  for (const menu of [[{ title: 'Beard Trim', duration: '15 min' }], [{ title: 'Line Up', duration: '10 min' }, { title: 'Beard Trim', duration: '15 min' }], [{ title: 'Kids Haircut', duration: '20 min' }]]) {
+    it(`ios: ${menu.map((m) => m.title).join(' + ')} still answers the first listed time (main's fallback)`, () => {
+      expect(faqBlock(siteWith(menu, { source: 'ios' }), 'length'), 'a time is answered').toContain(`The ${menu[0].title} is listed as ${menu[0].duration}`);
+    });
+    it(`web: ${menu.map((m) => m.title).join(' + ')} has no time answer, guides off or on`, () => {
+      expect(faqBlock(siteWith(menu, { source: 'web-app', guides: false }), 'length')).toBeNull();
+      expect(faqBlock(siteWith(menu), 'length')).toBeNull();
+    });
   }
-  it('and the gated web site does not borrow it', () => {
-    expect(faqBlock(siteWith([{ title: 'Beard Trim', duration: '15 min' }]), 'length')).toBeNull();
-  });
 });
 
-describe('6h LIVE IMPACT (pinned): web-created sites with service guides OFF behave exactly like main, including main\'s loose FAQ lines', () => {
-  const off = { source: 'web-app', guides: false } as const;
-  it('guide = library pattern, and the FAQ still quotes the first priced fade/taper/haircut-guide service, whatever it is (main\'s defect, deliberately NOT widened)', () => {
-    for (const t of ['Dog Haircut', 'Clippers', 'Haircut Membership', 'Haircut Gift Card', 'Temple Fade Removal']) {
-      const d = siteWith([{ title: t, price: '$10' }], off);
+describe('6h LIVE IMPACT (pinned): web guides OFF keeps main\'s guide-by-library-pattern, but the FAQ lines are gone; iOS still prints main\'s loose FAQ lines', () => {
+  const titles = ['Dog Haircut', 'Clippers', 'Haircut Membership', 'Haircut Gift Card', 'Temple Fade Removal'];
+  it('web guides off: guide = library pattern, and the FAQ lines (e.g. "The listed price for the Dog Haircut") are absent', () => {
+    for (const t of titles) {
+      const d = siteWith([{ title: t, price: '$10' }], { source: 'web-app', guides: false });
       expect(guideForTitle(d, t), t).toBe(guideIdForTitle(t));
-      expect(faqBlock(d, 'price'), t).toContain(`${t} is $10`.replace(/ is \$10$/, '')); // names the (wrong) service, as main does
+      expect(faqBlock(d, 'price'), t).toBeNull();
+      const text = render(d).pages.map((p) => decode(p.html)).join('\n');
+      expect(text.includes(`The listed price for the ${t}`), t).toBe(false);
     }
-    expect(faqBlock(siteWith([{ title: 'Kids Nails', price: '$10' }], off), 'kids')).toContain('Kids Nails');
+    expect(faqBlock(siteWith([{ title: 'Kids Nails', price: '$10' }], { source: 'web-app', guides: false }), 'kids')).toBeNull();
   });
-  it('the same titles on a gated site (guides ON) get no such answer', () => {
-    for (const t of ['Dog Haircut', 'Clippers', 'Haircut Membership', 'Haircut Gift Card', 'Temple Fade Removal', 'Kids Nails']) {
-      const d = siteWith([{ title: t, price: '$10' }]);
-      expect(faqBlock(d, 'price'), t).toBeNull(); expect(faqBlock(d, 'kids'), t).toBeNull();
+  it('ios: main\'s loose FAQ lines are printed exactly (names the, wrong, service as main does)', () => {
+    for (const t of titles) {
+      const d = siteWith([{ title: t, price: '$10' }], { source: 'ios' });
+      expect(guideForTitle(d, t), t).toBe(guideIdForTitle(t));
+      expect(faqBlock(d, 'price'), t).toContain(t);
     }
+    expect(faqBlock(siteWith([{ title: 'Kids Nails', price: '$10' }], { source: 'ios' }), 'kids')).toContain('Kids Nails');
   });
 });

@@ -194,7 +194,7 @@ describe('rate limits', () => {
     expect(r.model.calls.length).toBe(0); expect(r.store.rows.size).toBe(0);
   });
   it('the retry and the claim check share the request\'s ONE unit: with one unit left a request that needs write + retry + check runs all three; the next request is refused', async () => {
-    const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [], faq: [] };
+    const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [] };
     const r = rig({ model: scriptedModel([JSON.stringify(unusable), JSON.stringify(GOOD_JSON)]) });
     for (let i = 0; i < 14; i++) await r.limits.hit(siteCounterKey(U1, 'draft-1'), 15, DAY_MS, r.clock.t); // one unit left
     const res = await r.call();
@@ -205,7 +205,7 @@ describe('rate limits', () => {
     expect(next.model.calls.length).toBe(0);
   });
   it('a request never makes more than three model calls (write, one retry, one check)', async () => {
-    const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [], faq: [] };
+    const unusable = { ...GOOD_JSON, intro: 'We offer a quick visit. Our team is licensed. Backed by 20 years of experience.', sections: [] };
     const r = rig({ model: scriptedModel([JSON.stringify(unusable)]) });
     await r.call();
     expect(r.model.calls.length + r.model.checks.length).toBeLessThanOrEqual(3);
