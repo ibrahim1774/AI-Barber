@@ -135,8 +135,15 @@ describe('MATRIX through the real renderer: every title gets exactly the expecte
       const shown = guidesOnPage(decode(html));
       if (expected) {
         expect(shown, 'guide sentences on the service page').toEqual([expected]);
-        expect(html).not.toContain('name="robots" content="noindex');
-        expect(b.sitemap ?? '').toContain('/services/');
+        // Ruling 2026-11-05: the guide of a title the library pattern matches stands the page up as indexable; the automatic guide of a custom
+        // title (Mohawk) is shown but the page stays noindex and out of the sitemap, as it is live today.
+        if (guideIdForTitle(title) !== null) {
+          expect(html).not.toContain('name="robots" content="noindex');
+          expect(b.sitemap ?? '').toContain('/services/');
+        } else {
+          expect(html).toContain('name="robots" content="noindex');
+          expect(b.sitemap ?? '').not.toMatch(/\/services\/[^/<]+\//);
+        }
       } else {
         expect(shown, 'no guide sentence on the page').toEqual([]);
         expect(html).toContain('name="robots" content="noindex');

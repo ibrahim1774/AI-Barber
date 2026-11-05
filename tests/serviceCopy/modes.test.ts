@@ -169,7 +169,8 @@ describe('MODE A: the model is only a classifier', () => {
     expect(Object.keys(res.body).sort()).toEqual(['family', 'status', 'titleKey']);
     const d = r.drafts.get(U1).site_data;
     const b = renderSiteBundle({ ...d, extraPages: { ...d.extraPages, svcFamily: { 'mohawk': res.body.family } } }, BASE);
-    expect(b.sitemap).toContain('/services/mohawk/');
+    expect(b.sitemap).not.toContain('/services/mohawk/'); // 2026-11-05 ruling: standard text of a custom service never makes the page indexable
+    expect(b.pages.find((p) => p.path === 'services/mohawk/index.html')?.html).toContain('About this service');
   });
 });
 

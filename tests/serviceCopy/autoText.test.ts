@@ -2,7 +2,7 @@
 // from the library's own reviewed wording (closed all-token vocabulary, guides.ts). No model, no network, no plan prompt is involved.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
-import { guideForTitle, NO_FAMILY, serviceAltFor, serviceGuideFor } from '../../lib/render/guides';
+import { guideForTitle, NO_FAMILY, serviceAltFor, serviceGuideFor, thinServiceIndexes } from '../../lib/render/guides';
 import { svcCopySanitize } from '../../lib/serviceCopy/prune';
 import { serviceCopyWriteMode } from '../../lib/serviceCopy/flags';
 import { liveDeps } from '../../lib/serviceCopy/handler';
@@ -25,23 +25,42 @@ const page = (d: any, slug: string) => (bundle(d).pages.find((p) => p.path === `
 const NOINDEX = '<meta name="robots" content="noindex,follow">';
 
 describe('automatic page text from the closed vocabulary (no model, no click)', () => {
-  it('a custom title made only of reviewed words gets the library wording of its family, indexable and in the sitemap', () => {
+  it('a custom title made only of reviewed words shows the library wording of its family but stays NOT indexable: noindex, no sitemap entry, no JSON-LD (ruling 2026-11-05)', () => {
     const d = shop(['Mohawk']);
     expect(guideForTitle(d, 'Mohawk')).toBe('haircut');
     expect(page(d, 'mohawk')).toContain('About this service');
+    expect(page(d, 'mohawk')).toContain(NOINDEX);
+    expect(bundle(d).sitemap).not.toContain('/services/mohawk/');
+    expect(thinServiceIndexes(d, [0]).has(0)).toBe(true);
+    const ld = (bundle(d).pages[0].html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g) ?? []).join('\n');
+    expect(ld).not.toContain('/services/mohawk');
+    // LIVE IMPACT parity pin: the search output (robots, sitemap, JSON-LD) is the one of a Mohawk page with no standard text at all, i.e. what is live today
+    const bare = shop(['Mohawk'], { svcFamily: { mohawk: 'none' } });
+    expect(bundle(bare).sitemap).toBe(bundle(d).sitemap);
+    expect(bundle(bare).pages[0].html.match(/ld\+json[\s\S]*?<\/script>/g)).toEqual(bundle(d).pages[0].html.match(/ld\+json[\s\S]*?<\/script>/g));
+    expect(page(bare, 'mohawk')).toContain(NOINDEX);
+  });
+  it('the owner\'s OWN text makes the custom service indexable (existing thin rules): a long description, or text typed for the service', () => {
+    const long = { description: 'A tall mohawk with the sides cut short and the centre left long, styled with a little product and finished at the neckline.' };
+    const d = shop(['Mohawk']); (d.services[0] as any).description = long.description;
     expect(page(d, 'mohawk')).not.toContain(NOINDEX);
     expect(bundle(d).sitemap).toContain('/services/mohawk/');
+    const own = { v: 1, aiGenerated: false, intro: 'A mohawk is cut with the sides short. Tell us how tall you want the middle. Bring a photo.', sections: [{ h: 'Care', p: 'Ask how to style it at home. Use a little product.' }] };
+    const o = shop(['Mohawk'], { svcCopy: { mohawk: own } });
+    expect(page(o, 'mohawk')).not.toContain(NOINDEX);
+    expect(bundle(o).sitemap).toContain('/services/mohawk/');
   });
-  it('an automatic Mohawk listed BEFORE Haircut never takes the haircut guide: Haircut stays indexable and in the sitemap, Mohawk gets the alt block', () => {
+  it('a library-matched service (Haircut) stays indexable as now, wherever an automatic Mohawk sits: Mohawk is noindex, Haircut keeps the guide, indexable and in the sitemap', () => {
     for (const order of [['Mohawk', 'Haircut'], ['Haircut', 'Mohawk']]) {
       const d = shop(order);
       expect(page(d, 'haircut'), order.join()).not.toContain(NOINDEX);
       expect(page(d, 'haircut'), order.join()).toContain('About this service');
       expect(bundle(d).sitemap, order.join()).toContain('/services/haircut/');
+      expect(page(d, 'mohawk'), order.join()).toContain(NOINDEX);
+      expect(bundle(d).sitemap, order.join()).not.toContain('/services/mohawk/');
       expect(serviceAltFor(d, [0, 1]).get(order.indexOf('Mohawk')), order.join()).toBe('haircut');
       expect(serviceGuideFor(d, [0, 1]).get(order.indexOf('Haircut')), order.join()).toBe('haircut');
     }
-    expect(page(shop(['Mohawk', 'Haircut']), 'mohawk')).toContain(NOINDEX); // alt block only: thin, as the second of a kind
   });
   it('a title with an unknown word, a title with no family and a vetoed title stay thin and noindex: the neutral stub only', () => {
     for (const [t, slug] of [['Mohawk Zorbo', 'mohawk-zorbo'], ['Scalp Massage', 'scalp-massage'], ['Haircut Gift Card', 'haircut-gift-card'], ['Haircut Membership', 'haircut-membership']] as const) {

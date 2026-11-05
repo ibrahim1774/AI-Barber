@@ -49,7 +49,7 @@ export interface ExtraPagesModel {
   moved?: Record<string, string>;
   /** Dedicated text for services the library has no guide for, keyed by svcTitleKey(title). Written by the web editor from api/web-app/service-copy.ts. Shape: lib/render/svcCopy.ts (SvcCopyEntry). */
   svcCopy?: Record<string, unknown>;
-  /** Which library guide type a custom service's standard text uses, keyed by svcTitleKey(title). Absent = automatic (the type its words imply); a real guide id = the barber's chosen type (only if the title holds a keyword of it); 'none' = no standard text. Written by the web editor, pruned by lib/serviceCopy/prune.ts. */
+  /** Which library guide type a custom service's standard text uses, keyed by svcTitleKey(title). Absent = automatic (the type its words imply); a real guide id = the barber's chosen type (only if the title holds a keyword of it); 'none' = no standard text. The text is shown but never makes a custom service's page indexable (guides.ts thinServiceIndexes). Written by the web editor, pruned by lib/serviceCopy/prune.ts. */
   svcFamily?: Record<string, string>;
   /** Step 8: the guide ids offered, in order (absent = the library order). Read by guidePages.ts only. */
   guidesSel?: string[];

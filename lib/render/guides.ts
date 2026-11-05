@@ -147,7 +147,8 @@ export const THIN_DESCRIPTION_MIN = 80;
  * Service pages that are still thin: no text of their own beyond the price, the time and the template "visit" block, which
  * is the same on every service page and so does not count. A page is NOT thin when it prints at least one of
  *   - the owner's description of THIN_DESCRIPTION_MIN characters or more,
- *   - the library guide for its kind (guide section shown).
+ *   - the library guide for its kind (guide section shown), but only for a title the library pattern itself matches: the standard text of a
+ *     custom service (Mohawk) is shown and does not count.
  * The `alt` block of a later service of a kind does NOT count: it is one of three wordings per kind, so two or more
  * pages of one kind would carry the same text, and a page that only differs by its title is a near-duplicate. A section
  * the barber hid does not count, since it is not printed. (Reviewed AI text joins this list in step 6.)
@@ -166,7 +167,10 @@ export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number
     let unique = shown('description') && plain(services[index]?.description).length >= THIN_DESCRIPTION_MIN;
     if (!unique && shown('guide') && subject) {
       const g = guides.get(index);
-      if (g && guideBlocks(env, g, subject).length > 0) unique = true;
+      // Only a library-matched title's guide is text the page can stand on. The standard text a CUSTOM service gets (automatic or by the
+      // barber's pick, familyFor) is shown but never makes the page indexable: the page stays noindex and out of the sitemap and JSON-LD until
+      // the owner writes text of their own (description or svcCopy). Rule of 2026-11-05: keeps every published site's search output as it was.
+      if (g && guideIdForTitle(subject.title) !== null && guideBlocks(env, g, subject).length > 0) unique = true;
       // Dedicated text of its own (written for the service, step 6) is real text. The lenient env has no place, so this is
       // the least the page prints (a sentence with {place} only adds to it): a page counted here as having text always does.
       if (!unique && aiPageFor(env, subject)) unique = true;

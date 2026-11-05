@@ -51,11 +51,11 @@ const html = (d: WebsiteData, p = 'services/scalp-massage/index.html') => all(d)
 const everything = (d: WebsiteData) => { const b = all(d); return [b.sitemap, ...b.pages.map((p) => p.html)].join('\n'); };
 
 describe('Mode A: a family chosen by the classifier', () => {
-  it('LIVE IMPACT (2026-11-05): with no choice a title made only of reviewed words gets the vocabulary guide automatically; a title with an unknown word stays thin (noindex, not in the sitemap)', () => {
+  it('LIVE IMPACT (2026-11-05, ruling): with no choice a title made only of reviewed words SHOWS the vocabulary guide but stays thin (noindex, not in the sitemap), exactly as live today; a title with an unknown word stays thin too', () => {
     const d = shopA();
-    expect(htmlA(d)).not.toContain(NOINDEX);
+    expect(htmlA(d)).toContain(NOINDEX);
     expect(htmlA(d)).toContain('About this service');
-    expect(all(d).sitemap).toContain('/services/mohawk/');
+    expect(all(d).sitemap).not.toContain('/services/mohawk/');
     expect(htmlA(d)).toBe(htmlA(shopA({ svcFamily: { mohawk: 'haircut' } }))); // same words as an explicit pick of the same type
     const thin = shopA({}, { services: [svc('Skin Fade', { description: 'A close fade with a straight razor finish around the ears and the neckline, booked as one visit.' }), svc('Mohawk Zorbo')] });
     expect(htmlA(thin, 'services/mohawk-zorbo/index.html')).toContain(NOINDEX);
@@ -84,12 +84,12 @@ describe('Mode A: a family chosen by the classifier', () => {
     try { htmlA(shopA()); } finally { vi.unstubAllGlobals(); }
     expect(spy).not.toHaveBeenCalled();
   });
-  it('with a family the page prints the library guide of that family exactly as a built-in service of that kind does, and is indexable', () => {
+  it('with a family the page prints the library guide of that family exactly as a built-in service of that kind does, but a custom service is never indexable on standard text', () => {
     const d = shopA({ svcFamily: { 'mohawk': 'haircut' } });
     const built = htmlA(shopA({}, { services: [svc('Haircut'), svc('Mohawk')] }), 'services/haircut/index.html');
     const page = htmlA(d);
-    expect(page).not.toContain(NOINDEX);
-    expect(all(d).sitemap).toContain('/services/mohawk/');
+    expect(page).toContain(NOINDEX);
+    expect(all(d).sitemap).not.toContain('/services/mohawk/');
     expect(page).toContain('About this service');
     // the guide wording is the library's: the first paragraph of the haircut guide is on both pages
     const libText = (built.match(/<div class="ab-copy[^>]*>[\s\S]*?<\/p>/) ?? [''])[0].replace(/<[^>]+>/g, '').slice(0, 40);
@@ -103,13 +103,13 @@ describe('Mode A: a family chosen by the classifier', () => {
     expect(serviceGuideFor(d, [0, 1]).get(0)).toBe('haircut');
     expect(serviceAltFor(d, [0, 1]).get(1)).toBe('haircut');
     const thin = thinServiceIndexes(d, [0, 1]);
-    expect(thin.has(0)).toBe(false); expect(thin.has(1)).toBe(true); // the alt block does not make a page indexable (B4)
+    expect(thin.has(0)).toBe(true); expect(thin.has(1)).toBe(true); // custom services' standard text and the alt block never make a page indexable
     expect(titledServices(d).map((s) => s.guide)).toEqual(['haircut', 'haircut']);
   });
   it('NIT 1: the second service of a family gets the family\'s alt block (and stays thin), the first gets the guide', () => {
     const d = shopA({ svcFamily: { 'mohawk': 'haircut', 'mullet': 'haircut' } }, { services: [svc('Mohawk'), svc('Mullet')] });
     const page1 = htmlA(d, 'services/mohawk/index.html'); const page2 = htmlA(d, 'services/mullet/index.html');
-    expect(page1).toContain('About this service'); expect(page1).not.toContain(NOINDEX);
+    expect(page1).toContain('About this service'); expect(page1).toContain(NOINDEX);
     expect(serviceAltFor(d, [0, 1]).get(1)).toBe('haircut');
     expect(page2).toContain(NOINDEX);
     // LIVE IMPACT (2026-11-05): with no choice the vocabulary gives the same type, so the pages are the same; with none for both they are bare
