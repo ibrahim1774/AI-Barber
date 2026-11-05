@@ -12,7 +12,7 @@ import {
   serviceChipName, serviceMeta, siteDescription, teamBookLink, teamOf, to12h, visibleReviews, type TeamCard,
 } from './honest.js';
 import {
-  beardServices, extraBlocks, guideBlocks, howOftenRows, serviceGuideFor, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
+  beardServices, extraBlocks, guideBlocks, howOftenRows, resolveBlock, serviceAltFor, serviceGuideFor, serviceTextOn, svcCopyKey, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
 } from './guides.js';
 import { defaultRatingLine, navLabelKey, plainLabel, PAGE_TITLE_KEY, ratingLineCustom, t, type LabelKey } from './labels.js';
 import { aboutParagraphs, isExtraKey, ownGallerySlots, pageHref as pageHrefOf, plainText, type PageContext, type PageFile, type PageSet } from './pages.js';
@@ -195,7 +195,13 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const guideId = serviceGuideFor(d, set.services.map((c) => c.index)).get(file.child.index);
     const subject = titledServices(d).find((x) => x.index === file.child!.index);
     const guideBs = guideId && subject ? guideBlocks(copyEnv, guideId, subject) : [];
-    const guideBlock = guideBs.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgGuideHeading')}</h2>${blocksHtml(guideBs)}` : '';
+    // Pages v2 only: a second service of a kind gets `service.alt.<guide>` in place of the guide, and every service page
+    // gets `service.visit` (where the shop is, how to book). Both sit in the guide section, so hiding it hides them.
+    const altId = subject ? serviceAltFor(d, set.services.map((c) => c.index)).get(file.child.index) : undefined;
+    const altB = altId && subject ? resolveBlock(copyEnv, svcCopyKey(subject.title, 'alt'), subject) : null;
+    const visitB = subject && serviceTextOn(d) ? resolveBlock(copyEnv, svcCopyKey(subject.title, 'visit'), subject) : null;
+    const aboutBs = guideBs.length ? guideBs : altB ? [altB] : [];
+    const guideBlock = (aboutBs.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgGuideHeading')}</h2>${blocksHtml(aboutBs)}` : '') + (visitB ? blocksHtml([visitB]) : '');
     const parts: Record<string, string> = {
       hero: heroHtml(file, plainText(s.title)),
       description: `<div class="ab-prose">${desc}</div>`,

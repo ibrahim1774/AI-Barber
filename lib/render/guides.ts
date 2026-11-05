@@ -14,8 +14,9 @@
 //
 // Pure, no DOM. Imports only vendored modules (never pages.ts or labels.ts: pages.ts imports this one).
 import type { WebsiteData } from '../../types';
-import { EXTRA_PAGES, GUIDES, GUIDE_IDS, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
-import { copyProblems, TOKEN_RE, type VocabGroup } from './copyRules.js';
+import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
+import { copyProblems, outputProblems, TOKEN_RE, type VocabGroup } from './copyRules.js';
+import { hasPagesV2 } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
 import { pageSectionsOf, type SectionPage } from './sections.js';
@@ -79,9 +80,29 @@ export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>,
   return out;
 }
 
+/** Do the sites' service pages carry library text at all? Pages v2 (an `extraPages` object) with service guides on. */
+export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true;
+
+/**
+ * Which service page shows the `service.alt.<guide>` block: a service with a page whose guide an earlier service with a
+ * page already took (serviceGuideFor gives each guide to the first one only). A service with no guide gets none.
+ */
+export function serviceAltFor(d: Pick<WebsiteData, 'services' | 'extraPages'>, pagedIndexes: readonly number[]): Map<number, GuideId> {
+  const out = new Map<number, GuideId>();
+  if (!serviceTextOn(d)) return out;
+  const first = serviceGuideFor(d, pagedIndexes);
+  const services = Array.isArray(d.services) ? d.services : [];
+  for (const index of pagedIndexes) {
+    if (first.has(index)) continue;
+    const g = guideIdForTitle(services[index]?.title);
+    if (g) out.set(index, g);
+  }
+  return out;
+}
+
 // ── Keys, the closed set of editable blocks ─────────────────────────────────────────────────────
 /** `special`: a key that is not a block but one line of a block's page (a FAQ question, a Hair care "how often" sentence). */
-interface Entry { block: Block; allow: VocabGroup[]; scope: GuideId | ExtraId; kind: 'guide' | 'page'; special?: 'q' | 'interval' }
+interface Entry { block: Block; allow: VocabGroup[]; scope: GuideId | ExtraId | 'service'; kind: 'guide' | 'page' | 'service'; special?: 'q' | 'interval'; strict?: boolean }
 const REGISTRY = new Map<string, Entry>();
 for (const g of GUIDE_IDS) for (const block of GUIDES[g].blocks) REGISTRY.set(`guide.${g}.${block.id}`, { block, allow: [...GUIDES[g].allow, ...(block.allow ?? [])], scope: g, kind: 'guide' });
 for (const [page, def] of Object.entries(EXTRA_PAGES) as [ExtraId, (typeof EXTRA_PAGES)[ExtraId]][]) {
@@ -98,18 +119,38 @@ for (const [page, def] of Object.entries(EXTRA_PAGES) as [ExtraId, (typeof EXTRA
 }
 for (const g of GUIDE_IDS) if (GUIDES[g].interval) REGISTRY.set(`guide.${g}.interval`, { block: lineBlock('interval', INTERVAL_MAX), allow: GUIDES[g].allow, scope: g, kind: 'guide', special: 'interval' });
 
-/** Every key a `copy` override may use. */
+// Service page blocks (Phase 1) are written per service, so their keys carry the service: `svc.<titleKey>.visit` (where the
+// shop is, how to book) and `svc.<titleKey>.alt` (the text of a second service of a kind). The title key is the title in
+// lower case with single spaces, so a reorder never detaches an override. They are strict blocks: R12 to R14 apply as well.
+const SVC_KEY_MAX = 80;
+const MAX_SVC_OVERRIDES = 60;
+export const svcTitleKey = (title: unknown): string => plain(title).toLowerCase().replace(/\s+/g, ' ').slice(0, SVC_KEY_MAX).trim();
+export const svcCopyKey = (title: unknown, part: 'visit' | 'alt'): string => `svc.${svcTitleKey(title)}.${part}`;
+
+/** The entry of a copy key: a block of the fixed set, or a service page block (`svc.<titleKey>.visit|alt`). */
+function entryFor(key: string): Entry | undefined {
+  const hit = REGISTRY.get(key);
+  if (hit) return hit;
+  if (!key.startsWith('svc.') || key.length > SVC_KEY_MAX + 12) return undefined;
+  const m = /^svc\.(.+)\.(visit|alt)$/.exec(key);
+  if (!m || m[1] !== svcTitleKey(m[1])) return undefined;
+  if (m[2] === 'visit') return { block: SERVICE_VISIT, allow: [], scope: 'service', kind: 'service', strict: true };
+  const g = guideIdForTitle(m[1]);
+  return g ? { block: SERVICE_ALT[g], allow: [...GUIDES[g].allow], scope: g, kind: 'service', strict: true } : undefined;
+}
+
+/** Every key of the fixed set a `copy` override may use (service page keys are `svc.<titleKey>.visit|alt`, see isCopyKey). */
 export const COPY_KEYS: readonly string[] = Array.from(REGISTRY.keys());
-export const isCopyKey = (k: unknown): k is string => typeof k === 'string' && REGISTRY.has(k);
+export const isCopyKey = (k: unknown): k is string => typeof k === 'string' && entryFor(k) !== undefined;
 export const copyKey = (scope: GuideId | ExtraId, blockId: string): string => (isGuideId(scope) ? `guide.${scope}.${blockId}` : `${scope}.${blockId}`);
 /** What the editor needs to know about a block: its kind, its longest override and its heading label key. */
 export function copyBlockInfo(key: string): { kind: BlockKind; max: number; h?: string; q?: string } | null {
-  const e = REGISTRY.get(key);
+  const e = entryFor(key);
   return e ? { kind: e.block.kind, max: e.block.max, h: e.block.h, q: e.block.q } : null;
 }
 
 /** Whether a key has three wordings to choose from ("Try other wording"): not a FAQ question, which has one. */
-export const copyHasWordings = (k: string): boolean => REGISTRY.has(k) && REGISTRY.get(k)!.special !== 'q';
+export const copyHasWordings = (k: string): boolean => { const e = entryFor(k); return !!e && e.special !== 'q'; };
 
 /** The renderer ignores `copy` beyond this many characters in total. */
 export const COPY_TOTAL_MAX = 40000;
@@ -139,6 +180,18 @@ export function copyOverrides(d: Pick<WebsiteData, 'copy'>): Map<string, string>
     total += plain(text).length;
     if (total > COPY_TOTAL_MAX) break;
     out.set(key, text);
+  }
+  let svcKeys = 0;
+  for (const key of Object.keys(raw)) {
+    if (!key.startsWith('svc.') || total > COPY_TOTAL_MAX || svcKeys >= MAX_SVC_OVERRIDES) continue;
+    const e = entryFor(key);
+    const v = (raw as Record<string, unknown>)[key];
+    if (!e || typeof v !== 'string' || !has(v)) continue;
+    const text = capText(v, e.block.max);
+    total += plain(text).length;
+    if (total > COPY_TOTAL_MAX) break;
+    out.set(key, text);
+    svcKeys++;
   }
   OVERRIDES.set(raw, out);
   return out;
@@ -191,11 +244,28 @@ export function lenientEnv(d: WebsiteData, extra: Partial<CopyEnv> = {}): CopyEn
 }
 
 const lintMemo = new Map<string, boolean>();
-function sentenceOk(sentence: string, allow: readonly VocabGroup[]): boolean {
-  const k = `${allow.join(',')}|${sentence}`;
+function sentenceOk(sentence: string, allow: readonly VocabGroup[], strict = false): boolean {
+  const k = `${strict ? 's' : 'n'}|${allow.join(',')}|${sentence}`;
   let v = lintMemo.get(k);
-  if (v === undefined) { v = copyProblems(sentence, { allow }).length === 0; lintMemo.set(k, v); }
+  if (v === undefined) { v = copyProblems(sentence, { allow, strict }).length === 0; lintMemo.set(k, v); }
   return v;
+}
+
+/** "a" or "an" for a service title, by how the first word sounds ("an Eyebrow cleanup", "a Uniform trim", "an 8 minute cut"). */
+export function articleFor(title: string): 'a' | 'an' {
+  const w = plain(title).replace(/^[^A-Za-z0-9]+/, '');
+  if (!w) return 'a';
+  if (/^(?:8|11|18)(?!\d)/.test(w)) return 'an';
+  if (/^\d/.test(w)) return 'a';
+  if (/^(?:uni(?!n)|use|usu|uti|ura|eu|one|once|ubiq)/i.test(w)) return 'a';
+  if (/^(?:hour|honest|honou?r|heir)/i.test(w)) return 'an';
+  return /^[aeiou]/i.test(w) ? 'an' : 'a';
+}
+
+/** The service a `svc.<titleKey>.<part>` key belongs to (the first one with that title). */
+function serviceOfKey(d: WebsiteData, key: string): Svc | null {
+  const m = /^svc\.(.+)\.(?:visit|alt)$/.exec(key);
+  return m ? titledServices(d).find((s) => svcTitleKey(s.title) === m[1]) ?? null : null;
 }
 
 function subjectFor(env: CopyEnv, kind: NonNullable<Block['subject']>): Svc | null {
@@ -266,6 +336,7 @@ function tokenSeg(env: CopyEnv, name: string, arg: string | undefined, subject: 
     case 'place': return text(env.place);
     case 'industry': return text(env.industry);
     case 'service': return text(subject?.title ?? '');
+    case 'a': return arg === 'service' && subject?.title ? text(`${articleFor(subject.title)} ${subject.title}`) : null;
     case 'price': return text(subject ? displayPrice(subject.price) : '');
     case 'duration': return text(subject?.duration ?? '');
     case 'phone': { const ph = plain(d.phone); return /\d/.test(ph) ? text(plain(displayPhone(ph))) : null; }
@@ -290,8 +361,8 @@ const isLinkKey = (k: unknown): k is LinkKey => k === 'location' || k === 'hours
  * expanded again (so a service called "{shop}" prints literally). Null = the sentence is dropped: it fails the
  * rules, or a token has no value.
  */
-export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly VocabGroup[], subject: Svc | null): Seg[] | null {
-  if (!sentenceOk(sentence, allow)) return null;
+export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly VocabGroup[], subject: Svc | null, strict = false): Seg[] | null {
+  if (!sentenceOk(sentence, allow, strict)) return null;
   const out: Seg[] = [];
   let last = 0;
   const push = (seg: Seg): void => {
@@ -300,12 +371,20 @@ export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly 
   };
   for (const m of sentence.matchAll(TOKEN_RE)) {
     if (m.index! > last) push({ t: 'text', s: sentence.slice(last, m.index) });
-    const seg = tokenSeg(env, m[1], m[2], subject);
+    let seg = tokenSeg(env, m[1], m[2], subject);
     if (!seg) return null;
+    if (strict && seg.t === 'text') {
+      // R14 at render time: one space between words, and no second full stop where the sentence ends on an abbreviation.
+      let v = seg.s.replace(/\s+/g, ' ').trim();
+      if (sentence[m.index! + m[0].length] === '.') v = v.replace(/\.+$/, '');
+      if (!v) return null;
+      seg = { t: 'text', s: v };
+    }
     push(seg);
     last = m.index! + m[0].length;
   }
   if (last < sentence.length) push({ t: 'text', s: sentence.slice(last) });
+  if (strict && out.length && outputProblems(segsText(out)).length) return null;
   return out.length ? out : null;
 }
 
@@ -331,7 +410,7 @@ function customItems(kind: BlockKind, text: string): Seg[][] {
 
 /** One block as the page prints it, or null when nothing of it can be said (or it is empty). */
 export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = null): ResolvedBlock | null {
-  const e = REGISTRY.get(key);
+  const e = entryFor(key);
   if (!e) return null;
   if (e.special) return null; // a line of a block, not a block (copyDefault / howOftenRows serve it)
   const { block } = e;
@@ -341,13 +420,13 @@ export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = nu
   const own = env.ignoreCopy ? undefined : copyOverrides(env.d).get(key);
   if (own !== undefined) return { ...base, items: customItems(block.kind, own), custom: true };
 
-  const subj = subject ?? (block.subject ? subjectFor(env, block.subject) : null);
+  const subj = subject ?? (block.subject ? subjectFor(env, block.subject) : e.kind === 'service' ? serviceOfKey(env.d, key) : null);
   const first = variantIndex(env.d, key);
   // The chosen wording; if every sentence of it is dropped, the next ones (the data decides, never the seed).
   for (const v of [first, ...[0, 1, 2].filter((i) => i !== first)]) {
     const sentences: Seg[][] = [];
     for (const s of block.variants[v]) {
-      const segs = resolveSentence(env, s, e.allow, subj);
+      const segs = resolveSentence(env, s, e.allow, subj, e.strict);
       if (segs) sentences.push(segs);
     }
     if (!sentences.length) continue;
@@ -421,7 +500,7 @@ export const beardServices = (d: Pick<WebsiteData, 'services'>): Svc[] => titled
 
 /** The suggested text of a block for this site, as plain words (links as their labels): what "Reset to suggested" restores. */
 export function copyDefault(d: WebsiteData, key: string): string {
-  const e = REGISTRY.get(key);
+  const e = entryFor(key);
   if (!e) return '';
   const env = lenientEnv(d, { ignoreCopy: true });
   if (e.special === 'q') return REGISTRY.get(key.slice(0, -2))?.block.q ?? '';
@@ -447,7 +526,15 @@ export function visibleCopyKeys(d: WebsiteData, file: { key: string; child?: { i
     const g = serviceGuideFor(d, servicePages).get(file.child.index);
     const subject = titledServices(d).find((s) => s.index === file.child!.index) ?? null;
     if (pageSectionsOf(d, 'service').find((x) => x.id === 'guide')?.hidden) return [];
-    return g && subject ? guideBlocks(env, g, subject).map((b) => b.key) : [];
+    const keys = g && subject ? guideBlocks(env, g, subject).map((b) => b.key) : [];
+    if (subject && serviceTextOn(d)) {
+      const a = serviceAltFor(d, servicePages).get(file.child.index);
+      const altKey = svcCopyKey(subject.title, 'alt');
+      const visitKey = svcCopyKey(subject.title, 'visit');
+      if (a && resolveBlock(env, altKey, subject)) keys.push(altKey);
+      if (resolveBlock(env, visitKey, subject)) keys.push(visitKey);
+    }
+    return keys;
   }
   if (file.key === 'faq' || file.key === 'first-visit' || file.key === 'hair-care' || file.key === 'beard-care') {
     const page = file.key as SectionPage;

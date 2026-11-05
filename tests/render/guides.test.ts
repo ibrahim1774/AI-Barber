@@ -146,8 +146,8 @@ describe('the barber\'s own words (copy overrides)', () => {
     const d = shop();
     expect(copyDefault(d, 'guide.fade.what')).toMatch(/fade/i);
     expect(copyDefault(d, 'nope')).toBe('');
-    expect(visibleCopyKeys(d, { key: 'services', child: { index: 0 } }, [0, 1, 2])).toEqual(['guide.fade.what', 'guide.fade.who', 'guide.fade.ask', 'guide.fade.care']);
-    expect(visibleCopyKeys(d, { key: 'services', child: { index: 1 } }, [0, 1, 2]).every((k) => k.startsWith('guide.beard-trim.'))).toBe(true);
+    expect(visibleCopyKeys(d, { key: 'services', child: { index: 0 } }, [0, 1, 2])).toEqual(['guide.fade.what', 'guide.fade.who', 'guide.fade.ask', 'guide.fade.care', 'svc.skin fade.visit']);
+    expect(visibleCopyKeys(d, { key: 'services', child: { index: 1 } }, [0, 1, 2]).every((k) => k.startsWith('guide.beard-trim.') || k.endsWith('.visit'))).toBe(true);
     expect(visibleCopyKeys(d, { key: 'faq' }).length).toBeGreaterThan(8);
     expect(visibleCopyKeys(d, { key: 'about' })).toEqual([]);
   });

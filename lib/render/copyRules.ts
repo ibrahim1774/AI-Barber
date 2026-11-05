@@ -18,6 +18,13 @@
 //   R11 ASCII      plain ASCII only, apart from the apostrophe and the en and em dash (no look-alike letters).
 //   R9 no people    no quotes, no client counts, no "clients say", no reviews.
 //
+// Three more rules apply only to the blocks added in Phase 1 (`strict`, the keys `service.*`); the older wordings are
+// frozen and are not re-checked against them (R10 and R11 were already taken above, so these start at R12):
+//   R12 article     never "a {service}" or "an {service}": the token {a:service} writes "a" or "an" from the title.
+//   R13 token form  a token stands alone as a noun phrase: not glued to letters or digits ("{service}s"), and never
+//                   two tokens side by side with only a space between them.
+//   R14 clean text  the words that come out have no doubled spaces, stray punctuation, braces or "undefined" (outputProblems).
+//
 // Pure, no DOM, imports nothing.
 
 /** The ten service guides, most specific first (the order guides.ts matches in). */
@@ -53,6 +60,7 @@ export function isKnownToken(name: string, arg?: string): boolean {
   if ((TEXT_TOKENS as readonly string[]).includes(name)) return arg === undefined;
   if (name === 'link') return arg !== undefined && (LINK_KEYS as readonly string[]).includes(arg);
   if (name === 'svc') return arg !== undefined && (GUIDE_IDS as readonly string[]).includes(arg);
+  if (name === 'a') return arg === 'service'; // {a:service}: "a" or "an" for the service's title (R12)
   return false;
 }
 
@@ -99,9 +107,10 @@ function properNouns(text: string): string[] {
  * Every rule a library sentence breaks, as short messages ("R1: we"); empty = clean. Tokens are taken out first, so
  * `{service}` never trips a rule. `allow` is the vocabulary groups the block may use (R8).
  */
-export function copyProblems(text: string, opts: { allow?: readonly VocabGroup[] } = {}): string[] {
+export function copyProblems(text: string, opts: { allow?: readonly VocabGroup[]; strict?: boolean } = {}): string[] {
   const out: string[] = [];
   const raw = String(text ?? '');
+  if (opts.strict) out.push(...strictProblems(raw));
   for (const m of raw.matchAll(TOKEN_RE)) if (!isKnownToken(m[1], m[2])) out.push(`token: unknown {${m[1]}${m[2] ? `:${m[2]}` : ''}}`);
   const bare = raw.replace(TOKEN_ANY, ' tok ');
   if (/[{}]/.test(bare)) out.push('token: stray brace');
@@ -122,6 +131,37 @@ export function copyProblems(text: string, opts: { allow?: readonly VocabGroup[]
     const m = VOCAB[g].exec(bare);
     if (m) out.push(`R8: names a service (${g}): ${m[0]}`);
   }
+  return out;
+}
+
+// R12 and R13 look at the raw sentence, tokens still in place.
+const ARTICLE_BEFORE_SERVICE = /\b(?:a|an)\s+\{(?:service|svc:[a-z-]+)\}/i;
+const TOKEN_TOUCHES_WORD = /[A-Za-z0-9]\{[^{}]*\}|\{[^{}]*\}[A-Za-z0-9]/;
+const TOKENS_ADJACENT = /\{[^{}]*\}\s+\{[^{}]*\}/;
+
+/** R12 and R13 (strict blocks only). */
+export function strictProblems(raw: string): string[] {
+  const out: string[] = [];
+  const a = ARTICLE_BEFORE_SERVICE.exec(raw);
+  if (a) out.push(`R12: use {a:service}, not "${a[0]}"`);
+  const g = TOKEN_TOUCHES_WORD.exec(raw);
+  if (g) out.push(`R13: token glued to a word "${g[0]}"`);
+  const j = TOKENS_ADJACENT.exec(raw);
+  if (j) out.push(`R13: two tokens side by side "${j[0]}"`);
+  return out;
+}
+
+/** R14: what a sentence looks like once its tokens are filled in. Empty = clean. */
+export function outputProblems(text: string): string[] {
+  const out: string[] = [];
+  const t = String(text ?? '');
+  if (!t.trim()) out.push('R14: empty');
+  if (/\s{2,}/.test(t)) out.push('R14: doubled space');
+  if (t !== t.trim()) out.push('R14: space at an end');
+  if (/[{}]/.test(t)) out.push('R14: brace');
+  if (/\b(?:undefined|null|NaN)\b|\[object/i.test(t)) out.push('R14: undefined or null');
+  if (/\s[,.;:!?]/.test(t)) out.push('R14: space before punctuation');
+  if (/[,;:]\s*[,.;:!?]|([!?])\1|\.{2}/.test(t)) out.push('R14: stray punctuation');
   return out;
 }
 

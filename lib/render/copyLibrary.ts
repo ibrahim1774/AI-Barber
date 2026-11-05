@@ -14,8 +14,9 @@
 // {openDays} {policy} {svc:<guide>} {link:location|hours|contact|book|services}. A sentence whose token has no
 // value is dropped (guides.ts), so nothing here can state a fact the barber did not give.
 //
-// A block id is never reused for a different meaning. Changing a wording changes unedited sites on their next
-// publish (accepted, plan section 3). Pure data; imports only the rule types.
+// A block id is never reused for a different meaning. The library is append-only: a published wording is never edited
+// in place, a fix adds a new wording or a new block id (tests/render/copyLibraryAppendOnly.test.ts hashes every wording).
+// Pure data; imports only the rule types.
 import type { GuideId, VocabGroup } from './copyRules.js';
 import { GUIDE_IDS } from './copyRules.js';
 
@@ -559,4 +560,102 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
       ], 'pgBcTrim'),
     ],
   },
+};
+
+// ── Service page blocks (Phase 1, 2026-11-04) ───────────────────────────────────────────────────
+// Two kinds of block for a service page, both printed only on sites that turned service guides on (pages v2):
+//   service.visit        printed on every service page: where the shop is, how to book, the listed price and time.
+//                        Every fact arrives through a token, so a sentence with no data behind it is dropped. It never uses
+//                        {place}: the editor's suggested text (guides.ts lenientEnv) has no place, so the preview would differ.
+//   service.alt.<guide>  printed instead of the guide when a SECOND service of the same kind has its own page (the guide
+//                        itself is used once per site). It says nothing the first service's guide does not, in other words.
+// They are `strict` blocks: on top of R1 to R11 they obey R12 to R14 (copyRules.ts). Like every wording here, a published
+// wording is never edited in place; a fix adds a new wording or a new block id (tests/render/copyLibraryAppendOnly.test.ts).
+export const SERVICE_VISIT: Block = {
+  id: 'visit',
+  kind: 'p',
+  max: P,
+  variants: [
+    [
+      '{service} is available at {shop}.',
+      'The listed price for {service} is {price}.',
+      'The listed time for {service} is {duration}.',
+      'The shop is at {address}, and the {link:location} page has a map and directions.',
+      'To book {a:service}, use the {link:book} link.',
+      'To book by phone, call {phone}.',
+    ],
+    [
+      'You can book {a:service} at {shop}.',
+      '{service} is listed at {price}.',
+      '{service} is listed as {duration}.',
+      'You can find the shop at {address}.',
+      'Open the {link:location} page for directions.',
+      'Choose a time with the {link:book} link.',
+      'The number for the shop is {phone}.',
+    ],
+    [
+      'At {shop}, {service} is on the service menu.',
+      'The price listed for {service} is {price}.',
+      'The time listed for {service} is {duration}.',
+      'The address is {address}.',
+      'For directions to {shop}, open the {link:location} page.',
+      'Book {a:service} with the {link:book} link.',
+      'To talk to the shop first, call {phone}.',
+    ],
+  ],
+};
+
+const alt = (id: GuideId, variants: Wordings): Block => ({ id: `alt.${id}`, kind: 'p', max: P, variants });
+
+export const SERVICE_ALT: Record<GuideId, Block> = {
+  'cut-beard': alt('cut-beard', [
+    ['{service} is another way to book the hair and the beard together at {shop}.', 'Say how short you want the hair and how much length to keep on the beard.', 'A photo of the finished look helps the barber match both.'],
+    ['{service} puts a haircut and a beard visit in one booking at {shop}.', 'Mention where the beard should start and stop on the cheeks and the neck.', 'Say how you style your hair so the cut can suit it.'],
+    ['{shop} lists {service} as a service of its own.', 'If you keep a beard, say how neat or how full you want it.', 'Say how much to take off the hair, and bring a photo if you have one.'],
+  ]),
+  fade: alt('fade', [
+    ['{service} is a second fade option on the menu at {shop}.', 'Fades differ in how high the short part starts, so say which height you want.', 'Bring a photo to show where you want the shortest hair to end.'],
+    ['{service} has its own line on the service list at {shop}.', 'A low fade starts the short hair just above the ears, and a high fade starts it higher up.', 'Tell the barber the height you like and how much to leave on top.'],
+    ['{shop} lists {service} as a service of its own.', 'Say how short the sides should be and where the blend should end.', 'A clear photo of the cut you want makes the request easy.'],
+  ]),
+  taper: alt('taper', [
+    ['{service} is a second taper option on the menu at {shop}.', 'A taper gets gradually shorter toward the neck and around the ears.', 'Say how short the hair should be at the bottom, and bring a photo if you have one.'],
+    ['{service} is a separate item on the service list at {shop}.', 'In a taper the change in length is gentle, so there is no sharp contrast.', 'Tell the barber how much to leave on top and how clean the neckline should look.'],
+    ['{shop} lists {service} as a service of its own.', 'Say where you want the taper to start and how short it should end.', 'A photo of a taper you like is the easiest way to show it.'],
+  ]),
+  'line-up': alt('line-up', [
+    ['{service} is a second option for a sharp outline at {shop}.', 'A line-up cleans the hairline, the temples and the edges around the ears.', 'Say whether you want a straight, natural or rounded hairline.'],
+    ['{service} is listed as a separate service at {shop}.', 'A line-up tidies the outline and leaves the length of the rest of the hair alone.', 'Show a photo or point to where the hairline should sit.'],
+    ['{shop} lists {service} as a service of its own.', 'Mention if you want the edges crisp or soft.', 'Say if there is any spot along the hairline you want left as it is.'],
+  ]),
+  'beard-trim': alt('beard-trim', [
+    ['{service} is a second beard option on the menu at {shop}.', 'A beard trim keeps the length even and the edges clean.', 'Say how much length to keep and where the cheek line and neckline should sit.'],
+    ['{service} sits on the service list at {shop} as a separate item.', 'Say whether you want the beard kept full or cut close.', 'A photo of a beard you like shows the shape faster than words.'],
+    ['{shop} lists {service} as a service of its own.', 'Point out where the beard should end on the cheeks and under the chin.', 'Mention how you usually brush or style the beard.'],
+  ]),
+  shave: alt('shave', [
+    ['{service} is another shave service on the menu at {shop}.', 'A razor shave usually starts with the skin and the hair being softened.', 'Tell the barber about any sensitive spots before the razor is used.'],
+    ['{service} is one more shave on the service list at {shop}.', 'Say how close you want the finish and which areas should be shaved.', 'Let the barber know about any skin that gets irritated easily.'],
+    ['{shop} lists {service} as a service of its own.', 'Skin can feel dry after a razor, so a gentle moisturizer is a common choice afterward.', 'Ask the barber how soon you can shave again at home.'],
+  ]),
+  'kids-cut': alt('kids-cut', [
+    ['{service} is a second option for children at {shop}.', 'Tell the barber how the child usually wears the hair and what they like.', 'A photo of the style the child wants helps everyone agree before the cut starts.'],
+    ['{service} has its own entry on the service list at {shop}.', 'Children usually feel easier when they know what to expect before the visit.', 'Say how short the hair should be for school or sport.'],
+    ['{shop} lists {service} as a service of its own.', 'Bring a photo if the child has a style in mind.', 'Mention anything that helps the child stay calm in the chair.'],
+  ]),
+  design: alt('design', [
+    ['{service} is a second design option on the menu at {shop}.', 'A design is cut into short hair, so the hair needs to be short enough to show it.', 'Bring a picture of the design and say how large it should be.'],
+    ['{service} is its own entry on the service list at {shop}.', 'A simple line is quicker to cut than a detailed pattern.', 'Say where on the head the design should sit.'],
+    ['{shop} lists {service} as a service of its own.', 'Show a clear photo, because small details are easy to miss in a description.', 'Ask how long the design will last before it needs a refresh.'],
+  ]),
+  color: alt('color', [
+    ['{service} is a second color option on the menu at {shop}.', 'The shade you start with and the shade you want both affect how the color turns out.', 'A photo of the shade you want is the clearest way to ask.'],
+    ['{service} appears as its own item on the service list at {shop}.', 'Say if the hair has been dyed or covered before.', 'Ask the barber how the color will look as it grows out.'],
+    ['{shop} lists {service} as a service of its own.', 'A strong change in shade can take more than one step.', 'Describe the shade you want in simple words and show a photo.'],
+  ]),
+  haircut: alt('haircut', [
+    ['{service} is another haircut option on the menu at {shop}.', 'Say how short you want the sides, the back and the top.', 'A photo helps the barber see the shape you have in mind.'],
+    ['{service} is listed separately on the service menu at {shop}.', 'Tell the barber how you usually style your hair.', 'Say how soon you expect to come back for the next cut.'],
+    ['{shop} lists {service} as a service of its own.', 'Hair type and thickness change how a cut sits, so mention yours.', 'Show a photo from the front and from the side if you have one.'],
+  ]),
 };
