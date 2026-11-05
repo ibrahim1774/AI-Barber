@@ -20,7 +20,7 @@ import { seoKey, seoOverride, seoSvcKey, type SeoEntry } from './seoText.js';
 import { jsonLdHtml, type JsonLdContext } from './jsonLd.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
-import { printable } from './markers.js';
+import { printable, stripMarkersText } from './markers.js';
 import { capDataPaths } from './editPaths.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
@@ -198,7 +198,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
   const seo: SeoEntry[] = [];
   const seenTitles = new Set<string>();
   const seenDescriptions = new Set<string>();
-  const seoTexts = (raw: string): string => raw.replace(/\s+/g, ' ').trim().toLowerCase();
+  const seoTexts = (raw: string): string => stripMarkersText(raw).replace(/\s+/g, ' ').trim().toLowerCase();
   if (seoV2) {
     const text = (re: RegExp): string => decodeEntities(re.exec(pages[0].html)?.[1] ?? '');
     const title0 = text(/<title>([^<]*)<\/title>/);
@@ -209,8 +209,8 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
       const t1 = ot ?? title0;
       const d1 = od ?? desc0;
       pages[0] = { path: 'index.html', html: withSeoHead(pages[0].html, t1, d1) };
-      seo.push({ id: 'home', title: t1, description: d1 });
-    } else seo.push({ id: 'home', title: title0, description: desc0 });
+      seo.push({ id: 'home', title: stripMarkersText(t1), description: stripMarkersText(d1) });
+    } else seo.push({ id: 'home', title: stripMarkersText(title0), description: stripMarkersText(desc0) });
     seenTitles.add(seoTexts(seo[0].title));
     seenDescriptions.add(seoTexts(seo[0].description));
   }
@@ -242,7 +242,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
       description = od ?? unique(description, out.heading, seenDescriptions);
       seenTitles.add(seoTexts(title));
       seenDescriptions.add(seoTexts(description));
-      seo.push({ id: file.child ? `${file.key}:${file.child.slug}` : file.key, title, description });
+      seo.push({ id: file.child ? `${file.key}:${file.child.slug}` : file.key, title: stripMarkersText(title), description: stripMarkersText(description) });
     }
     pages.push({
       path: file.path,

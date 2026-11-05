@@ -2,7 +2,7 @@
 // hand-written table of good and bad strings, not the validator's own regexes), then against hostile strings.
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_SEO_KEYS, SEO_DESCRIPTION_MAX, SEO_RAW_MAX, SEO_TITLE_MAX, isSeoKey, parseSeoKey, seoDuplicates, seoKey, seoOverride, seoProblem, seoSvcKey, validSeoText,
+  MAX_SEO_KEYS, SEO_DESCRIPTION_MAX, SEO_RAW_MAX, SEO_TITLE_MAX, isSeoKey, parseSeoKey, seoDuplicates, seoKey, seoOverride, seoProblem, seoSanitize, seoSvcKey, validSeoText, checkSeoText,
 } from '../../lib/render/seoText';
 
 const T = (s: unknown) => validSeoText('title', s);
@@ -105,18 +105,101 @@ describe('seoProblem (server)', () => {
     expect(seoProblem(sd({ 'seo.home.title': '   ' }))).toBeNull();
     expect(seoProblem(sd({ 'seo.future.title': 'short unknown key, ignored by the renderer' }))).toBeNull();
   });
-  it('refuses hostile, over-long, wrong-typed and too many seo values', () => {
-    for (const v of ['<script>alert(1)</script>', 'x'.repeat(61), 'Fresh\nCuts', '💈 cuts', 'BEST BARBER IN TOWN', '!!!!', 'Cut‮d']) expect(seoProblem(sd({ 'seo.home.title': v })), v).not.toBeNull();
-    expect(seoProblem(sd({ 'seo.home.description': 'x'.repeat(161) }))).not.toBeNull();
-    expect(seoProblem(sd({ 'seo.home.title': 'x'.repeat(10_000) }))).not.toBeNull();
-    expect(seoProblem(sd({ 'seo.future.title': 'x'.repeat(SEO_RAW_MAX + 1) }))).not.toBeNull(); // even a key we ignore is size-capped
-    expect(seoProblem(sd({ 'seo.home.title': 5 }))).not.toBeNull();
-    expect(seoProblem(sd({ 'seo.home.title': null }))).not.toBeNull();
+  it('refuses only a structural problem (copy is not an object); bad VALUES are not a reason to refuse', () => {
     expect(seoProblem(sd(['x']))).not.toBeNull();
     expect(seoProblem(sd('x'))).not.toBeNull();
+    for (const v of ['<script>alert(1)</script>', 'x'.repeat(61), 'BEST BARBER IN TOWN', 5, null, 'x'.repeat(10_000)]) expect(seoProblem(sd({ 'seo.home.title': v })), String(v).slice(0, 12)).toBeNull();
+  });
+});
+
+describe('seoSanitize: invalid values are dropped, the rest of the draft is kept', () => {
+  const sd = (copy: unknown) => ({ shopName: 'X', copy });
+  const clean = (copy: Record<string, unknown>) => seoSanitize(sd(copy));
+  it('returns the very same object when nothing is invalid', () => {
+    const d = sd({ 'faq.book': 'Our words <b>', 'seo.home.title': 'Fresh Cuts', 'seo.home.description': '', 'seo.future.title': 'unknown but short' });
+    const r = seoSanitize(d);
+    expect(r.siteData).toBe(d); expect(r.problems).toEqual([]);
+    expect(seoSanitize({ shopName: 'X' }).problems).toEqual([]);
+    expect(seoSanitize(sd(['x'])).problems).toEqual([]); // structural problems are seoProblem's job
+  });
+  it('drops each invalid value, keeps every other key, and names page, field and reason', () => {
+    const r = clean({
+      'faq.book': 'keep me', 'seo.home.title': 'x'.repeat(61), 'seo.home.description': 'A fine description.', 'seo.faq.title': 'BEST BARBER IN TOWN',
+      'seo.svc.skin fade.title': '💈 Fade', 'seo.about.title': 5, 'seo.about.description': 'y'.repeat(SEO_RAW_MAX + 1), 'seo.services.title': 'ㅤㅤ',
+      'seo.future.title': 'z'.repeat(SEO_RAW_MAX + 1),
+    });
+    expect(r.siteData.copy).toEqual({ 'faq.book': 'keep me', 'seo.home.description': 'A fine description.' });
+    expect(r.problems.map((p) => [p.page, p.field, p.reason])).toEqual([
+      ['home', 'title', 'too_long'], ['faq', 'title', 'shouting'], ['svc:skin fade', 'title', 'emoji'], ['about', 'title', 'not_text'],
+      ['about', 'description', 'too_long_raw'], ['services', 'title', 'invisible'], ['seo.future.title', null, 'too_long_raw'],
+    ]);
+    expect(r.problems.every((p) => typeof p.key === 'string')).toBe(true);
+  });
+  it('does not mutate its input and is idempotent', () => {
+    const d = sd({ 'seo.home.title': '!!!!', 'seo.home.description': 'Fine text here.' });
+    const r = seoSanitize(d);
+    expect(d.copy['seo.home.title']).toBe('!!!!');
+    expect(seoSanitize(r.siteData).problems).toEqual([]);
+    expect(seoSanitize(r.siteData).siteData).toBe(r.siteData);
+  });
+  it('drops over-long key names and every key past MAX_SEO_KEYS (the first MAX_SEO_KEYS valid ones are kept)', () => {
+    const long = 'seo.' + 'a'.repeat(100_000);
+    const r = clean({ [long]: 'ok', 'seo.home.title': 'Fine title' });
+    expect(Object.keys((r.siteData as any).copy)).toEqual(['seo.home.title']);
+    expect(r.problems[0].reason).toBe('bad_key'); expect(r.problems[0].key.length).toBeLessThan(200);
     const many: Record<string, string> = {};
-    for (let i = 0; i <= MAX_SEO_KEYS; i++) many[`seo.k${i}.title`] = 'ok';
-    expect(seoProblem(sd(many))).not.toBeNull();
+    for (let i = 0; i < MAX_SEO_KEYS + 5; i++) many[`seo.k${i}.title`] = 'ok';
+    const m = seoSanitize(sd(many));
+    expect(Object.keys((m.siteData as any).copy)).toHaveLength(MAX_SEO_KEYS);
+    expect(m.problems).toHaveLength(5); expect(m.problems.every((p) => p.reason === 'too_many')).toBe(true);
+    // invalid values do not use up the budget
+    const mixed: Record<string, string> = {};
+    for (let i = 0; i < MAX_SEO_KEYS; i++) { mixed[`seo.bad${i}.title`] = 'x'.repeat(SEO_RAW_MAX + 1); }
+    mixed['seo.home.title'] = 'Fine title';
+    expect((seoSanitize(sd(mixed)).siteData as any).copy['seo.home.title']).toBe('Fine title');
+  });
+});
+
+// Each invisible / filler / format class on its own: a text made only of it is refused, and so is a real word with it inside.
+describe('invisible and look-alike-empty characters (one class at a time)', () => {
+  const CLASSES: Record<string, string[]> = {
+    'Cf format (zero width, bidi, BOM, soft hyphen, word joiner, Mongolian vowel separator, tags)': [
+      '\u200B', '\u200C', '\u200D', '\u200E', '\u200F', '\u2060', '\uFEFF', '\u00AD', '\u180E', '\u2063', '\u202E', '\u{E0020}', '\u{E007F}',
+    ],
+    'fillers and blanks': ['\u3164', '\u115F', '\u1160', '\uFFA0', '\u2800', '\u034F', '\u17B4', '\u17B5', '\u180B', '\u180C', '\u180D'],
+    'variation selectors': ['\uFE00', '\uFE0E', '\uFE0F', '\u{E0100}', '\u{E01EF}'],
+    'keycap and emoji modifier': ['\u20E3', '\u{1F3FB}', '\u{1F3FF}'],
+  };
+  for (const [name, cps] of Object.entries(CLASSES)) {
+    it(`${name}: alone, doubled, and inside a real title`, () => {
+      for (const c of cps) {
+        const label = [...c].map((x) => 'U+' + x.codePointAt(0)!.toString(16)).join('');
+        expect(T(c + c), label + ' x2').toBeNull();
+        expect(T('Ab' + c + 'cd'), label + ' inside').toBeNull();
+        expect(D('Fresh cuts' + c), label + ' trailing').toBeNull();
+      }
+    });
+  }
+  it('the reported pattern: Hangul filler titles', () => {
+    for (const v of ['ㅤㅤ', 'ﾠﾠ', 'ᅟᅠ', 'ㅤ', 'ㅤ ㅤ', 'ab⠀⠀⠀', 'a͏b']) { expect(T(v), v).toBeNull(); expect(D(v), v).toBeNull(); }
+  });
+  it('keycap emoji and emoji built from a variation selector', () => {
+    for (const v of ['Call 1️⃣ now', 'Cuts #️⃣', 'Fade️ cuts', 'Top *️⃣ barber', '1⃣ Fades', 'Hands 👍🏽 cuts']) expect(T(v), v).toBeNull();
+  });
+  it('a stack of combining marks is refused, one or two marks (an accent) are fine', () => {
+    expect(T('Ab' + '\u0300\u0301\u0302\u0303'.repeat(10))).toBeNull();
+    expect(T('Ab' + '\u0300\u0301\u0302\u0303')).toBeNull();
+    expect(T('Café Línea e\u0301')).not.toBeNull();
+    expect(T('Zoë\u0308 Fades')).not.toBeNull();
+  });
+  it('visible letters or digits still pass (no false positive on other scripts)', () => {
+    for (const v of ['한국 이발소', 'حلاقة الأحمد', 'नाई की दुकान', 'ไทย บาร์เบอร์', 'Fade 2 Go', '１２ 理髪']) expect(T(v), v).not.toBeNull();
+  });
+  it('checkSeoText names the rule', () => {
+    expect(checkSeoText('title', 'ㅤㅤ')).toEqual({ ok: false, reason: 'invisible' });
+    expect(checkSeoText('title', '1️⃣ cuts')).toEqual({ ok: false, reason: 'invisible' });
+    expect(checkSeoText('title', 'Hello 👍')).toEqual({ ok: false, reason: 'emoji' });
+    expect(checkSeoText('title', 'Hello world')).toEqual({ ok: true, text: 'Hello world' });
   });
 });
 
@@ -136,5 +219,12 @@ describe('seoDuplicates', () => {
   });
   it('groups three and keeps the group order', () => {
     expect(seoDuplicates([{ id: 'a', title: 'S', description: '1' }, { id: 'b', title: 'S', description: '2' }, { id: 'c', title: 's', description: '3' }]).titles).toEqual([['a', 'b', 'c']]);
+  });
+});
+
+describe('seoDuplicates ignores editor markers', () => {
+  it('a title with a U+2063 marker equals the same title without it', () => {
+    const r = seoDuplicates([{ id: 'a', title: 'Fresh\u2063 Cuts', description: 'x' }, { id: 'b', title: 'Fresh Cuts', description: 'y' }]);
+    expect(r.titles).toEqual([['a', 'b']]);
   });
 });

@@ -15,7 +15,7 @@ import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from '../ios/
 import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { stripLapsedLinks } from '../ios/tiers.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
-import { seoProblem } from '../render/seoText.js';
+import { seoProblem, seoSanitize, type SeoFieldProblem } from '../render/seoText.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from '../ios/siteShape.js';
 import { supabasePurchases } from '../ios/purchases.js';
 import { normEmail, supabaseSiteOwners, type SiteOwnerRow, type SiteOwnerStore } from '../siteOwners.js';
@@ -101,7 +101,9 @@ export function siteBody(slug: string, pending: PendingSite | null, active: bool
 
 export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['render']) {
   if (!validSiteData(siteData) || Buffer.byteLength(JSON.stringify(siteData)) > MAX_BODY_BYTES) throw new Error('invalid_snapshot');
-  const sd = siteData as WebsiteData;
+  // An invalid seo.* text is ignored (the page prints its generated default) and reported, never a reason to refuse a publish.
+  const { siteData: cleaned, problems: seoFallbacks } = seoSanitize(siteData);
+  const sd = cleaned as WebsiteData;
   if (hasDataUrl(sd)) throw new Error('invalid_snapshot');
   let imageUrlMap: Record<string, string>;
   let pendingData: WebsiteData;
@@ -125,7 +127,7 @@ export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['
     console.warn(`[web-app/publish] refused before any write: the template can't render this: ${(e as Error)?.message || e}`);
     throw new Error('invalid_snapshot');
   }
-  return { sd, imageUrlMap, pendingData };
+  return { sd, imageUrlMap, pendingData, seoFallbacks };
 }
 
 export async function runWebPublish(
@@ -140,10 +142,10 @@ export async function runWebPublish(
   const { siteData, baseVersion } = input as { siteData?: unknown; baseVersion?: unknown };
   if (!validSiteData(siteData)) return badRequest;
   if (baseVersion != null && !(Number.isInteger(baseVersion) && (baseVersion as number) >= 0)) return badRequest;
-  let sd: WebsiteData, imageUrlMap: Record<string,string>, pendingData: WebsiteData;
+  let sd: WebsiteData, imageUrlMap: Record<string,string>, pendingData: WebsiteData, seoFallbacks: SeoFieldProblem[];
   // Only the web endpoint and the web job reach here, so the web-origin marker (service-page text, noindex, robots.txt) is
   // stamped on the server too: an old browser tab or a client without server drafts still publishes a web site.
-  try { ({ sd, imageUrlMap, pendingData } = validateWebSnapshot({ ...(siteData as object), source: 'web-app' }, deps.render)); }
+  try { ({ sd, imageUrlMap, pendingData, seoFallbacks } = validateWebSnapshot({ ...(siteData as object), source: 'web-app' }, deps.render)); }
   catch (e: any) { return e.message === 'logo-folder' ? { status: 400, body: { error: 'bad-request', reason: 'logo-folder' } } : badRequest; }
 
   try {
@@ -273,7 +275,7 @@ export async function runWebPublish(
     await deps.sites.markPublished(slug, ent.stripe_subscription_id).catch((e) =>
       console.error(`[web-app/publish] ${slug}: live but markPublished failed:`, e?.message || e));
 
-    return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt } };
+    return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt, seoFallbacks } };
   } catch (e) {
     console.error('[web-app/publish] unexpected error:', (e as Error)?.message || e);
     return unavailable;

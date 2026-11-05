@@ -14,6 +14,7 @@
 import type { WebsiteData } from '../../types';
 import { svcTitleKey } from './guides.js';
 import { isPageKey } from './pages.js';
+import { stripMarkersText } from './markers.js';
 
 export type SeoKind = 'title' | 'description';
 export const SEO_TITLE_MAX = 60;
@@ -41,10 +42,19 @@ export function parseSeoKey(key: unknown): { target: 'page' | 'svc'; id: string;
 }
 export const isSeoKey = (key: unknown): boolean => parseSeoKey(key) !== null;
 
-// Characters a title or description may never hold: controls (newline and tab included), line and paragraph separators,
-// every invisible or bidi format character (zero-width, direction overrides, the editor's U+2063 marker), private use,
-// unassigned code points and lone surrogates.
+// Characters a title or description may never hold. Each class is its own constant so a test can pin it on its own.
+// Controls (newline and tab included), every invisible or bidi format character (zero-width U+200B-U+200F, U+2060, BOM, soft
+// hyphen, U+180E, tag characters, the editor's U+2063 marker), private use, unassigned code points and lone surrogates.
 const FORBIDDEN = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\u2028\u2029]/u;
+// Letters and blanks that print as nothing: Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), braille blank (U+2800),
+// combining grapheme joiner (U+034F), Khmer inherent vowels (U+17B4, U+17B5), Mongolian free variation selectors (U+180B-U+180D).
+const INVISIBLE = /[\u115F\u1160\u3164\uFFA0\u2800\u034F\u17B4\u17B5\u180B-\u180D]/u;
+// Variation selectors (U+FE00-U+FE0F, U+E0100-U+E01EF) turn a plain character into an emoji ("Fade\uFE0F") or glyph variant.
+const VARIATION = /[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/u;
+// Enclosing marks, mainly the combining keycap U+20E3 ("1\uFE0F\u20E3"); an emoji modifier (skin tone) is refused as well.
+const ENCLOSING = /[\p{Me}\p{Emoji_Modifier}]/u;
+// A stack of four or more combining marks on one letter ("zalgo").
+const MARK_STACK = /\p{M}{4,}/u;
 const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
 const ENTITY = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]{1,31});/i;
 const ALNUM = /[\p{L}\p{N}]/gu;
@@ -52,26 +62,37 @@ const UPPER = /\p{Lu}/gu;
 const LOWER = /\p{Ll}/gu;
 const SYMBOL_RUN = /([^\p{L}\p{N}\s])\1{3,}/u;
 
+export type SeoReason = 'not_text' | 'too_long_raw' | 'invisible' | 'whitespace' | 'markup' | 'too_long' | 'too_few_letters' | 'emoji' | 'symbols' | 'shouting' | 'bad_key' | 'too_many';
+
+/** The text to print and the reason it cannot be used, for the editor (reason names the first failed rule). */
+export function checkSeoText(kind: SeoKind, raw: unknown): { ok: true; text: string } | { ok: false; reason: SeoReason } {
+  if (typeof raw !== 'string') return { ok: false, reason: 'not_text' };
+  if (raw.length > SEO_RAW_MAX) return { ok: false, reason: 'too_long_raw' };
+  if (FORBIDDEN.test(raw) || INVISIBLE.test(raw) || VARIATION.test(raw) || MARK_STACK.test(raw)) return { ok: false, reason: 'invisible' };
+  const text = raw.replace(/ {2,}/g, ' ').trim();
+  if (/\s/u.test(text.replace(/ /g, ''))) return { ok: false, reason: 'whitespace' }; // NBSP, ideographic space ... is not plain text
+  if (text.includes('<') || text.includes('>') || ENTITY.test(text)) return { ok: false, reason: 'markup' };
+  if (Array.from(text).length > seoMax(kind)) return { ok: false, reason: 'too_long' };
+  if ((text.match(ALNUM) ?? []).length < SEO_MIN_ALNUM) return { ok: false, reason: 'too_few_letters' };
+  if (EMOJI.test(text) || ENCLOSING.test(text)) return { ok: false, reason: 'emoji' };
+  if (SYMBOL_RUN.test(text)) return { ok: false, reason: 'symbols' };
+  const upper = (text.match(UPPER) ?? []).length;
+  const cased = upper + (text.match(LOWER) ?? []).length;
+  if (cased >= 6 && upper * 2 > cased) return { ok: false, reason: 'shouting' };
+  return { ok: true, text };
+}
+
 /**
  * The text to print for an owner-written title or description, or null when it must not be used (use the default).
  * Accepted: plain text only, spaces collapsed and trimmed (the only normalisation), at most 60 / 160 characters (code points),
- * at least two letters or digits. Refused (never cut, stripped or re-cased): not a string; markup (`<`, `>`, an `&entity;`);
- * control characters and newlines; invisible and bidi characters; emoji; a run of four of the same symbol ("!!!!");
- * SHOUTING (six or more cased letters, more than half of them capitals); nothing but punctuation.
+ * at least two real letters or digits. Refused (never cut, stripped or re-cased): not a string; markup (`<`, `>`, an `&entity;`);
+ * control characters and newlines; invisible, filler and bidi characters; variation selectors; emoji incl. keycaps; stacks of
+ * combining marks; a run of four of the same symbol ("!!!!"); SHOUTING (six or more cased letters, more than half capitals);
+ * nothing but punctuation.
  */
 export function validSeoText(kind: SeoKind, raw: unknown): string | null {
-  if (typeof raw !== 'string' || raw.length > SEO_RAW_MAX) return null;
-  if (FORBIDDEN.test(raw)) return null;
-  const text = raw.replace(/ {2,}/g, ' ').trim();
-  if (/\s/u.test(text.replace(/ /g, ''))) return null; // any other whitespace (NBSP, ideographic space ...) is not plain text
-  if (text.includes('<') || text.includes('>') || ENTITY.test(text)) return null;
-  if (Array.from(text).length > seoMax(kind)) return null;
-  if ((text.match(ALNUM) ?? []).length < SEO_MIN_ALNUM) return null;
-  if (EMOJI.test(text) || SYMBOL_RUN.test(text)) return null;
-  const upper = (text.match(UPPER) ?? []).length;
-  const cased = upper + (text.match(LOWER) ?? []).length;
-  if (cased >= 6 && upper * 2 > cased) return null;
-  return text;
+  const r = checkSeoText(kind, raw);
+  return r.ok ? r.text : null;
 }
 
 const own = (o: unknown, k: string): boolean => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
@@ -84,34 +105,64 @@ export function seoOverride(d: Pick<WebsiteData, 'copy'>, key: string): string |
   return validSeoText(parsed.kind, (copy as Record<string, unknown>)[key]);
 }
 
+/** Longest `seo.*` key name kept (the longest real key is `seo.svc.<80>.description`). */
+export const SEO_KEY_MAX = SVC_KEY_MAX + 24;
+
 /**
- * Why a site's `seo.*` copy keys cannot be stored (null when they can). The server runs this on a web draft save and on a web
- * publish, so an over-long or hostile value never reaches the database or a page. A key with an empty value is allowed (it
- * means "no override"); a key the renderer does not know is allowed when its value is a short string (it is ignored).
+ * Whether the site's `copy` can be handled at all (null when it can). Only a structural problem is reported here: the editor
+ * never produces it. Bad `seo.*` VALUES are not a problem for saving, see seoSanitize.
  */
 export function seoProblem(sd: unknown): string | null {
   const copy = (sd as { copy?: unknown } | null | undefined)?.copy;
   if (copy === undefined || copy === null) return null;
   if (typeof copy !== 'object' || Array.isArray(copy)) return 'copy must be an object of text';
-  let n = 0;
+  return null;
+}
+
+export interface SeoFieldProblem {
+  /** The page key (`home`, `faq`, ...), `svc:<titleKey>` for a service page, or the key itself when it is not a known seo key. */
+  page: string;
+  field: SeoKind | null;
+  reason: SeoReason;
+  key: string;
+}
+
+/**
+ * Keeps an invalid `seo.*` value out of the stored copy. The rest of the site data is untouched, so one bad title never blocks a
+ * draft save. Dropped: a value that is not text, longer than SEO_RAW_MAX, a known key whose text fails validSeoText, a key name
+ * longer than SEO_KEY_MAX, and every key past MAX_SEO_KEYS. An empty value ("no override") and a short-text key the renderer
+ * does not know are kept. Never mutates; returns the same object when nothing is dropped. The list says what was dropped.
+ */
+export function seoSanitize<T>(sd: T): { siteData: T; problems: SeoFieldProblem[] } {
+  const copy = (sd as { copy?: unknown } | null | undefined)?.copy;
+  if (!copy || typeof copy !== 'object' || Array.isArray(copy)) return { siteData: sd, problems: [] };
+  const problems: SeoFieldProblem[] = [];
+  const drop = new Set<string>();
+  let kept = 0;
   for (const key of Object.keys(copy)) {
     if (!key.startsWith('seo.')) continue;
-    if (++n > MAX_SEO_KEYS) return `at most ${MAX_SEO_KEYS} seo texts`;
-    const v = (copy as Record<string, unknown>)[key];
-    if (typeof v !== 'string') return `${key} must be text`;
-    if (v.length > SEO_RAW_MAX) return `${key} is too long`;
     const parsed = parseSeoKey(key);
-    if (!parsed) continue;
-    if (v.trim() !== '' && validSeoText(parsed.kind, v) === null) return `${key} is not a valid ${parsed.kind}`;
+    const where = { page: parsed ? (parsed.target === 'svc' ? `svc:${parsed.id}` : parsed.id) : key.slice(0, SEO_KEY_MAX), field: parsed?.kind ?? null, key: key.slice(0, SEO_KEY_MAX) };
+    const v = (copy as Record<string, unknown>)[key];
+    let reason: SeoReason | null = null;
+    if (key.length > SEO_KEY_MAX) reason = 'bad_key';
+    else if (typeof v !== 'string') reason = 'not_text';
+    else if (v.length > SEO_RAW_MAX) reason = 'too_long_raw';
+    else if (parsed && v.trim() !== '') { const r = checkSeoText(parsed.kind, v); if ('reason' in r) reason = r.reason; }
+    if (!reason && ++kept > MAX_SEO_KEYS) reason = 'too_many';
+    if (reason) { drop.add(key); problems.push({ ...where, reason }); }
   }
-  return null;
+  if (!drop.size) return { siteData: sd, problems };
+  const next: Record<string, unknown> = {};
+  for (const key of Object.keys(copy)) if (!drop.has(key)) next[key] = (copy as Record<string, unknown>)[key];
+  return { siteData: { ...sd, copy: next }, problems };
 }
 
 // ── The duplicate guard ──
 export interface SeoEntry { id: string; title: string; description: string }
 export interface SeoDuplicates { titles: string[][]; descriptions: string[][] }
 
-const norm = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase();
+const norm = (s: string): string => stripMarkersText(s).replace(/\s+/g, ' ').trim().toLowerCase();
 
 /**
  * Which pages end up with the same title or the same description (compared ignoring case and spacing). Each group lists the

@@ -16,10 +16,21 @@ describe('validateWebSnapshot and seo.* copy keys', () => {
     expect(() => validateWebSnapshot(site(), () => [])).not.toThrow();
     expect(() => validateWebSnapshot(site({ 'seo.home.title': 'Fresh Cuts', 'seo.home.description': '' }), () => [])).not.toThrow();
   });
-  it('refuses hostile and over-long values with invalid_snapshot', () => {
-    for (const v of ['<script>alert(1)</script>', 'x'.repeat(10_000), 'a\nb', '💈 Cuts', 'ALL CAPS SHOUTING', '!!!!']) {
-      expect(() => validateWebSnapshot(site({ 'seo.home.title': v }), () => []), v.slice(0, 20)).toThrow('invalid_snapshot');
+  it('ignores hostile and over-long values (they fall back to the default) and reports them, never refuses the publish', () => {
+    for (const v of ['<script>alert(1)</script>', 'x'.repeat(10_000), 'a\nb', '💈 Cuts', 'ALL CAPS SHOUTING', '!!!!', 'ㅤㅤ', '1️⃣ Cuts']) {
+      const r = validateWebSnapshot(site({ 'seo.home.title': v, 'seo.home.description': 'A fine description.' }), () => []);
+      expect(r.seoFallbacks.map((p) => [p.page, p.field]), v.slice(0, 20)).toEqual([['home', 'title']]);
+      expect((r.sd.copy as any)['seo.home.title']).toBeUndefined();
+      expect((r.sd.copy as any)['seo.home.description']).toBe('A fine description.');
+      expect((r.pendingData.copy as any)['seo.home.title']).toBeUndefined();
     }
-    expect(() => validateWebSnapshot(site({ 'seo.faq.description': 'x'.repeat(161) }), () => [])).toThrow('invalid_snapshot');
+    const r = validateWebSnapshot(site({ 'seo.faq.description': 'x'.repeat(161) }), () => []);
+    expect(r.seoFallbacks).toMatchObject([{ page: 'faq', field: 'description', reason: 'too_long' }]);
+  });
+  it('a valid snapshot reports no fallbacks', () => {
+    expect(validateWebSnapshot(site({ 'seo.home.title': 'Fresh Cuts' }), () => []).seoFallbacks).toEqual([]);
+  });
+  it('still refuses a structurally broken copy', () => {
+    expect(() => validateWebSnapshot({ ...site(), copy: ['x'] }, () => [])).toThrow('invalid_snapshot');
   });
 });

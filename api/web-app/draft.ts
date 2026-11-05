@@ -2,7 +2,7 @@ import { accountRow, digest, draftPath, modeOf, publishedBinding, readDraft, rel
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/ios/siteShape.js';
-import { seoProblem } from '../../lib/render/seoText.js';
+import { seoProblem, seoSanitize } from '../../lib/render/seoText.js';
 
 /** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
 export const DRAFT_WRITES_PER_MINUTE = 120;
@@ -36,11 +36,14 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'invalid_draft' });
     }
     // An over-long or hostile SEO title / description (copy keys `seo.*`) is refused here, so it is never stored (Phase 1 step 4).
+    // Only a structural problem (copy is not an object) is refused. An invalid value is DROPPED from what is stored and listed in
+    // `seoProblems` (page, field, reason), so one bad title never blocks the autosave of the rest of the draft.
     const seo = seoProblem(site_data);
-    if (seo) return res.status(400).json({ error: 'invalid_seo', detail: seo });
+    if (seo) return res.status(400).json({ error: 'invalid_draft', detail: seo });
+    const { siteData: cleaned, problems: seoProblems } = seoSanitize(site_data);
     // Deployment URLs are server-owned. The browser cannot turn an arbitrary URL into a published account site.
-    const content = { ...site_data, source: 'web-app' };
-    if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: accountRow(previous) });
+    const content = { ...cleaned, source: 'web-app' };
+    if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: accountRow(previous), seoProblems });
     if ((previous?.revision ?? 0) !== expectedRevision) {
       return res.status(409).json({ error: 'draft_changed', draft: previous ? accountRow(previous) : null });
     }
@@ -56,7 +59,7 @@ export default async function handler(req: any, res: any) {
       written = await sbRest('web_app_drafts?on_conflict=user_id,environment', { method: 'POST', body: row, prefer: 'resolution=ignore-duplicates,return=representation' });
     }
     if (!written?.length) { const current = await readDraft(user.id); return res.status(409).json({ error: 'draft_changed', draft: current ? accountRow(current) : null }); }
-    return res.status(200).json({ draft: accountRow(written[0]) });
+    return res.status(200).json({ draft: accountRow(written[0]), seoProblems });
   } catch (e: any) {
     console.error('[web draft]', e?.message);
     return res.status(503).json({ error: 'save_unavailable' });

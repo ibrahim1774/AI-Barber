@@ -399,21 +399,43 @@ describe('SEO title and description overrides (copy keys seo.*)', () => {
     expect(again.code).toBe(200);
     expect((await db.query('select site_data from web_app_drafts')).rows[0].site_data.copy).toEqual(copy);
   });
-  it('hostile or over-long values are refused with 400 and nothing is written', async () => {
-    for (const v of ['<script>alert(1)</script>', 'x'.repeat(10_000), 'Test\nCuts', '💈 Cuts', 'BEST BARBER IN TOWN', '!!!!!', 'x'.repeat(61)]) {
-      const r = await save(withCopy({ 'seo.home.title': v }));
-      expect(r.code, v.slice(0, 20)).toBe(400); expect(r.body.error).toBe('invalid_seo');
+  it('hostile or over-long values are dropped and listed, the rest of the draft saves normally (no 4xx)', async () => {
+    const cases: Array<[unknown, string]> = [['<script>alert(1)</script>', 'markup'], ['x'.repeat(10_000), 'too_long_raw'], ['Test\nCuts', 'invisible'], ['💈 Cuts', 'emoji'],
+      ['BEST BARBER IN TOWN', 'shouting'], ['!!!!!', 'too_few_letters'], ['x'.repeat(61), 'too_long'], ['ㅤㅤ', 'invisible'], ['1️⃣', 'invisible'], [5, 'not_text']];
+    let rev = 0;
+    for (const [v, reason] of cases) {
+      const r = await save(withCopy({ 'seo.home.title': v, 'faq.book': 'Our own words.', 'seo.home.description': 'A fine description.' }), rev);
+      expect(r.code, String(v).slice(0, 20)).toBe(200); rev = r.body.draft.revision;
+      expect(r.body.seoProblems).toEqual([{ page: 'home', field: 'title', reason, key: 'seo.home.title' }]);
+      const stored = (await db.query('select site_data from web_app_drafts')).rows[0].site_data;
+      expect(stored.copy).toEqual({ 'faq.book': 'Our own words.', 'seo.home.description': 'A fine description.' });
+      expect(r.body.draft.site_data.copy['seo.home.title']).toBeUndefined();
     }
-    expect((await save(withCopy({ 'seo.home.description': 'x'.repeat(161) }))).code).toBe(400);
-    expect((await save(withCopy({ 'seo.home.title': 5 }))).code).toBe(400);
-    expect(await count()).toBe(0);
+    const r = await save(withCopy({ 'seo.home.description': 'x'.repeat(161) }), rev);
+    expect(r.code).toBe(200); expect(r.body.seoProblems[0]).toMatchObject({ page: 'home', field: 'description', reason: 'too_long' });
+  });
+  it('a clean draft returns an empty seoProblems list', async () => {
+    const r = await save(withCopy({ 'seo.home.title': 'Test Cuts' }));
+    expect(r.code).toBe(200); expect(r.body.seoProblems).toEqual([]);
+  });
+  it('a structurally broken copy is still a 400', async () => {
+    expect((await save({ ...site(), copy: ['x'] } as any)).code).toBe(400);
+  });
+  it('too many seo keys: the extras are dropped, the draft saves', async () => {
+    const copy: Record<string, string> = {};
+    for (let i = 0; i < 130; i++) copy[`seo.k${i}.title`] = 'ok';
+    const r = await save(withCopy(copy));
+    expect(r.code).toBe(200); expect(r.body.seoProblems).toHaveLength(30);
+    expect(Object.keys((await db.query('select site_data from web_app_drafts')).rows[0].site_data.copy)).toHaveLength(100);
   });
   it('an empty override (cleared in the editor) saves', async () => {
     expect((await save(withCopy({ 'seo.home.title': '' }))).code).toBe(200);
   });
-  it('an invalid value cannot replace a good draft', async () => {
+  it('an invalid value never reaches the database; the other edits of that save are kept', async () => {
     expect((await save(withCopy({ 'seo.home.title': 'Test Cuts' }))).code).toBe(200);
-    expect((await save(withCopy({ 'seo.home.title': '<b>x</b>' }), 1)).code).toBe(400);
-    expect((await db.query('select site_data from web_app_drafts')).rows[0].site_data.copy['seo.home.title']).toBe('Test Cuts');
+    const r = await save({ ...withCopy({ 'seo.home.title': '<b>x</b>' }), phone: 'edited' }, 1);
+    expect(r.code).toBe(200);
+    const row = (await db.query('select site_data from web_app_drafts')).rows[0].site_data;
+    expect(row.copy['seo.home.title']).toBeUndefined(); expect(row.phone).toBe('edited');
   });
 });

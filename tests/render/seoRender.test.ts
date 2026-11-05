@@ -110,6 +110,8 @@ describe('an invalid override is ignored: the generated default is printed, neve
   const HOSTILE: Array<[string, string]> = [
     ['script', '<script>alert(1)</script>'], ['markup', 'Fades <b>by Sam</b>'], ['newline', 'Fresh\nCuts'], ['emoji', 'Fresh Cuts 💈'],
     ['RTL override', 'Fresh‮Cuts'], ['10k', 'x'.repeat(10_000)], ['punctuation', '!!! ??? ---'], ['shouting', 'BEST BARBER IN TOWN'], ['161 chars', 'x'.repeat(161)], ['entity', 'Fades &amp; Sam'],
+    ['Hangul filler', 'ㅤㅤ'], ['halfwidth filler', 'ﾠﾠ'], ['zero width', '\u200B\u200B\u200B'], ['braille blank', 'ab⠀⠀⠀'], ['keycap', 'Call 1️⃣ now'],
+    ['variation selector', 'Fade\uFE0F cuts'], ['tag chars', 'Fade\u{E0041}\u{E0042} cuts'], ['zalgo', 'Ab' + '\u0300\u0301\u0302\u0303'.repeat(10)],
   ];
   for (const [name, bad] of HOSTILE) {
     it(`${name}: services page, service page and home keep their defaults`, () => {
@@ -246,5 +248,12 @@ describe('old drafts, old apps and regenerate keep the keys', () => {
     const copy: Record<string, string> = { ...KEYS };
     for (let i = 0; i < 20; i++) copy[`svc.filler ${i}.visit`] = 'x'.repeat(50);
     expect(heads(file(bundle(withCopy(copy)), 'index.html')).title).toBe('Kept title');
+  });
+});
+
+describe('editor markers never leak into the seo list', () => {
+  it('bundle.seo and the duplicate decision ignore U+2063 markers in a default', () => {
+    const marked = bundle(shop({ shopName: 'Fresh⁣ Cuts' }));
+    for (const e of marked.seo) { expect(e.title).not.toContain('⁣'); expect(e.description).not.toContain('⁣'); }
   });
 });
