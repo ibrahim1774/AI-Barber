@@ -74,7 +74,7 @@ const COUNTRIES: Record<string, string> = { usa: 'US', 'u.s.a.': 'US', 'u.s.a': 
 // US_ZIP3: USPS 3-digit prefix ranges per state / DC / PR / VI. Guam, American Samoa and the Marianas are left out on purpose
 // (AS is also Aguascalientes), so they are "unknown".
 const US_ZIP3: Record<string, string> = {
-  AL: '350-352,354-369', AK: '995-999', AZ: '850,852-853,855-857,859-860,863-865', AR: '716-729,755', CA: '900-908,910-928,930-961',
+  AL: '350-352,354-369', AK: '995-999', AZ: '850-853,855-857,859-860,863-865', AR: '716-729,755', CA: '900-908,910-928,930-961',
   CO: '800-816', CT: '060-069', DE: '197-199', DC: '200,202-205,569', FL: '320-339,341-342,344,346-347,349', GA: '300-319,398-399',
   HI: '967-968', ID: '832-838', IL: '600-629', IN: '460-479', IA: '500-516,520-528', KS: '660-662,664-679', KY: '400-418,420-427',
   LA: '700-701,703-708,710-714', ME: '039-049', MD: '206-212,214-219', MA: '010-027,055', MI: '480-499', MN: '550-551,553-567',
