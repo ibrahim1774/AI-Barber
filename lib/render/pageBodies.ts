@@ -24,6 +24,7 @@ import { printable } from './markers.js';
 import { safeHref } from './safeHref.js';
 import { isSiteBookLink } from './subpages.js';
 import { isStockImage } from '../stockImages.js';
+import { servicesLineHtml, type GuidePlan } from './guidePages.js';
 
 const esc = escapeAttr;
 
@@ -33,6 +34,8 @@ export interface BodyCtx {
   set: PageSet;
   template: TemplateId;
   page: PageContext;
+  /** Step 8: the guide plan of this site, or null/absent (no guide pages). The Services page then carries one line linking to the hub. */
+  guides?: GuidePlan | null;
 }
 
 export interface PageBody {
@@ -160,7 +163,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     });
     return {
       heading: heading(), description: generic,
-      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><div class="ab-grid">${cards.join('')}</div>${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}</div></section>`,
+      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><div class="ab-grid">${cards.join('')}</div>${servicesLineHtml(d, ctx.guides ?? null)}${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}</div></section>`,
     };
   }
   if (file.key === 'services' && file.child) {

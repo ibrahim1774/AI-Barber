@@ -24,6 +24,7 @@ const BASE = { siteBaseUrl: 'https://fresh.example.com' };
 const bundle = (d: WebsiteData, t: 'luxe' | 'prime' | 'euphoria' = 'luxe') => renderSiteBundle({ ...d, template: t }, BASE);
 const page = (b: ReturnType<typeof bundle>, path: string) => b.pages.find((p) => p.path === path)?.html ?? '';
 const NOINDEX = '<meta name="robots" content="noindex,follow">';
+// Guide pages (Step 8, tests/render/guidePages.test.ts) are `noindex` by design and sit under guides/; these tests are about the real pages' thin rule.
 const paged = (d: WebsiteData) => buildPageSet(d).services.map((c) => c.index);
 
 describe('which service pages are thin', () => {
@@ -36,7 +37,7 @@ describe('which service pages are thin', () => {
       const d = shop({ services: [svc('Skin Fade'), svc('Low Fade'), svc('Mid Fade'), svc('High Fade'), svc('Taper Fade')], extraPages: { on: [], serviceGuides: true, seed } });
       expect([...thinServiceIndexes(d, paged(d))], `seed ${seed}`).toEqual([1, 2, 3, 4]);
       const b = bundle(d);
-      expect(b.pages.filter((p) => p.html.includes(NOINDEX)).map((p) => p.path).sort(), `seed ${seed}`).toEqual(['services/high-fade/index.html', 'services/low-fade/index.html', 'services/mid-fade/index.html', 'services/taper-fade/index.html']);
+      expect(b.pages.filter((p) => !p.path.startsWith('guides/') && p.html.includes(NOINDEX)).map((p) => p.path).sort(), `seed ${seed}`).toEqual(['services/high-fade/index.html', 'services/low-fade/index.html', 'services/mid-fade/index.html', 'services/taper-fade/index.html']);
       expect(b.sitemap).toContain('/services/skin-fade/');
       for (const h of ['low-fade', 'mid-fade', 'high-fade', 'taper-fade']) expect(b.sitemap).not.toContain(`/services/${h}/`);
     }
@@ -88,7 +89,7 @@ describe('noindex, sitemap and robots.txt on a pages v2 site', () => {
         if (!page(b, path)) continue;
         expect(page(b, path), path).not.toContain('name="robots"');
       }
-      expect(b.pages.filter((p) => p.html.includes(NOINDEX)).map((p) => p.path).sort()).toEqual(['services/facial/index.html', 'services/low-fade/index.html', 'services/wash-style/index.html']);
+      expect(b.pages.filter((p) => !p.path.startsWith('guides/') && p.html.includes(NOINDEX)).map((p) => p.path).sort()).toEqual(['services/facial/index.html', 'services/low-fade/index.html', 'services/wash-style/index.html']);
     });
   }
   it('the sitemap leaves the thin pages out and keeps everything else', () => {
@@ -127,7 +128,7 @@ describe('noindex, sitemap and robots.txt on a pages v2 site', () => {
   });
   it('a site with no services page has nothing to mark', () => {
     const b = bundle(shop({ services: [] }));
-    expect(b.pages.some((p) => p.html.includes(NOINDEX))).toBe(false);
+    expect(b.pages.some((p) => !p.path.startsWith('guides/') && p.html.includes(NOINDEX))).toBe(false);
   });
 });
 
@@ -168,6 +169,6 @@ describe('everything older is untouched', () => {
   });
   it('the pages-v2 file list is the same as before the thin rule', () => {
     const b = bundle(shop());
-    expect(b.pages.map((p) => p.path)).toEqual(['index.html', 'services/index.html', 'services/skin-fade/index.html', 'services/low-fade/index.html', 'services/facial/index.html', 'services/enhancement/index.html', 'services/wash-style/index.html', 'hours/index.html', 'location/index.html', 'contact/index.html', 'first-visit/index.html']);
+    expect(b.pages.map((p) => p.path).filter((x) => !x.startsWith('guides/'))).toEqual(['index.html', 'services/index.html', 'services/skin-fade/index.html', 'services/low-fade/index.html', 'services/facial/index.html', 'services/enhancement/index.html', 'services/wash-style/index.html', 'hours/index.html', 'location/index.html', 'contact/index.html', 'first-visit/index.html']);
   });
 });

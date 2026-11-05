@@ -192,7 +192,7 @@ describe('generated defaults are unique per page', () => {
   });
   it('the page count and paths are unchanged by the uniqueness rule', () => {
     const b = bundle(shop());
-    expect(b.seo.length).toBe(b.pages.length);
+    expect(b.seo.length).toBe(b.pages.filter((p) => !p.path.startsWith('guides/')).length); // guide pages (Step 8) carry no seo entry
   });
   it('two owner overrides that match are reported (and printed as written)', () => {
     const d = withCopy({ [seoKey('services', 'title')]: 'Fresh Cuts Barber', [seoKey('faq', 'title')]: 'fresh  cuts barber' });

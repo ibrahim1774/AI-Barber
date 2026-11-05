@@ -401,7 +401,17 @@ describe('PARITY: web-created sites with service guides OFF, iOS and legacy site
         for (const p of a.pages.filter((x: { path: string }) => PAGES.test(x.path))) {
           const q = b.pages.find((x) => x.path === p.path);
           expect(q, `${t} ${cfg.source} ${p.path} exists`).toBeDefined();
-          expect(body(q!.html), `${t} ${cfg.source} ${p.path}`).toBe(body(p.html)); compared++;
+          // Step 8 LIVE IMPACT (pinned, not loosened): a web-created site now also gets guide pages when it is under 21 pages, whatever its serviceGuides flag
+          // says, so the Services page carries ONE line linking to the hub and every footer one `Guides` link. Those two exact strings are removed from the
+          // web output before comparing, and must be there (literal check) so a missing or changed one fails here. iOS output is compared untouched.
+          let html = q!.html;
+          if (cfg.source === 'web-app') {
+            const line = /<p class="ab-muted" data-guides-line>[^<]*<a href="\/guides\/">Hair and grooming guides<\/a><\/p>/;
+            expect(html.includes('<li><a href="/guides/">Guides</a></li>'), `${t} footer link`).toBe(true);
+            expect(line.test(html) ? p.path === 'services/index.html' : p.path !== 'services/index.html', `${t} ${p.path} services line only on Services`).toBe(true);
+            html = html.replace(line, '').replace('<li><a href="/guides/">Guides</a></li>', '');
+          } else expect(html.includes('/guides/'), `${t} ios has no guide link`).toBe(false);
+          expect(body(html), `${t} ${cfg.source} ${p.path}`).toBe(body(p.html)); compared++;
         }
       }
     }

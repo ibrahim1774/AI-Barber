@@ -18,6 +18,7 @@ import { safeHref } from './safeHref.js';
 import { pageSectionsOf } from './sections.js';
 import { faqDataQuestions, hasOpenDay, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
+import { GUIDES_DIR, isGuideFile } from './guideIds.js';
 
 /** One file of the deployed site. `path` is validated by assertSiteFilePath before it is written. */
 export interface SiteFile {
@@ -49,6 +50,12 @@ export interface ExtraPagesModel {
   svcCopy?: Record<string, unknown>;
   /** Mode A: the library guide family a custom service was assigned (a classifier choice, set by the web editor from api/web-app/service-copy.ts; the owner can change or clear it). Keyed by svcTitleKey(title); a real guide id, else ignored. */
   svcFamily?: Record<string, string>;
+  /** Step 8: the guide ids offered, in order (absent = the library order). Read by guidePages.ts only. */
+  guidesSel?: string[];
+  /** Step 8: guide ids the owner removed (they keep their slot; the owner's choice wins over the floor of 21). */
+  guidesHidden?: string[];
+  /** Step 8: true = no guide pages. */
+  guidesOff?: boolean;
 }
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */
@@ -130,6 +137,8 @@ export function assertSiteFilePath(path: string): void {
   if (typeof path !== 'string' || !FILE_PATH.test(path)) throw new Error(`unsafe site file path: ${String(path).slice(0, 80)}`);
   const top = path.split('/')[0];
   if (path !== 'index.html' && isReservedPath(top)) throw new Error(`reserved site file path: ${path}`);
+  // /guides/ belongs to the guide pages (guidePages.ts): the hub and the closed library ids are the only files that may sit under it.
+  if (top === GUIDES_DIR && !isGuideFile(path)) throw new Error(`unknown guide file path: ${path.slice(0, 80)}`);
 }
 
 /** The file of a page: `index.html`, `about/index.html`, `services/fade/index.html`. Null for the proxied pages (book, shop). */

@@ -467,6 +467,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/svcCopy.ts', 'lib/render/svcDeny.ts',
       // Which family a custom service title may be assigned (review 6c B1). Add to the app's sync-web.sh.
       'lib/render/familyKeywords.ts',
+      // Guide pages and the floor of 21 pages (Step 8). Add to the app's sync-web.sh.
+      'lib/render/guideIds.ts', 'lib/render/guideLibrary.ts', 'lib/render/guideLint.ts', 'lib/render/guidePages.ts',
       // Page heroes and section settings (pages v2, Phase C). Add to the app's sync-web.sh.
       'lib/render/heroes.ts', 'lib/render/sections.ts', 'lib/pagesV2.ts',
       // Editable everywhere (2026-10-24): marker helpers + the data paths the preview makes tappable. Add to the app's sync-web.sh.

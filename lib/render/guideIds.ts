@@ -15,13 +15,13 @@ export type GuidePageId = (typeof GUIDE_PAGE_IDS)[number];
 export const isGuidePageId = (v: unknown): v is GuidePageId => typeof v === 'string' && (GUIDE_PAGE_IDS as readonly string[]).includes(v);
 
 /** `/guides/` or `/guides/<id>/` (root-absolute, trailing slash). */
-export const isGuideHref = (p: unknown): p is string => {
+export const isGuideHref = (p: unknown): boolean => {
   if (p === `/${GUIDES_DIR}/`) return true;
   const m = typeof p === 'string' ? new RegExp(`^/${GUIDES_DIR}/([a-z-]+)/$`).exec(p) : null;
   return !!m && isGuidePageId(m[1]);
 };
 /** `guides/index.html` or `guides/<id>/index.html`. */
-export const isGuideFile = (p: unknown): p is string => {
+export const isGuideFile = (p: unknown): boolean => {
   if (p === `${GUIDES_DIR}/index.html`) return true;
   const m = typeof p === 'string' ? new RegExp(`^${GUIDES_DIR}/([a-z-]+)/index\\.html$`).exec(p) : null;
   return !!m && isGuidePageId(m[1]);

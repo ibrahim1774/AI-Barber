@@ -18,13 +18,17 @@ import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './l
 import { thinServiceIndexes, svcTitleKey } from './guides.js';
 import { seoKey, seoOverride, seoSvcKey, type SeoEntry } from './seoText.js';
 import { jsonLdHtml, type JsonLdContext } from './jsonLd.js';
+import { GUIDES_DIR } from './guideIds.js';
+import { GUIDE_HUB } from './guideLibrary.js';
+import { guideFiles, guideHref, planGuides, renderGuideBody, renderHubBody } from './guidePages.js';
+import { isSiteBookLink } from './subpages.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { printable, stripMarkersText } from './markers.js';
 import { capDataPaths } from './editPaths.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
-import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, robotsTxt, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
+import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, robotsTxt, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageKey, type PageSet, type SiteFile } from './pages.js';
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
 import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
@@ -164,10 +168,18 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
     return headerHtml('euphoria', { name: shopShown, ...headerBrand(d), cta: href ? { href, label: bookingUrl ? L('euNavBook') : L('euNavCall'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
+  // Thin service pages (guides.ts thinServiceIndexes) stay on the site but are `noindex,follow` and not in the sitemap; robots.txt goes with the sitemap.
+  // Gated on pages v2 (an `extraPages` object) AND on a web-created site (isWebCreated), like the library text: a multi-page site
+  // from before pages v2, and every site made in the iOS app, keeps its output as it was.
+  const seoV2 = hasFilePages(set) && hasPagesV2(d) && isWebCreated(d);
+  // Guide pages (guidePages.ts): filler for visitors that brings a sparse site up to 21 pages. Same web-origin gate as above plus the barber niche.
+  // They are not part of the page set: they are appended below, `noindex`, and never reach the sitemap, the JSON-LD or the menu.
+  const guidesPlan = seoV2 ? planGuides(d, set) : null;
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [
     ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: t(d.labels, navLabelKey(template, i.key), niche, d), external: i.external })),
     ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(printable(d.services?.[f.child!.index]?.title) || f.child!.title) })),
+    ...(guidesPlan ? [{ href: guideHref(), label: escapeAttr(GUIDE_HUB.footerLabel), external: false }] : []),
   ];
   const footer = footerHtml(template, {
     name: shopShown, year: copyrightYear(), credit: L('footerCredit'), line: template === 'luxe' ? L('footerLine') : undefined,
@@ -175,10 +187,6 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     pagesHeading: L('pgPages'), pages: footerPages,
   });
 
-  // Thin service pages (guides.ts thinServiceIndexes) stay on the site but are `noindex,follow` and not in the sitemap; robots.txt goes with the sitemap.
-  // Gated on pages v2 (an `extraPages` object) AND on a web-created site (isWebCreated), like the library text: a multi-page site
-  // from before pages v2, and every site made in the iOS app, keeps its output as it was.
-  const seoV2 = hasFilePages(set) && hasPagesV2(d) && isWebCreated(d);
   const thinHrefs = new Set<string>();
   if (seoV2) {
     const thin = thinServiceIndexes(d, set.services.map((c) => c.index));
@@ -228,7 +236,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
 
   for (const file of set.files) {
     if (file.key === 'home') continue;
-    const out = renderPageBody({ d, set, template, page }, file);
+    const out = renderPageBody({ d, set, template, page, guides: guidesPlan }, file);
     let title = out.title ?? `${out.heading} · ${shop}`;
     let description = out.description;
     if (seoV2) {
@@ -258,6 +266,30 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
         themeStyle,
       }),
     });
+  }
+  // Guide pages: after the real pages, `noindex,follow`, no JSON-LD, no sitemap entry, no seo entry, not in the menu.
+  if (guidesPlan) {
+    const book = bookingUrl
+      ? `<a class="ab-btn ab-btn-solid" href="${escapeAttr(bookingUrl)}"${isSiteBookLink(bookingUrl) ? '' : ' target="_blank" rel="noopener noreferrer"'}>${L('pgBookCta')}</a>`
+      : '';
+    const gctx = { d, set, plan: guidesPlan, bookBtn: book };
+    for (const f of guideFiles(guidesPlan)) {
+      const out = f.id ? renderGuideBody(gctx, f.id) : renderHubBody(gctx);
+      const file: PageFile = { key: GUIDES_DIR as unknown as PageKey, path: f.path, href: f.href };
+      pages.push({
+        path: f.path,
+        html: SHELLS[template]({
+          title: `${out.heading} · ${shop}`,
+          description: out.description,
+          canonical: base ? `${base}${f.href}` : null,
+          robots: 'noindex,follow',
+          nav: headerFor(file),
+          body: out.body,
+          footer,
+          themeStyle,
+        }),
+      });
+    }
   }
   const sitemap = sitemapXml(set, base, thinHrefs);
   return { pages, sitemap, robots: seoV2 && sitemap ? robotsTxt(base) : null, set, seo };
