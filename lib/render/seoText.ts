@@ -68,13 +68,18 @@ export type SeoReason = 'not_text' | 'too_long_raw' | 'invisible' | 'whitespace'
 
 /** The text to print and the reason it cannot be used, for the editor (reason names the first failed rule). */
 export function checkSeoText(kind: SeoKind, raw: unknown): { ok: true; text: string } | { ok: false; reason: SeoReason } {
+  return checkPlainLine(seoMax(kind), SEO_RAW_MAX, raw);
+}
+
+/** One line of plain owner text under the same rules as a title or description, with its own caps (Step 8: guide page titles and paragraphs reuse them). */
+export function checkPlainLine(max: number, rawMax: number, raw: unknown): { ok: true; text: string } | { ok: false; reason: SeoReason } {
   if (typeof raw !== 'string') return { ok: false, reason: 'not_text' };
-  if (raw.length > SEO_RAW_MAX) return { ok: false, reason: 'too_long_raw' };
+  if (raw.length > rawMax) return { ok: false, reason: 'too_long_raw' };
   if (FORBIDDEN.test(raw) || INVISIBLE.test(raw) || VARIATION.test(raw) || MARK_STACK.test(raw)) return { ok: false, reason: 'invisible' };
   const text = raw.replace(/ {2,}/g, ' ').trim();
   if (/\s/u.test(text.replace(/ /g, ''))) return { ok: false, reason: 'whitespace' }; // NBSP, ideographic space ... is not plain text
   if (text.includes('<') || text.includes('>') || ENTITY.test(text)) return { ok: false, reason: 'markup' };
-  if (Array.from(text).length > seoMax(kind)) return { ok: false, reason: 'too_long' };
+  if (Array.from(text).length > max) return { ok: false, reason: 'too_long' };
   if ((text.match(ALNUM) ?? []).length < SEO_MIN_ALNUM) return { ok: false, reason: 'too_few_letters' };
   if (EMOJI.test(text) || ENCLOSING.test(text)) return { ok: false, reason: 'emoji' };
   if (SYMBOL_RUN.test(text)) return { ok: false, reason: 'symbols' };
