@@ -16,6 +16,7 @@ import type { TemplateId, WebsiteData } from '../../types';
 import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './honest.js';
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
 import { thinServiceIndexes } from './guides.js';
+import { jsonLdHtml, type JsonLdContext } from './jsonLd.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { printable } from './markers.js';
@@ -170,6 +171,13 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     for (const f of set.files) if (f.key === 'services' && f.child && thin.has(f.child.index)) thinHrefs.add(f.href);
   }
 
+  // JSON-LD (jsonLd.ts): same gate as the SEO rules above, and only with a public base (every @id is absolute).
+  const ld: JsonLdContext | null = seoV2 && base
+    ? { d, set, base, place: plainLabel(d.labels, 'pgPlace', niche, d), servicesTitle: plainLabel(d.labels, 'pgServicesTitle', niche, d), imageUrls: map, thin: thinHrefs }
+    : null;
+  const homeLd = ld ? jsonLdHtml(ld, set.files.find((f) => f.key === 'home')!) : '';
+  if (homeLd) pages[0] = { path: 'index.html', html: home.replace('</head>', () => `  ${homeLd}\n</head>`) };
+
   for (const file of set.files) {
     if (file.key === 'home') continue;
     const out = renderPageBody({ d, set, template, page }, file);
@@ -180,6 +188,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
         description: out.description,
         canonical: base ? `${base}${file.href}` : null,
         robots: thinHrefs.has(file.href) ? 'noindex,follow' : undefined,
+        jsonLd: ld ? jsonLdHtml(ld, file) || undefined : undefined,
         nav: headerFor(file),
         body: out.body,
         footer,

@@ -448,6 +448,8 @@ export interface ShellInput {
   canonical?: string | null;
   /** `noindex,follow` for a page that stays on the site but is not offered to search engines (a thin service page). */
   robots?: 'noindex,follow';
+  /** A ready `<script type="application/ld+json">` (jsonLd.ts); multi-page pages-v2 web sites only. */
+  jsonLd?: string;
   /** headerHtml(). */
   nav: string;
   /** The page body (markup built from escaped values). */
@@ -461,7 +463,7 @@ export interface ShellInput {
 const clean = (v: unknown): string => plainText(String(v ?? '')).replace(/\s+/g, ' ');
 
 function shellFor(template: TemplateId) {
-  return ({ title, description, canonical, robots, nav, body, footer, themeStyle }: ShellInput): string => {
+  return ({ title, description, canonical, robots, jsonLd, nav, body, footer, themeStyle }: ShellInput): string => {
     const ttl = escapeAttr(clean(title));
     const desc = clean(description);
     return `<!DOCTYPE html>
@@ -478,7 +480,8 @@ function shellFor(template: TemplateId) {
   <meta name="robots" content="${robots}">` : ''}
   <meta property="og:title" content="${ttl}">
   <meta property="og:description" content="${escapeAttr(desc)}">${canonical ? `
-  <link rel="canonical" href="${escapeAttr(canonical)}">` : ''}
+  <link rel="canonical" href="${escapeAttr(canonical)}">` : ''}${jsonLd ? `
+  ${jsonLd}` : ''}
   ${CLARITY}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

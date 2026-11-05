@@ -1,0 +1,729 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden JSON-LD for three fixtures > mobile 1`] = `
+{
+  "contact/index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "name": "Tony Cuts Mobile",
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "name": "Tony Cuts Mobile",
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "location/index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "name": "Tony Cuts Mobile",
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "services/house-call-cut/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/house-call-cut/#service",
+        "@type": "Service",
+        "areaServed": "Austin, TX",
+        "name": "House Call Cut",
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Tony Cuts Mobile",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/house-call-cut/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/house-call-cut/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/house-call-cut/",
+            "name": "House Call Cut",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+}
+`;
+
+exports[`golden JSON-LD for three fixtures > rich 1`] = `
+{
+  "contact/index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Brooklyn",
+      "addressRegion": "NY",
+      "postalCode": "11201",
+      "streetAddress": "1 Main St",
+    },
+    "image": [
+      "https://img.example.com/hero.jpg",
+      "https://img.example.com/g0.jpg",
+      "https://img.example.com/g1.jpg",
+      "https://img.example.com/g2.jpg",
+    ],
+    "name": "Fresh Cuts",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Monday",
+        "opens": "09:00",
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Tuesday",
+        "opens": "09:00",
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Wednesday",
+        "opens": "09:00",
+      },
+    ],
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Brooklyn",
+      "addressRegion": "NY",
+      "postalCode": "11201",
+      "streetAddress": "1 Main St",
+    },
+    "image": [
+      "https://img.example.com/hero.jpg",
+      "https://img.example.com/g0.jpg",
+      "https://img.example.com/g1.jpg",
+      "https://img.example.com/g2.jpg",
+    ],
+    "name": "Fresh Cuts",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Monday",
+        "opens": "09:00",
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Tuesday",
+        "opens": "09:00",
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Wednesday",
+        "opens": "09:00",
+      },
+    ],
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "location/index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Brooklyn",
+      "addressRegion": "NY",
+      "postalCode": "11201",
+      "streetAddress": "1 Main St",
+    },
+    "image": [
+      "https://img.example.com/hero.jpg",
+      "https://img.example.com/g0.jpg",
+      "https://img.example.com/g1.jpg",
+      "https://img.example.com/g2.jpg",
+    ],
+    "name": "Fresh Cuts",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Monday",
+        "opens": "09:00",
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Tuesday",
+        "opens": "09:00",
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Wednesday",
+        "opens": "09:00",
+      },
+    ],
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "services/beard-trim/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/beard-trim/#service",
+        "@type": "Service",
+        "areaServed": "Brooklyn, NY",
+        "name": "Beard Trim",
+        "offers": {
+          "@type": "Offer",
+          "price": "15",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/beard-trim/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/beard-trim/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/beard-trim/",
+            "name": "Beard Trim",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/hot-towel-shave/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/hot-towel-shave/#service",
+        "@type": "Service",
+        "areaServed": "Brooklyn, NY",
+        "name": "Hot Towel Shave",
+        "offers": {
+          "@type": "Offer",
+          "price": "30",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/hot-towel-shave/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/hot-towel-shave/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/hot-towel-shave/",
+            "name": "Hot Towel Shave",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/kids-cut/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/kids-cut/#service",
+        "@type": "Service",
+        "areaServed": "Brooklyn, NY",
+        "name": "Kids Cut",
+        "offers": {
+          "@type": "Offer",
+          "price": "20",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/kids-cut/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/kids-cut/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/kids-cut/",
+            "name": "Kids Cut",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/skin-fade/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/skin-fade/#service",
+        "@type": "Service",
+        "areaServed": "Brooklyn, NY",
+        "name": "Skin Fade",
+        "offers": {
+          "@type": "Offer",
+          "price": "35",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/skin-fade/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/skin-fade/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/skin-fade/",
+            "name": "Skin Fade",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/taper/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/taper/#service",
+        "@type": "Service",
+        "areaServed": "Brooklyn, NY",
+        "name": "Taper",
+        "offers": {
+          "@type": "Offer",
+          "price": "30",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/taper/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/taper/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/taper/",
+            "name": "Taper",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+}
+`;
+
+exports[`golden JSON-LD for three fixtures > sparse 1`] = `
+{
+  "contact/index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Austin",
+      "addressRegion": "TX",
+      "postalCode": "78701",
+      "streetAddress": "12 Main St",
+    },
+    "name": "Fresh Cuts",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Monday",
+        "opens": "09:00",
+      },
+    ],
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Austin",
+      "addressRegion": "TX",
+      "postalCode": "78701",
+      "streetAddress": "12 Main St",
+    },
+    "name": "Fresh Cuts",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Monday",
+        "opens": "09:00",
+      },
+    ],
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "location/index.html": {
+    "@context": "https://schema.org",
+    "@id": "https://fresh.example.com/#business",
+    "@type": "HairSalon",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Austin",
+      "addressRegion": "TX",
+      "postalCode": "78701",
+      "streetAddress": "12 Main St",
+    },
+    "name": "Fresh Cuts",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "closes": "17:00",
+        "dayOfWeek": "Monday",
+        "opens": "09:00",
+      },
+    ],
+    "telephone": "(512) 555-0100",
+    "url": "https://fresh.example.com/",
+  },
+  "services/beard-trim/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/beard-trim/#service",
+        "@type": "Service",
+        "areaServed": "Austin, TX",
+        "name": "Beard Trim",
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/beard-trim/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/beard-trim/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/beard-trim/",
+            "name": "Beard Trim",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/kids-cut/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/kids-cut/#service",
+        "@type": "Service",
+        "areaServed": "Austin, TX",
+        "name": "Kids Cut",
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/kids-cut/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/kids-cut/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/kids-cut/",
+            "name": "Kids Cut",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/line-up/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/line-up/#service",
+        "@type": "Service",
+        "areaServed": "Austin, TX",
+        "name": "Line Up",
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/line-up/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/line-up/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/line-up/",
+            "name": "Line Up",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/skin-fade/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/skin-fade/#service",
+        "@type": "Service",
+        "areaServed": "Austin, TX",
+        "name": "Skin Fade",
+        "offers": {
+          "@type": "Offer",
+          "price": "35",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/skin-fade/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/skin-fade/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/skin-fade/",
+            "name": "Skin Fade",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+  "services/taper/index.html": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@id": "https://fresh.example.com/services/taper/#service",
+        "@type": "Service",
+        "areaServed": "Austin, TX",
+        "name": "Taper",
+        "offers": {
+          "@type": "Offer",
+          "price": "30",
+          "priceCurrency": "USD",
+        },
+        "provider": {
+          "@id": "https://fresh.example.com/#business",
+          "@type": "HairSalon",
+          "name": "Fresh Cuts",
+          "url": "https://fresh.example.com/",
+        },
+        "url": "https://fresh.example.com/services/taper/",
+      },
+      {
+        "@id": "https://fresh.example.com/services/taper/#breadcrumb",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/",
+            "name": "Home",
+            "position": 1,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/",
+            "name": "Services",
+            "position": 2,
+          },
+          {
+            "@type": "ListItem",
+            "item": "https://fresh.example.com/services/taper/",
+            "name": "Taper",
+            "position": 3,
+          },
+        ],
+      },
+    ],
+  },
+}
+`;
