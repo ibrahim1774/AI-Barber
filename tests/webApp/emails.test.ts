@@ -18,29 +18,44 @@ describe('web app emails', () => {
     expect(m.text).toContain('Custom site + booking');
     expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).toContain('Custom site, booking + your own store');
   });
-  it('failed payment: first name + barber hosting subject, bare URL, Stripe update button, sign-in link', () => {
+  it('failed payment: calm subject, headline and lead; single Stripe action link; reply-to; text mirror', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', firstName: 'Jack Smith', siteUrl: site, tier: 'website', updateUrl: 'https://invoice.stripe.com/i/x' }, O);
-    expect(m.subject).toBe('Jack, barber site plan card failed');
-    expect(m.html).toContain('>joes.vercel.app<');
+    expect(m.subject).toBe("Jack, your payment didn't go through");
+    expect(m.html).toContain("Your payment didn't go through");
+    expect(m.text).toContain("We couldn't charge your card for your barber site hosting. Update your card to keep your site online.");
+    expect(m.html).toContain('joes.vercel.app');
+    expect(m.html.match(/href="/g)).toHaveLength(1);
     expect(m.html).toContain('href="https://invoice.stripe.com/i/x"');
     expect(m.html).toContain('Update payment method');
-    expect(m.html).toContain(signInLink(O));
-    expect(m.text).toContain('lose your site');
+    expect(m.text).toContain('Update payment method: https://invoice.stripe.com/i/x');
+    expect(m.html).not.toContain(signInLink(O));
+    expect(m.html).not.toContain(resetLink(O));
+    expect(m.html).not.toContain('display:none');
+    expect(m.html).not.toContain('Forgot your password');
+    expect(m.replyTo).toBe('support@davoxa.com');
+    for (const t of [m.subject, m.html, m.text]) expect(t.toLowerCase()).not.toMatch(/lose your site|at risk|offline|urgent/);
+    for (const t of [m.subject, m.text]) expect(t).not.toContain('!');
+    expect(m.subject).not.toMatch(/[A-Z]{4,}/);
   });
   it('failed payment: no name falls back, reminders are labelled, no update url falls back to sign-in', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'website', reminder: 2 }, O);
-    expect(m.subject).toBe('Reminder: Barber site plan card failed');
+    expect(m.subject).toBe("Reminder: Your payment didn't go through");
     expect(m.html).toContain(`href="${signInLink(O)}"`);
+    expect(m.html.match(/href="/g)).toHaveLength(1);
+    expect(m.html).toContain("Your payment still hasn't gone through");
   });
   it('omits the site row when there is no site yet', () => {
     expect(failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).not.toContain('Site:');
   });
-  it('welcome and failed-payment keep the original layout (owner-mail redesign does not touch them)', () => {
-    for (const m of [welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O), failedPaymentEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O)]) {
-      expect(m.replyTo).toBeUndefined();
-      expect(m.html).toContain('Forgot your password?');
-      expect(m.html).toContain('display:none');
-    }
+  it('welcome keeps the original dark layout; failed-payment uses the plain light layout', () => {
+    const w = welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
+    expect(w.replyTo).toBeUndefined();
+    expect(w.html).toContain('Forgot your password?');
+    expect(w.html).toContain('display:none');
+    expect(w.html).toContain('background:#0d0d0d');
+    const f = failedPaymentEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
+    expect(f.html).not.toContain('#0d0d0d');
+    expect(f.html).toContain('background:#ffffff');
   });
   it('escapes html in the account email', () => {
     expect(welcomeEmail({ email: '<b>x</b>@y.co', siteUrl: null, tier: 'website' }, O).html).not.toContain('<b>x</b>');
