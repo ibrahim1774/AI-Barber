@@ -19,7 +19,7 @@
 //   R16 no tattoo  the word never appears in library text.
 //   R9 no people    no quotes, no client counts, no "clients say", no reviews.
 //
-// Three more rules apply only to the blocks added in Phase 1 (`strict`, the keys `service.*`); the older wordings are
+// Three more rules apply only to the blocks added in Phase 1 (`strict`, the keys `svc.<title>.visit|alt`); the older wordings are
 // frozen and are not re-checked against them (R10 and R11 were already taken above, so these start at R12):
 //   R12 article     never "a / an / the {service}": a title can be plural, a mass noun or start with "The", so no article is safe.
 //   R13 token form  a token stands alone as a noun phrase: not glued to letters or digits ("{service}s"), and never

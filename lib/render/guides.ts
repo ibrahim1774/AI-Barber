@@ -214,15 +214,17 @@ export function copyOverrides(d: Pick<WebsiteData, 'copy'>): Map<string, string>
     if (total > COPY_TOTAL_MAX) break;
     out.set(key, text);
   }
+  // Service page keys have a budget of their own (N7), so a full set of older overrides never makes the renderer drop a service page edit.
   let svcKeys = 0;
+  let svcTotal = 0;
   for (const key of Object.keys(raw)) {
-    if (!key.startsWith('svc.') || total > COPY_TOTAL_MAX || svcKeys >= MAX_SVC_OVERRIDES) continue;
+    if (!key.startsWith('svc.') || svcKeys >= MAX_SVC_OVERRIDES) continue;
     const e = entryFor(key);
     const v = (raw as Record<string, unknown>)[key];
     if (!e || typeof v !== 'string' || !has(v)) continue;
     const text = capText(v, e.block.max);
-    total += plain(text).length;
-    if (total > COPY_TOTAL_MAX) break;
+    svcTotal += plain(text).length;
+    if (svcTotal > COPY_TOTAL_MAX) break;
     out.set(key, text);
     svcKeys++;
   }
