@@ -17,6 +17,7 @@ const shop = (extra: Partial<WebsiteData> = {}): WebsiteData => ({
   contact: { address: '1 Main St, Brooklyn, NY 11201', email: '' },
   pages: { order: [], hidden: [] },
   extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 7 },
+  source: 'web-app',
   ...extra,
 });
 const BASE = { siteBaseUrl: 'https://fresh.example.com' };
@@ -26,9 +27,23 @@ const NOINDEX = '<meta name="robots" content="noindex,follow">';
 const paged = (d: WebsiteData) => buildPageSet(d).services.map((c) => c.index);
 
 describe('which service pages are thin', () => {
-  it('first of a kind has the guide, the second has the alt block: neither is thin; no guide and no long description is', () => {
+  it('the first of a kind has the guide and is not thin; the later one has only the alt block (B4), and Facial and Wash & Style have nothing', () => {
     const d = shop();
-    expect([...thinServiceIndexes(d, paged(d))]).toEqual([2, 4]); // Facial and Wash & Style (11 characters of description)
+    expect([...thinServiceIndexes(d, paged(d))]).toEqual([1, 2, 4]); // Low Fade (alt only), Facial, Wash & Style (11 characters of description)
+  });
+  it('B4: five fades give one indexable page (the guide); the other four are noindex and out of the sitemap, whatever wording each picked', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const d = shop({ services: [svc('Skin Fade'), svc('Low Fade'), svc('Mid Fade'), svc('High Fade'), svc('Taper Fade')], extraPages: { on: [], serviceGuides: true, seed } });
+      expect([...thinServiceIndexes(d, paged(d))], `seed ${seed}`).toEqual([1, 2, 3, 4]);
+      const b = bundle(d);
+      expect(b.pages.filter((p) => p.html.includes(NOINDEX)).map((p) => p.path).sort(), `seed ${seed}`).toEqual(['services/high-fade/index.html', 'services/low-fade/index.html', 'services/mid-fade/index.html', 'services/taper-fade/index.html']);
+      expect(b.sitemap).toContain('/services/skin-fade/');
+      for (const h of ['low-fade', 'mid-fade', 'high-fade', 'taper-fade']) expect(b.sitemap).not.toContain(`/services/${h}/`);
+    }
+  });
+  it('B4: a later fade with its own long description is indexable (the description is unique, the alt block is not)', () => {
+    const d = shop({ services: [svc('Skin Fade'), svc('Low Fade', { description: LONG })] });
+    expect([...thinServiceIndexes(d, paged(d))]).toEqual([]);
   });
   it(`a description of ${THIN_DESCRIPTION_MIN} characters counts, one character less does not`, () => {
     const at = (n: number) => shop({ services: [svc('Facial', { description: 'x'.repeat(n) })] });
@@ -44,7 +59,7 @@ describe('which service pages are thin', () => {
     const d = shop({ pageSections: { service: { hidden: ['guide'] } } as never });
     expect([...thinServiceIndexes(d, paged(d))].sort()).toEqual([0, 1, 2, 4]);
     const e = shop({ pageSections: { service: { hidden: ['description'] } } as never });
-    expect([...thinServiceIndexes(e, paged(e))].sort()).toEqual([2, 3, 4]);
+    expect([...thinServiceIndexes(e, paged(e))].sort()).toEqual([1, 2, 3, 4]);
   });
   it('guides off: only a long description makes a page indexable', () => {
     const d = shop({ extraPages: { on: [], serviceGuides: false } });
@@ -64,23 +79,24 @@ describe('noindex, sitemap and robots.txt on a pages v2 site', () => {
   for (const t of ['luxe', 'prime', 'euphoria'] as const) {
     it(`${t}: thin pages carry noindex,follow and keep their canonical; indexable pages carry neither change`, () => {
       const b = bundle(shop(), t);
-      for (const path of ['services/facial/index.html', 'services/wash-style/index.html']) {
+      for (const path of ['services/facial/index.html', 'services/wash-style/index.html', 'services/low-fade/index.html']) {
         const h = page(b, path);
         expect(h, path).toContain(NOINDEX);
         expect(h, path).toContain(`<link rel="canonical" href="https://fresh.example.com/${path.replace('index.html', '')}">`);
       }
-      for (const path of ['services/skin-fade/index.html', 'services/low-fade/index.html', 'services/enhancement/index.html', 'services/index.html', 'about/index.html', 'index.html']) {
+      for (const path of ['services/skin-fade/index.html', 'services/enhancement/index.html', 'services/index.html', 'about/index.html', 'index.html']) {
         if (!page(b, path)) continue;
         expect(page(b, path), path).not.toContain('name="robots"');
       }
-      expect(b.pages.filter((p) => p.html.includes(NOINDEX)).map((p) => p.path).sort()).toEqual(['services/facial/index.html', 'services/wash-style/index.html']);
+      expect(b.pages.filter((p) => p.html.includes(NOINDEX)).map((p) => p.path).sort()).toEqual(['services/facial/index.html', 'services/low-fade/index.html', 'services/wash-style/index.html']);
     });
   }
   it('the sitemap leaves the thin pages out and keeps everything else', () => {
     const b = bundle(shop());
     expect(b.sitemap).not.toContain('/services/facial/');
     expect(b.sitemap).not.toContain('/services/wash-style/');
-    for (const h of ['/', '/services/', '/services/skin-fade/', '/services/low-fade/', '/services/enhancement/', '/book']) expect(b.sitemap).toContain(`<loc>https://fresh.example.com${h}</loc>`);
+    expect(b.sitemap).not.toContain('/services/low-fade/');
+    for (const h of ['/', '/services/', '/services/skin-fade/', '/services/enhancement/', '/book']) expect(b.sitemap).toContain(`<loc>https://fresh.example.com${h}</loc>`);
     // the pages are still files, in the menu and linked from Services
     expect(b.pages.map((p) => p.path)).toContain('services/facial/index.html');
     expect(page(b, 'services/index.html')).toContain('href="/services/facial/"');
@@ -112,6 +128,24 @@ describe('noindex, sitemap and robots.txt on a pages v2 site', () => {
   it('a site with no services page has nothing to mark', () => {
     const b = bundle(shop({ services: [] }));
     expect(b.pages.some((p) => p.html.includes(NOINDEX))).toBe(false);
+  });
+});
+
+describe('S8: only web-created sites get noindex, the sitemap exclusion and robots.txt', () => {
+  const { source: _s, ...rest } = shop();
+  void _s;
+  it.each([['no marker', rest as WebsiteData], ['source ios', shop({ source: 'ios' })], ['source empty', shop({ source: '' })]])('%s: no noindex, every service page in the sitemap, no robots.txt', (_n, d) => {
+    for (const t of ['luxe', 'prime', 'euphoria'] as const) {
+      const b = bundle(d, t);
+      expect(b.pages.some((p) => p.html.includes('name="robots"'))).toBe(false);
+      for (const h of ['facial', 'skin-fade', 'low-fade', 'wash-style', 'enhancement']) expect(b.sitemap).toContain(`/services/${h}/`);
+      expect(b.robots).toBeNull();
+    }
+  });
+  it('a web-created pages-v2 site with the marker has all three', () => {
+    const b = bundle(shop());
+    expect(b.pages.some((p) => p.html.includes(NOINDEX))).toBe(true);
+    expect(b.robots).not.toBeNull();
   });
 });
 

@@ -164,6 +164,9 @@ export interface WebsiteData {
   // edits of library text blocks (closed key set, read from Phase B on). `pageSections` holds per-page-type
   // section hide/order (closed section ids, read from Phase C on).
   extraPages?: ExtraPagesModel;
+  // Where the site was made. api/web-app/draft.ts stamps 'web-app'; the iOS app never sets it. The Phase 1 service-page text and
+  // search rules (lib/pagesV2.ts isWebCreated) apply to web-created sites only.
+  source?: string;
   copy?: Record<string, string>;
   pageSections?: Record<string, { hidden?: string[]; order?: string[] }>;
   // Optional staff cards — name, role, photo. Renderer shows a

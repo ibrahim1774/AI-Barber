@@ -107,13 +107,17 @@ describe('publishSite deploys every page', () => {
     expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
     expect(deployRenderedSite.mock.calls[0][0].pages.every((p: any) => !p.html.includes('rel="canonical"'))).toBe(true);
   });
-  it('robots.txt travels with the sitemap, for pages v2 sites only (step 2)', async () => {
+  it('robots.txt travels with the sitemap, for web-created pages v2 sites only (step 2)', async () => {
     await writePendingSite('fresh-cuts', pending());
     await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps('https://freshcuts.com') });
     expect(deployRenderedSite.mock.calls[0][0].sitemap).not.toBeNull();
     expect(deployRenderedSite.mock.calls[0][0].robots).toBeNull(); // a multi-page site from before pages v2 keeps its output
     deployRenderedSite.mockClear();
     await writePendingSite('fresh-cuts', pending({ extraPages: { on: [], serviceGuides: true, seed: 3 } }));
+    await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps('https://freshcuts.com') });
+    expect(deployRenderedSite.mock.calls[0][0].robots).toBeNull(); // pages v2 made in the iOS app (no web marker): unchanged
+    deployRenderedSite.mockClear();
+    await writePendingSite('fresh-cuts', pending({ extraPages: { on: [], serviceGuides: true, seed: 3 }, source: 'web-app' }));
     await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps('https://freshcuts.com') });
     expect(deployRenderedSite.mock.calls[0][0].robots).toBe('User-agent: *\nAllow: /\nSitemap: https://freshcuts.com/sitemap.xml\n');
     deployRenderedSite.mockClear();

@@ -17,7 +17,7 @@ import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './hones
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
 import { thinServiceIndexes } from './guides.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
-import { hasPagesV2 } from '../pagesV2.js';
+import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { printable } from './markers.js';
 import { capDataPaths } from './editPaths.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
@@ -161,8 +161,9 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
   });
 
   // Thin service pages (guides.ts thinServiceIndexes) stay on the site but are `noindex,follow` and not in the sitemap; robots.txt goes with the sitemap.
-  // Gated on pages v2 (an `extraPages` object), like the library text: a multi-page site from before it keeps its output as it was.
-  const seoV2 = hasFilePages(set) && hasPagesV2(d);
+  // Gated on pages v2 (an `extraPages` object) AND on a web-created site (isWebCreated), like the library text: a multi-page site
+  // from before pages v2, and every site made in the iOS app, keeps its output as it was.
+  const seoV2 = hasFilePages(set) && hasPagesV2(d) && isWebCreated(d);
   const thinHrefs = new Set<string>();
   if (seoV2) {
     const thin = thinServiceIndexes(d, set.services.map((c) => c.index));

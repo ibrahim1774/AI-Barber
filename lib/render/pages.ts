@@ -171,6 +171,9 @@ export function defaultExtraPages(seed?: number): ExtraPagesModel {
   return out;
 }
 
+/** Longest `pick` key kept: a service page key is `svc.<title key of up to 80 characters>.visit|alt` (90 at most). */
+export const PICK_KEY_MAX = 96;
+
 /** WebsiteData.extraPages cleaned (untrusted JSON): known page keys once, a safe seed, closed pick/images. */
 export function cleanExtraPages(raw: unknown): ExtraPagesModel {
   const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
@@ -181,7 +184,7 @@ export function cleanExtraPages(raw: unknown): ExtraPagesModel {
   if (r.pick && typeof r.pick === 'object' && !Array.isArray(r.pick)) {
     const pick: Record<string, number> = Object.create(null);
     for (const [k, v] of Object.entries(r.pick as Record<string, unknown>)) {
-      if (k.length <= 80 && typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 2) pick[k] = v;
+      if (k.length <= PICK_KEY_MAX && typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 2) pick[k] = v;
     }
     out.pick = { ...pick };
   }

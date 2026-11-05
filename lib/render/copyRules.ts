@@ -16,14 +16,17 @@
 //                   otherwise only through {svc:<guide>}, which resolves to the barber's own service or drops the sentence.
 //   R10 no health  no cure / treat / heal / dandruff / hair loss / regrow / growth / thicker / prevent / safe for.
 //   R11 ASCII      plain ASCII only, apart from the apostrophe and the en and em dash (no look-alike letters).
+//   R16 no tattoo  the word never appears in library text.
 //   R9 no people    no quotes, no client counts, no "clients say", no reviews.
 //
 // Three more rules apply only to the blocks added in Phase 1 (`strict`, the keys `service.*`); the older wordings are
 // frozen and are not re-checked against them (R10 and R11 were already taken above, so these start at R12):
-//   R12 article     never "a {service}" or "an {service}": the token {a:service} writes "a" or "an" from the title.
+//   R12 article     never "a / an / the {service}": a title can be plural, a mass noun or start with "The", so no article is safe.
 //   R13 token form  a token stands alone as a noun phrase: not glued to letters or digits ("{service}s"), and never
-//                   two tokens side by side with only a space between them.
-//   R14 clean text  the words that come out have no doubled spaces, stray punctuation, braces or "undefined" (outputProblems).
+//                   two tokens side by side (with or without a space between them).
+//   R14 clean text  the words that come out have no doubled spaces, stray punctuation, braces, repeated words or "undefined" (outputProblems).
+//   R15 agreement   {service} is never the subject of a verb ("{service} is ...", "{service} has ..."): a plural or mass
+//                   title would break the grammar. Put it in an object position or after "for" ("The menu includes {service}.").
 //
 // Pure, no DOM, imports nothing.
 
@@ -60,7 +63,6 @@ export function isKnownToken(name: string, arg?: string): boolean {
   if ((TEXT_TOKENS as readonly string[]).includes(name)) return arg === undefined;
   if (name === 'link') return arg !== undefined && (LINK_KEYS as readonly string[]).includes(arg);
   if (name === 'svc') return arg !== undefined && (GUIDE_IDS as readonly string[]).includes(arg);
-  if (name === 'a') return arg === 'service'; // {a:service}: "a" or "an" for the service's title (R12)
   return false;
 }
 
@@ -68,7 +70,7 @@ const R: { id: string; re: RegExp }[] = [
   // R1 voice
   { id: 'R1', re: /\b(?:we|our|ours|ourselves|us)\b/i },
   // R2 rank, superlatives, filler
-  { id: 'R2', re: /#1|\b(?:best|number one|leading|premier|finest|awards?|award-winning|voted|renowned|famous|premium|luxury|luxurious|world-class|unmatched|unrivaled|unrivalled|expert|experts|expertise|masters?|top[\s-](?:rated|notch|tier|quality|class|barbers?|shops?)|highest|friendly|professional|professionals|skilled|talented|passionate|high-quality|quality|precision|artisan|crafted|craftsmanship|excellence|exceptional|amazing|incredible|state-of-the-art|second to none|trusted|reliable)\b/i },
+  { id: 'R2', re: /#1|\b(?:best|number one|leading|premier|finest|awards?|award-winning|voted|renowned|famous|premium|luxury|luxurious|world-class|unmatched|unrivaled|unrivalled|expert|experts|expertise|masters?|top[\s-](?:rated|notch|tier|quality|class|barbers?|shops?)|highest|friendly|professional|professionals|skilled|talented|passionate|high-quality|quality|precision|artisan|crafted|craftsmanship|excellence|exceptional|amazing|incredible|state-of-the-art|second to none|trusted|reliable|recommended?|recommendations?|cleanest|freshest|smoothest|neatest|nicest|greatest|coolest|slickest|top\s+(?:barbers?|barbershops?|shops?|salons?|choice|pick|spot|stylists?|place|service)|the\s+top\s+(?:in|of)|love[ds]?|loving|(?:you(?:'ll| will)|you\s+can\s+expect\s+to)\s+(?:love|enjoy|leave|walk|get|see|look|feel))\b/i },
   // R3 tenure and credentials
   { id: 'R3', re: /\b(?:years?|since|established|est\.|decades?|generations?|family-owned|family owned|licensed|licenced|certified|trained|accredited|experienced|veterans?|seasoned)\b/i },
   // R4 practices and amenities
@@ -80,7 +82,9 @@ const R: { id: string; re: RegExp }[] = [
   // R7 places
   { id: 'R7', re: /\b(?:near|nearby|serving|serves|surrounding|minutes from|downtown|neighbou?rhood|in town|around the corner|local|locally|street|avenue|boulevard|county|city)\b/i },
   // R10 health claims
-  { id: 'R10', re: /\b(?:cures?|cured|treat(?:s|ed|ment|ments)?|heal(?:s|ed|ing)?|dandruff|hair loss|regrow\w*|growth|thicker|prevent\w*|safe for)\b/i },
+  { id: 'R10', re: /\b(?:cures?|cured|treat(?:s|ed|ment|ments)?|heal(?:s|ed|ing)?|dandruff|hair loss|regrow\w*|growth|thicker|prevent\w*|safe for|pores?|acne|eczema|psoriasis|health|healthy|healthier|stimulat\w*|circulation|grow(?:s|ing)?\s+(?:faster|longer|thicker|more|quicker)|help(?:s|ed|ing)?\s+(?:your\s+|the\s+)?(?:hair\s+)?grow)\b/i },
+  // R16 no tattoo anywhere (Ibrahim, 2026-11-04)
+  { id: 'R16', re: /\btattoo\w*/i },
   // R9 people and reviews
   { id: 'R9', re: /["“”]|\b(?:clients?|customers?|guests?|regulars?)\s+(?:say|said|love|loves|trust|choose|keep|return|come back|rave)\b|\b(?:testimonials?|reviews?|reviewed|rated|ratings?|stars?|thousands|hundreds|many clients|our clients|barber named)\b/i },
 ];
@@ -134,20 +138,25 @@ export function copyProblems(text: string, opts: { allow?: readonly VocabGroup[]
   return out;
 }
 
-// R12 and R13 look at the raw sentence, tokens still in place.
-const ARTICLE_BEFORE_SERVICE = /\b(?:a|an)\s+\{(?:service|svc:[a-z-]+)\}/i;
+// R12, R13 and R15 look at the raw sentence, tokens still in place.
+const ARTICLE_BEFORE_SERVICE = /\b(?:a|an|the|this|that)\s+\{(?:service|svc:[a-z-]+)\}/i;
 const TOKEN_TOUCHES_WORD = /[A-Za-z0-9]\{[^{}]*\}|\{[^{}]*\}[A-Za-z0-9]/;
-const TOKENS_ADJACENT = /\{[^{}]*\}\s+\{[^{}]*\}/;
+const TOKENS_ADJACENT = /\}\s*\{/;
+const SERVICE_AS_SUBJECT = /(?:^|[.!?]\s+|[,;:]\s+(?:and|but|so)\s+)\{(?:service|svc:[a-z-]+)\}\s+(?:is|are|was|were|has|have|had|puts|sits|appears|lists|offers|comes|takes|costs|works|gets|can|will|does|includes|keeps|makes)\b/i;
 
-/** R12 and R13 (strict blocks only). */
+/** R12, R13 and R15 (strict blocks only). */
 export function strictProblems(raw: string): string[] {
   const out: string[] = [];
   const a = ARTICLE_BEFORE_SERVICE.exec(raw);
-  if (a) out.push(`R12: use {a:service}, not "${a[0]}"`);
+  if (a) out.push(`R12: no article before the service: "${a[0]}"`);
   const g = TOKEN_TOUCHES_WORD.exec(raw);
   if (g) out.push(`R13: token glued to a word "${g[0]}"`);
   const j = TOKENS_ADJACENT.exec(raw);
   if (j) out.push(`R13: two tokens side by side "${j[0]}"`);
+  const v = SERVICE_AS_SUBJECT.exec(raw);
+  if (v) out.push(`R15: the service is the subject of a verb "${v[0].trim()}"`);
+  const n = (raw.match(/\{service\}/g) ?? []).length;
+  if (n > 1) out.push(`R15: {service} appears ${n} times in one sentence`);
   return out;
 }
 
@@ -162,6 +171,8 @@ export function outputProblems(text: string): string[] {
   if (/\b(?:undefined|null|NaN)\b|\[object/i.test(t)) out.push('R14: undefined or null');
   if (/\s[,.;:!?]/.test(t)) out.push('R14: space before punctuation');
   if (/[,;:]\s*[,.;:!?]|([!?])\1|\.{2}/.test(t)) out.push('R14: stray punctuation');
+  if (/(?:^|\s)[-–—+&/]\s+[-–—+&/](?:\s|$)/.test(t)) out.push('R14: dash or symbol run');
+  if (/\b([A-Za-z]+)\s+\1\b/i.test(t)) out.push('R14: a word repeated');
   return out;
 }
 

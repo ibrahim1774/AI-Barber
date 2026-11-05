@@ -16,7 +16,7 @@
 import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, TOKEN_RE, type VocabGroup } from './copyRules.js';
-import { hasPagesV2 } from '../pagesV2.js';
+import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
 import { pageSectionsOf, type SectionPage } from './sections.js';
@@ -87,8 +87,10 @@ export const THIN_DESCRIPTION_MIN = 80;
  * Service pages that are still thin: no text of their own beyond the price, the time and the template "visit" block, which
  * is the same on every service page and so does not count. A page is NOT thin when it prints at least one of
  *   - the owner's description of THIN_DESCRIPTION_MIN characters or more,
- *   - the library guide for its kind, or the `alt` block of a second service of that kind (pages v2, guide section shown),
- * A section the barber hid does not count, since it is not printed. (Reviewed AI text joins this list in step 6.)
+ *   - the library guide for its kind (guide section shown).
+ * The `alt` block of a later service of a kind does NOT count: it is one of three wordings per kind, so two or more
+ * pages of one kind would carry the same text, and a page that only differs by its title is a near-duplicate. A section
+ * the barber hid does not count, since it is not printed. (Reviewed AI text joins this list in step 6.)
  * Thin pages stay on the site and in the menu; they are `noindex,follow` and left out of the sitemap.
  * Returns the indexes into services[] of the thin pages among `pagedIndexes`.
  */
@@ -98,30 +100,27 @@ export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number
   const sections = pageSectionsOf(d, 'service');
   const shown = (id: string): boolean => !sections.find((x) => x.id === id)?.hidden;
   const guides = serviceGuideFor(d, pagedIndexes);
-  const alts = serviceAltFor(d, pagedIndexes);
   const env = lenientEnv(d);
   for (const index of pagedIndexes) {
-    const title = plain(services[index]?.title);
     const subject = titledServices(d).find((x) => x.index === index) ?? null;
     let unique = shown('description') && plain(services[index]?.description).length >= THIN_DESCRIPTION_MIN;
     if (!unique && shown('guide') && subject) {
       const g = guides.get(index);
       if (g && guideBlocks(env, g, subject).length > 0) unique = true;
-      else if (alts.has(index) && resolveBlock(env, svcCopyKey(title, 'alt'), subject)) unique = true;
     }
     if (!unique) out.add(index);
   }
   return out;
 }
 
-/** Do the sites' service pages carry library text at all? Pages v2 (an `extraPages` object) with service guides on. */
-export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true;
+/** Do the sites' service pages carry the Phase 1 library text? Web-created (isWebCreated), pages v2 (an `extraPages` object), service guides on. */
+export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages' | 'source'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true && isWebCreated(d);
 
 /**
  * Which service page shows the `service.alt.<guide>` block: a service with a page whose guide an earlier service with a
  * page already took (serviceGuideFor gives each guide to the first one only). A service with no guide gets none.
  */
-export function serviceAltFor(d: Pick<WebsiteData, 'services' | 'extraPages'>, pagedIndexes: readonly number[]): Map<number, GuideId> {
+export function serviceAltFor(d: Pick<WebsiteData, 'services' | 'extraPages' | 'source'>, pagedIndexes: readonly number[]): Map<number, GuideId> {
   const out = new Map<number, GuideId>();
   if (!serviceTextOn(d)) return out;
   const first = serviceGuideFor(d, pagedIndexes);
@@ -285,17 +284,6 @@ function sentenceOk(sentence: string, allow: readonly VocabGroup[], strict = fal
   return v;
 }
 
-/** "a" or "an" for a service title, by how the first word sounds ("an Eyebrow cleanup", "a Uniform trim", "an 8 minute cut"). */
-export function articleFor(title: string): 'a' | 'an' {
-  const w = plain(title).replace(/^[^A-Za-z0-9]+/, '');
-  if (!w) return 'a';
-  if (/^(?:8|11|18)(?!\d)/.test(w)) return 'an';
-  if (/^\d/.test(w)) return 'a';
-  if (/^(?:uni(?!n)|use|usu|uti|ura|eu|one|once|ubiq)/i.test(w)) return 'a';
-  if (/^(?:hour|honest|honou?r|heir)/i.test(w)) return 'an';
-  return /^[aeiou]/i.test(w) ? 'an' : 'a';
-}
-
 /** The service a `svc.<titleKey>.<part>` key belongs to (the first one with that title). */
 function serviceOfKey(d: WebsiteData, key: string): Svc | null {
   const m = /^svc\.(.+)\.(?:visit|alt)$/.exec(key);
@@ -370,7 +358,6 @@ function tokenSeg(env: CopyEnv, name: string, arg: string | undefined, subject: 
     case 'place': return text(env.place);
     case 'industry': return text(env.industry);
     case 'service': return text(subject?.title ?? '');
-    case 'a': return arg === 'service' && subject?.title ? text(`${articleFor(subject.title)} ${subject.title}`) : null;
     case 'price': return text(subject ? displayPrice(subject.price) : '');
     case 'duration': return text(subject?.duration ?? '');
     case 'phone': { const ph = plain(d.phone); return /\d/.test(ph) ? text(plain(displayPhone(ph))) : null; }
@@ -390,6 +377,17 @@ function tokenSeg(env: CopyEnv, name: string, arg: string | undefined, subject: 
 }
 const isLinkKey = (k: unknown): k is LinkKey => k === 'location' || k === 'hours' || k === 'contact' || k === 'book' || k === 'services';
 
+// What a price, a time and an address must look like to be spliced into a strict sentence. Booksy and scraped menus hold
+// free text ("Call for price", "Varies", "30", "Mobile - I come to you"); "The listed price is Call for price." is wrong, so
+// such a value drops its sentence, like a missing one (the existing no-value rule).
+const MONEY = /^(?:[$£€]\s?\d{1,5}(?:[.,]\d{1,2})?(?:\s?[-–]\s?[$£€]?\d{1,5}(?:[.,]\d{1,2})?)?\+?|\d{1,5}(?:[.,]\d{1,2})?(?:\s?[-–]\s?\d{1,5}(?:[.,]\d{1,2})?)?\+?\s?(?:USD|CAD|GBP|EUR|MXN))$/i;
+const DURATION_UNIT = '\\d+(?:[.,]\\d+)?(?:\\s?[-–]\\s?\\d+(?:[.,]\\d+)?)?\\s?(?:min(?:ute)?s?|hrs?|hours?|h|m)';
+const DURATION = new RegExp(`^${DURATION_UNIT}(?:\\s*(?:and\\s+|&\\s*)?${DURATION_UNIT})?$`, 'i');
+export const isMoney = (v: string): boolean => MONEY.test(v.trim());
+export const isDuration = (v: string): boolean => DURATION.test(v.trim());
+/** A street address has a house number followed by a street name; a city, "Mobile - I come to you" or a PO box does not. */
+export const isStreetAddress = (v: string): boolean => /(?:^|[\s,])\d{1,6}[A-Za-z]?(?:-\d{1,6})?\s+[A-Za-z]/.test(v) && !/\bp\.?\s?o\.?\s*box\b/i.test(v) && !/\b(?:mobile|travel|house\s*calls?|i come to you|we come to you|home visits?)\b/i.test(v);
+
 /**
  * One library sentence as segments: split into literal text and tokens, each token resolved on its own and never
  * expanded again (so a service called "{shop}" prints literally). Null = the sentence is dropped: it fails the
@@ -408,11 +406,16 @@ export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly 
     let seg = tokenSeg(env, m[1], m[2], subject);
     if (!seg) return null;
     if (strict && seg.t === 'text') {
-      // R14 at render time: one space between words, and no second full stop where the sentence ends on an abbreviation.
-      let v = seg.s.replace(/\s+/g, ' ').trim();
-      if (sentence[m.index! + m[0].length] === '.') v = v.replace(/\.+$/, '');
+      // R14 at render time: one space between words, no trailing punctuation that would end the sentence early ("haircut."
+      // would give "haircut. is ..."), and only values that read as what they are (a free-text price or time is dropped).
+      const v = seg.s.replace(/\s+/g, ' ').replace(/[\s.!?,;:]+$/, '').trim();
       if (!v) return null;
-      seg = { t: 'text', s: v };
+      if (m[1] === 'price' && !isMoney(v)) return null;
+      if (m[1] === 'duration' && !isDuration(v)) return null;
+      if (m[1] === 'address' && !isStreetAddress(v)) return null;
+      // A value that opens a sentence ("fresh cuts has it ...") starts with a capital letter.
+      const opens = /(?:^|[.!?]\s+)$/.test(sentence.slice(0, m.index!)) && /^[a-z]/.test(v);
+      seg = { t: 'text', s: opens ? v[0].toUpperCase() + v.slice(1) : v };
     }
     push(seg);
     last = m.index! + m[0].length;
