@@ -1,6 +1,6 @@
 // Golden snapshots: any accidental change to the exact output of a customer email fails here.
 // Update with `vitest -u` only when a wording or layout change is intended.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { alertMail, duplicateRefundEmail, failedPaymentEmail, iosOverlapEmail, replyToAddress, welcomeEmail } from '../../lib/webApp/emails';
 import { ownerEmailFor } from '../../lib/webApp/ownerNotify';
 
