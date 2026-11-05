@@ -216,7 +216,8 @@ describe('absent when the data is missing or not valid', () => {
     expect(parseAddress('12 Main St, Austin, TX 78701, USA')).toEqual({ node: { '@type': 'PostalAddress', streetAddress: '12 Main St', addressLocality: 'Austin', addressRegion: 'TX', postalCode: '78701', addressCountry: 'US' }, country: 'US' });
     expect(parseAddress('12 Main St, Austin')?.node).toEqual({ '@type': 'PostalAddress', streetAddress: '12 Main St, Austin' });
     expect(parseAddress('12 Main St, Austin')?.country).toBeNull();
-    expect(parseAddress('Suite 4, 12 Main St, Austin, TX')?.node.streetAddress).toBe('Suite 4, 12 Main St');
+    expect(parseAddress('Suite 4, 12 Main St, Austin, TX')?.node.streetAddress, 'no ZIP and no country: nothing is split off').toBe('Suite 4, 12 Main St, Austin, TX');
+    expect(parseAddress('Suite 4, 12 Main St, Austin, TX, USA')?.node).toMatchObject({ streetAddress: 'Suite 4, 12 Main St', addressRegion: 'TX', addressCountry: 'US' });
     expect(parseAddress('12 Main St, Austin, TX')?.country, 'a state code alone does not make the country known').toBeNull();
     expect(parseAddress('12 Main St., Austin, TX 78701')?.node.streetAddress).toBe('12 Main St.');
     expect(parseAddress('100 King St W, Toronto, ON, Canada')?.node).toMatchObject({ addressLocality: 'Toronto', addressRegion: 'ON', addressCountry: 'CA' });
@@ -262,10 +263,11 @@ describe('absent when the data is missing or not valid', () => {
   it('telephoneOf adds +1 only for a known US/Canada number of ten digits', () => {
     expect(telephoneOf('(512) 555-0100', 'US')).toBe('+1 (512) 555-0100');
     expect(telephoneOf('(512) 555-0100', 'CA')).toBe('+1 (512) 555-0100');
-    expect(telephoneOf('(512) 555-0100', null)).toBe('(512) 555-0100');
-    expect(telephoneOf('(512) 555-0100', 'MX')).toBe('(512) 555-0100');
+    expect(telephoneOf('(512) 555-0100', null), 'unknown country: omitted').toBeNull();
+    expect(telephoneOf('(512) 555-0100', 'MX')).toBeNull();
+    expect(telephoneOf('+52 443 555 0100', null)).toBe('+52 443 555 0100');
     expect(telephoneOf('+44 20 7946 0958', 'US')).toBe('+44 20 7946 0958');
-    expect(telephoneOf('555-0100', 'US')).toBe('555-0100');
+    expect(telephoneOf('555-0100', 'US')).toBeNull();
   });
   it('openingHours and minutesOf', () => {
     expect(minutesOf('09:00')).toBe(540);

@@ -67,9 +67,35 @@ export function ownPhotoUrl(v: unknown): string | null {
 }
 
 const COUNTRIES: Record<string, string> = { usa: 'US', 'u.s.a.': 'US', 'u.s.a': 'US', us: 'US', 'u.s.': 'US', 'united states': 'US', 'united states of america': 'US', canada: 'CA', mexico: 'MX', 'méxico': 'MX', uk: 'GB', 'united kingdom': 'GB' };
-// Closed lists: a two-letter region only counts when it is a real state / province / territory code.
-const US_STATES = new Set('AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC PR GU VI AS MP'.split(' '));
-const CA_PROVINCES = new Set('AB BC MB NB NL NS NT NU ON PE QC SK YT'.split(' '));
+// STRICT, conservative country inference. A two-letter code is NOT evidence on its own: CO, MI, MO, AS ... are also old
+// Mexican state codes, and Mexican postal codes are 5 digits like US ZIPs. So the US is inferred only from (a) an explicit
+// country, or (b) a US state code with a ZIP whose 3-digit prefix is valid for THAT state. Canada: province + a postal code
+// whose first letter belongs to that province. Anything else is unknown (null): no currency, no "+1".
+// US_ZIP3: USPS 3-digit prefix ranges per state / DC / PR / VI. Guam, American Samoa and the Marianas are left out on purpose
+// (AS is also Aguascalientes), so they are "unknown".
+const US_ZIP3: Record<string, string> = {
+  AL: '350-352,354-369', AK: '995-999', AZ: '850,852-853,855-857,859-860,863-865', AR: '716-729,755', CA: '900-908,910-928,930-961',
+  CO: '800-816', CT: '060-069', DE: '197-199', DC: '200,202-205,569', FL: '320-339,341-342,344,346-347,349', GA: '300-319,398-399',
+  HI: '967-968', ID: '832-838', IL: '600-629', IN: '460-479', IA: '500-516,520-528', KS: '660-662,664-679', KY: '400-418,420-427',
+  LA: '700-701,703-708,710-714', ME: '039-049', MD: '206-212,214-219', MA: '010-027,055', MI: '480-499', MN: '550-551,553-567',
+  MS: '386-397', MO: '630-631,633-641,644-658', MT: '590-599', NE: '680-681,683-693', NV: '889-891,893-895,897-898', NH: '030-038',
+  NJ: '070-089', NM: '870-875,877-884', NY: '005,100-149', NC: '270-289', ND: '580-588', OH: '430-459', OK: '730-731,734-741,743-749',
+  OR: '970-979', PA: '150-196', RI: '028-029', SC: '290-299', SD: '570-577', TN: '370-385', TX: '733,750-799,885', UT: '840-847',
+  VT: '050-054,056-059', VA: '201,220-246', WA: '980-986,988-994', WV: '247-268', WI: '530-532,534-535,537-549', WY: '820-831,834',
+  PR: '006-007,009', VI: '008',
+};
+const zipRanges = (spec: string): Array<[number, number]> => spec.split(',').map((r) => { const [lo, hi] = r.split('-'); return [Number(lo), Number(hi ?? lo)]; });
+const US_RANGES: Record<string, Array<[number, number]>> = Object.fromEntries(Object.entries(US_ZIP3).map(([k, v]) => [k, zipRanges(v)]));
+/** True only when the ZIP's 3-digit prefix is valid for that state code. */
+export function zipMatchesState(state: string, zip: string): boolean {
+  const r = US_RANGES[state];
+  const m = /^(\d{3})\d{2}(?:-\d{4})?$/.exec(zip);
+  if (!r || !m) return false;
+  const p = Number(m[1]);
+  return r.some(([lo, hi]) => p >= lo && p <= hi);
+}
+// Canadian province -> first letters of its postal codes.
+const CA_FSA: Record<string, string> = { AB: 'T', BC: 'V', MB: 'R', NB: 'E', NL: 'A', NS: 'B', NT: 'X', NU: 'X', ON: 'KLMNP', PE: 'C', QC: 'GHJ', SK: 'S', YT: 'Y' };
 const US_REGION = /^([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?$/;
 const CA_REGION = /^([A-Z]{2})(?:\s+([A-Z]\d[A-Z]\s?\d[A-Z]\d))?$/;
 
@@ -91,8 +117,11 @@ export function parseAddress(raw: unknown): ParsedAddress | null {
     const last = parts[parts.length - 1];
     const locality = parts[parts.length - 2];
     const us = named !== 'CA' ? US_REGION.exec(last) : null;
-    const ca = !us || !US_STATES.has(us[1]) ? (named !== 'US' ? CA_REGION.exec(last) : null) : null;
-    const hit = us && US_STATES.has(us[1]) ? { code: us[1], zip: us[2], cc: 'US' } : ca && CA_PROVINCES.has(ca[1]) ? { code: ca[1], zip: ca[2], cc: 'CA' } : null;
+    const ca = named !== 'US' ? CA_REGION.exec(last) : null;
+    // A US region needs a state code that exists; with no explicit country its ZIP must also fit THAT state.
+    const usOk = us && US_RANGES[us[1]] && (us[2] ? (named === 'US' || zipMatchesState(us[1], us[2])) : named === 'US');
+    const caOk = ca && CA_FSA[ca[1]] && (ca[2] ? CA_FSA[ca[1]].includes(ca[2][0]) : named === 'CA');
+    const hit = usOk ? { code: us![1], zip: us![2], cc: 'US' } : caOk ? { code: ca![1], zip: ca![2], cc: 'CA' } : null;
     if (hit && !/\d/.test(locality)) {
       node.streetAddress = parts.slice(0, -2).join(', ');
       node.addressLocality = locality;
@@ -112,10 +141,11 @@ export function placeOf(a: ParsedAddress | null): string | null {
   return typeof loc === 'string' && typeof reg === 'string' ? `${loc}, ${reg}` : null;
 }
 
-/** "+1 " in front of a North American number, only when the country is known to be the US or Canada and the number is plainly 10 digits. */
-export function telephoneOf(phone: string, country: string | null): string {
-  if (country !== 'US' && country !== 'CA') return phone;
-  return /^[\d\s().-]+$/.test(phone) && phone.replace(/\D/g, '').length === 10 ? `+1 ${phone}` : phone;
+/** A telephone only in a form that is certain: already international ("+52 ..."), or a plain 10-digit number with the US/CA country KNOWN ("+1 ..."). Otherwise null (omitted). */
+export function telephoneOf(phone: string, country: string | null): string | null {
+  if (/^\+\d[\d\s().-]{6,18}$/.test(phone)) return phone;
+  if (country !== 'US' && country !== 'CA') return null;
+  return /^[\d\s().-]+$/.test(phone) && phone.replace(/\D/g, '').length === 10 ? `+1 ${phone}` : null;
 }
 
 const DAYS: Record<string, string> = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
@@ -207,7 +237,8 @@ export function businessNode(c: JsonLdContext, page: 'home' | 'location' | 'cont
   if (!name || !addr) return null;
   const node: JsonNode = { '@type': businessTypeOf(d), '@id': businessId(base), name, url: `${base}/` };
   const phone = spliceable('phone', plainText(d.phone));
-  if (phone) node.telephone = telephoneOf(phone, addr.country);
+  const tel = phone ? telephoneOf(phone, addr.country) : null;
+  if (tel) node.telephone = tel;
   node.address = addr.node;
   // Hours: Location while its hours section is shown; Home only for the rows the design really prints there (Euphoria prints none).
   const rows: unknown[] = Array.isArray(d.hours) ? d.hours : [];
