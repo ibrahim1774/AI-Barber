@@ -354,8 +354,8 @@ describe('clean text and escaping over awkward titles (3 designs)', () => {
   it('an address that ends in a full stop does not end its sentence with two', () => {
     const d = shop({ contact: { address: '12 Main St.', email: '' } });
     const t = visibleText(get(d, 'services/skin-fade/index.html'));
-    expect(t).toContain('12 Main St');
     expect(t).not.toContain('St..');
+    expect(t).not.toContain('12 Main St'); // an address that ends in punctuation fails the whitelist: the sentence is omitted, not repaired
   });
 });
 

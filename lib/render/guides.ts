@@ -19,6 +19,8 @@ import { copyProblems, outputProblems, TOKEN_RE, type VocabGroup } from './copyR
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
+import { spliceable, TOKEN_KIND } from './spliceable.js';
+export { isDuration, isMoney, isStreetAddress } from './spliceable.js';
 import { pageSectionsOf, type SectionPage } from './sections.js';
 
 // ── Text helpers (same marker rule as pages.ts plainText) ───────────────────────────────────────
@@ -379,56 +381,13 @@ function tokenSeg(env: CopyEnv, name: string, arg: string | undefined, subject: 
 }
 const isLinkKey = (k: unknown): k is LinkKey => k === 'location' || k === 'hours' || k === 'contact' || k === 'book' || k === 'services';
 
-// What a price, a time and an address must look like to be spliced into a strict sentence. Booksy and scraped menus hold
-// free text ("Call for price", "Varies", "30", "Mobile - I come to you"); "The listed price is Call for price." is wrong, so
-// such a value drops its sentence, like a missing one (the existing no-value rule).
-const MONEY = /^(?:[$£€]\s?\d{1,5}(?:[.,]\d{1,2})?(?:\s?[-–]\s?[$£€]?\d{1,5}(?:[.,]\d{1,2})?)?\+?|\d{1,5}(?:[.,]\d{1,2})?(?:\s?[-–]\s?\d{1,5}(?:[.,]\d{1,2})?)?\+?\s?(?:USD|CAD|GBP|EUR|MXN))$/i;
-const DURATION_UNIT = '\\d+(?:[.,]\\d+)?(?:\\s?[-–]\\s?\\d+(?:[.,]\\d+)?)?\\s?(?:min(?:ute)?s?|hrs?|hours?|h|m)';
-const DURATION = new RegExp(`^${DURATION_UNIT}(?:\\s*(?:and\\s+|&\\s*)?${DURATION_UNIT})?$`, 'i');
-/** Call only on a value `displayPrice` has already formatted: a bare "35" is not money here, "$35" is. */
-export const isMoney = (v: string): boolean => MONEY.test(v.trim());
-export const isDuration = (v: string): boolean => DURATION.test(v.trim());
-/** A street address has a house number followed by a street name; a city, "Mobile - I come to you" or a PO box does not. */
-export const isStreetAddress = (v: string): boolean => /(?:^|[\s,])#?\d{1,6}[A-Za-z]?(?:-\d{1,6})?\s+[A-Za-z]/.test(v) && !/\bp\.?\s?o\.?\s*box\b/i.test(v) && !/\b(?:mobile|travel|house\s*calls?|i come to you|we come to you|home visits?)\b/i.test(v);
-
-/**
- * A barber's own text as it goes into a strict sentence: one space between words, no leading symbols or inverted
- * marks ("- Fade", "¿Corte?"), no trailing sentence punctuation, and no bracket or quote that has lost its partner.
- */
-export function tidyValue(raw: string): string {
-  // Leading junk goes only when it is clearly junk: a symbol followed by a space ("- Fade", "+ & Beard"), a dash, bullet,
-  // inverted mark or other punctuation glued to a word. A "+" (phone country code, "+$25"), "#" ("#1 Cut") or "~" ("~$30")
-  // in front of a digit or "$" is meaning, and stays (an approximate price then fails isMoney and drops its sentence).
-  let v = raw.replace(/\s+/g, ' ').trim()
-    .replace(/\*([^*\s][^*]*?)\*/g, '$1')
-    .replace(/^(?:[-\u2013\u2014+&/.,;:*~|!?#]+\s+)+/, '')
-    .replace(/^[-\u2013\u2014*|.,;:!?\u00bf\u00a1]+(?=\S)/, '')
-    .replace(/^[*]+/, '')
-    .replace(/[\s.!?,;:]+$/, '').trim();
-  for (const [a, b] of [['(', ')'], ['[', ']'], ['{', '}'], ['\u201c', '\u201d']]) {
-    if (v.split(a).length !== v.split(b).length) v = v.split(a).join('').split(b).join('');
-  }
-  if ((v.match(/"/g) ?? []).length % 2) v = v.replace(/"/g, '');
-  // A lone apostrophe or single quote opening a title ("'Fade") has no partner; a closing one ("Kids' Cut") is a possessive.
-  if (/^['\u2018]/.test(v) && (v.match(/['\u2018\u2019]/g) ?? []).length === 1) v = v.slice(1);
-  return v.replace(/\s+/g, ' ').trim();
-}
-
-const LABEL_MAX = 30;
-/**
- * A link label (the barber's own button or page name) as it goes inside a strict sentence ("Use the Book now link."):
- * no trailing punctuation or arrow, sentence case when it is all caps, all lower case or oddly cased, and the neutral
- * default when nothing usable is left (empty, no letters, too long, a URL, a label that is itself several sentences).
- * The button elsewhere keeps the barber's text; only the sentence is tidied.
- */
-export function tidyLabel(raw: string, fallback: string): string {
-  let v = tidyValue(String(raw ?? '')).replace(/[\s\u2192\u203a\u00bb>\u2190\u2039\u00ab<]+$/, '').replace(/^[\s\u2192\u203a\u00bb>\u2190\u2039\u00ab<]+/, '').trim();
-  if (!/[\p{L}\p{N}]/u.test(v) || v.length > LABEL_MAX || /[!?]|[.](?:\s|$)|:\/\/|www\.|[<>{}@]/.test(v)) return fallback;
-  const letters = v.replace(/[^\p{L}]/gu, '');
-  const acronym = letters.length <= 4 && !/\s/.test(v) && letters === letters.toUpperCase();
-  const odd = letters.length > 1 && !acronym && (letters === letters.toUpperCase() || letters === letters.toLowerCase() || /(?:^|\s)\p{Ll}\p{Lu}/u.test(v));
-  if (odd) v = v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
-  return v;
+const wordKey = (w: string): string => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+/** Does the first word of `value` equal the library word just before it, or its last word the library word just after it? */
+function repeatsNeighbour(before: string, value: string, after: string): boolean {
+  const prev = /([\p{L}\p{N}']+)\s+$/u.exec(before)?.[1];
+  const next = /^\s+([\p{L}\p{N}']+)/u.exec(after)?.[1];
+  const words = value.split(' ');
+  return (!!prev && wordKey(prev) !== '' && wordKey(prev) === wordKey(words[0])) || (!!next && wordKey(next) !== '' && wordKey(next) === wordKey(words[words.length - 1]));
 }
 
 /**
@@ -449,26 +408,23 @@ export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly 
     if (m.index! > last) push({ t: 'text', s: sentence.slice(last, m.index) });
     let seg = tokenSeg(env, m[1], m[2], subject);
     if (!seg) return null;
-    if (strict && seg.t === 'link') {
-      // The label is the barber's own text; the sentence gets it tidied (the button elsewhere keeps the original).
-      const label = m[1] === 'link' && isLinkKey(m[2]) ? tidyLabel(seg.label, FALLBACK_LABEL[m[2]]) : tidyValue(seg.label);
-      if (!label) return null;
-      seg = { ...seg, label };
-    }
-    if (strict && seg.t === 'text') {
-      // R14 at render time: one space between words, no trailing punctuation that would end the sentence early ("haircut."
-      // would give "haircut. is ..."), and only values that read as what they are (a free-text price or time is dropped).
-      const v = tidyValue(seg.s);
-      if (!v) return null;
-      values[m[1]] = v.toLowerCase();
-      // A title with a sentence end inside ("Shave? Yes") would end the sentence early.
-      if (m[1] === 'service' && /[.!?](?:\s|$)/.test(v)) return null;
-      if (m[1] === 'price' && !isMoney(v)) return null;
-      if (m[1] === 'duration' && !isDuration(v)) return null;
-      if (m[1] === 'address' && !isStreetAddress(v)) return null;
-      // A value that opens a sentence ("fresh cuts has it ...") starts with a capital letter.
-      const opens = /(?:^|[.!?]\s+)$/.test(sentence.slice(0, m.index!)) && /^[a-z]/.test(v);
-      seg = { t: 'text', s: opens ? v[0].toUpperCase() + v.slice(1) : v };
+    if (strict) {
+      // The ONE gate (spliceable.ts): a barber-controlled string is spliced only when it passes the whitelist of its kind,
+      // exactly as typed. Otherwise the whole sentence is omitted. Nothing is repaired or re-cased.
+      const kind = TOKEN_KIND[m[1]];
+      if (!kind) return null;
+      const v = spliceable(kind, seg.t === 'link' ? seg.label : seg.s);
+      if (v === null) return null;
+      // The value must not repeat the library word right before or after it ("book Book", "the Location page page").
+      if (repeatsNeighbour(sentence.slice(0, m.index!), v, sentence.slice(m.index! + m[0].length))) return null;
+      if (seg.t === 'link') seg = { ...seg, label: v };
+      else {
+        // A value that opens a sentence must already start with a capital: lower-case owner text is never re-cased.
+        if (/(?:^|[.!?]\s+)$/.test(sentence.slice(0, m.index!)) && /^\p{Ll}/u.test(v)) return null;
+        values[m[1]] = v.toLowerCase();
+        // A service named like the shop would read as a mistake (compared case-insensitively; nothing printed is changed).
+        seg = { t: 'text', s: v };
+      }
     }
     push(seg);
     last = m.index! + m[0].length;
