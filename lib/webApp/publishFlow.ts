@@ -140,7 +140,9 @@ export async function runWebPublish(
   if (!validSiteData(siteData)) return badRequest;
   if (baseVersion != null && !(Number.isInteger(baseVersion) && (baseVersion as number) >= 0)) return badRequest;
   let sd: WebsiteData, imageUrlMap: Record<string,string>, pendingData: WebsiteData;
-  try { ({ sd, imageUrlMap, pendingData } = validateWebSnapshot(siteData, deps.render)); }
+  // Only the web endpoint and the web job reach here, so the web-origin marker (service-page text, noindex, robots.txt) is
+  // stamped on the server too: an old browser tab or a client without server drafts still publishes a web site.
+  try { ({ sd, imageUrlMap, pendingData } = validateWebSnapshot({ ...(siteData as object), source: 'web-app' }, deps.render)); }
   catch (e: any) { return e.message === 'logo-folder' ? { status: 400, body: { error: 'bad-request', reason: 'logo-folder' } } : badRequest; }
 
   try {

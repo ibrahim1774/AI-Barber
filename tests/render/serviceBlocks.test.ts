@@ -138,7 +138,7 @@ describe('R12 to R16 (S5: the gaps the review found)', () => {
     for (const ok of ['The menu includes {service}.', 'Looking for {service}? Ask here.', 'Plan on {duration} for {service}.']) expect(strictProblems(ok), ok).toEqual([]);
   });
   it('R14: clean output, including repeated words and dash runs', () => {
-    expect(outputProblems('Looking for Skin Fade? Fresh Cuts has it on the menu.')).toEqual([]);
+    expect(outputProblems('Looking for Skin Fade? Fresh Cuts lists this service on the menu.')).toEqual([]);
     for (const bad of ['two  spaces', ' lead', 'trail ', 'a {b}', 'x undefined y', 'x null y', 'x NaN y', 'a , b', 'a ,. b', 'Fade..', 'Fade!!', '', 'a a Skin Fade', 'Fade - - now', 'Fade + & now']) expect(outputProblems(bad).length, JSON.stringify(bad)).toBeGreaterThan(0);
     expect(outputProblems('The address is 1 Main St., Brooklyn.')).toEqual([]);
   });
@@ -237,7 +237,7 @@ describe('rendering on service pages (pages v2 and web-created only)', () => {
   it('data decides: no price, duration, address, phone or booking link, no sentence about it', () => {
     const d = shop({ services: [svc('Facial')], contact: { address: '', email: '' }, phone: '', bookingUrl: '' });
     const t = visibleText(get(d, 'services/facial/index.html'));
-    expect(t).toMatch(/Fresh Cuts lists Facial on its service menu|Looking for Facial\? Fresh Cuts has it on the menu/);
+    expect(t).toMatch(/Fresh Cuts lists Facial on its service menu|Looking for Facial\? Fresh Cuts lists this service on the menu/);
     expect(t).not.toMatch(/listed at|price|call|number|address|directions|Go to/i);
   });
   it('hiding the guide section hides the blocks with it', () => {
@@ -343,7 +343,7 @@ describe('clean text and escaping over awkward titles (3 designs)', () => {
           if (!b) continue;
           for (const item of b.items) {
             const text = segsText(item);
-            expect(outputProblems(text.replace(/\bundefined\b|\bnull\b/g, 'x')), `${t} ${title}: ${text}`).toEqual([]);
+            expect(outputProblems(text.replace(/\bundefined\b|\bnull\b/g, 'x'), { repeats: false }), `${t} ${title}: ${text}`).toEqual([]);
             expect(text).not.toMatch(/[{}]/);
           }
         }

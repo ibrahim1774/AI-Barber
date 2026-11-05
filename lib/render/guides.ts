@@ -385,10 +385,24 @@ const isLinkKey = (k: unknown): k is LinkKey => k === 'location' || k === 'hours
 const MONEY = /^(?:[$£€]\s?\d{1,5}(?:[.,]\d{1,2})?(?:\s?[-–]\s?[$£€]?\d{1,5}(?:[.,]\d{1,2})?)?\+?|\d{1,5}(?:[.,]\d{1,2})?(?:\s?[-–]\s?\d{1,5}(?:[.,]\d{1,2})?)?\+?\s?(?:USD|CAD|GBP|EUR|MXN))$/i;
 const DURATION_UNIT = '\\d+(?:[.,]\\d+)?(?:\\s?[-–]\\s?\\d+(?:[.,]\\d+)?)?\\s?(?:min(?:ute)?s?|hrs?|hours?|h|m)';
 const DURATION = new RegExp(`^${DURATION_UNIT}(?:\\s*(?:and\\s+|&\\s*)?${DURATION_UNIT})?$`, 'i');
+/** Call only on a value `displayPrice` has already formatted: a bare "35" is not money here, "$35" is. */
 export const isMoney = (v: string): boolean => MONEY.test(v.trim());
 export const isDuration = (v: string): boolean => DURATION.test(v.trim());
 /** A street address has a house number followed by a street name; a city, "Mobile - I come to you" or a PO box does not. */
 export const isStreetAddress = (v: string): boolean => /(?:^|[\s,])\d{1,6}[A-Za-z]?(?:-\d{1,6})?\s+[A-Za-z]/.test(v) && !/\bp\.?\s?o\.?\s*box\b/i.test(v) && !/\b(?:mobile|travel|house\s*calls?|i come to you|we come to you|home visits?)\b/i.test(v);
+
+/**
+ * A barber's own text as it goes into a strict sentence: one space between words, no leading symbols or inverted
+ * marks ("- Fade", "¿Corte?"), no trailing sentence punctuation, and no bracket or quote that has lost its partner.
+ */
+export function tidyValue(raw: string): string {
+  let v = raw.replace(/\s+/g, ' ').replace(/^[\s\-–—+&/.,;:¿¡!?*#~|]+/, '').replace(/[\s.!?,;:]+$/, '').trim();
+  for (const [a, b] of [['(', ')'], ['[', ']'], ['{', '}']]) {
+    if (v.split(a).length !== v.split(b).length) v = v.split(a).join('').split(b).join('');
+  }
+  if ((v.match(/"/g) ?? []).length % 2) v = v.replace(/"/g, '');
+  return v.replace(/\s+/g, ' ').trim();
+}
 
 /**
  * One library sentence as segments: split into literal text and tokens, each token resolved on its own and never
@@ -398,6 +412,7 @@ export const isStreetAddress = (v: string): boolean => /(?:^|[\s,])\d{1,6}[A-Za-
 export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly VocabGroup[], subject: Svc | null, strict = false): Seg[] | null {
   if (!sentenceOk(sentence, allow, strict)) return null;
   const out: Seg[] = [];
+  const values: Record<string, string> = {};
   let last = 0;
   const push = (seg: Seg): void => {
     const prev = out[out.length - 1];
@@ -410,8 +425,9 @@ export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly 
     if (strict && seg.t === 'text') {
       // R14 at render time: one space between words, no trailing punctuation that would end the sentence early ("haircut."
       // would give "haircut. is ..."), and only values that read as what they are (a free-text price or time is dropped).
-      const v = seg.s.replace(/\s+/g, ' ').replace(/[\s.!?,;:]+$/, '').trim();
+      const v = tidyValue(seg.s);
       if (!v) return null;
+      values[m[1]] = v.toLowerCase();
       if (m[1] === 'price' && !isMoney(v)) return null;
       if (m[1] === 'duration' && !isDuration(v)) return null;
       if (m[1] === 'address' && !isStreetAddress(v)) return null;
@@ -423,7 +439,11 @@ export function resolveSentence(env: CopyEnv, sentence: string, allow: readonly 
     last = m.index! + m[0].length;
   }
   if (last < sentence.length) push({ t: 'text', s: sentence.slice(last) });
-  if (strict && out.length && outputProblems(segsText(out)).length) return null;
+  // A service called like the shop ("Fresh Cuts lists Fresh Cuts ...") reads as a mistake: drop the sentence.
+  if (strict && values.shop && values.shop === values.service) return null;
+  // Repeated words are only checked in the library's own words (linted statically); a value is the barber's wording
+  // ("Ready to book Book Club Cut?" is fine), so a repeat across or inside a value does not drop the sentence.
+  if (strict && out.length && outputProblems(segsText(out), { repeats: false }).length) return null;
   return out.length ? out : null;
 }
 

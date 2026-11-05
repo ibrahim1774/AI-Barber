@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { runWebPublish, webProductId, type WebPublishDeps, type WebSiteRow } from '../../lib/webApp/publishFlow.js';
 import { tierOf } from '../../lib/ios/tiers.js';
 import type { EntitlementRow } from '../../lib/webApp/stripeCore.js';
-import type { PendingSite, PublishOutcome } from '../../lib/publishSite.js';
+import { renderPendingBundle, type PendingSite, type PublishOutcome } from '../../lib/publishSite.js';
 import type { SiteOwnerRow } from '../../lib/siteOwners.js';
 import type { WebsiteData } from '../../types.js';
 
@@ -225,5 +225,24 @@ describe('runWebPublish: App Store subscribers', () => {
     const r = await runWebPublish({ siteData: site() }, deps, { authorization: AUTH });
     expect(r.status).toBe(200);
     expect(deps.appStoreState).not.toHaveBeenCalled();
+  });
+});
+
+describe('SF2: the web-origin marker is stamped on the server', () => {
+  it('a snapshot without the marker (old tab, client without server drafts) is stored with it and renders the web-only extras', async () => {
+    const { deps } = fakes();
+    const d = site({ pages: { order: [], hidden: [] }, extraPages: { on: ['faq'], serviceGuides: true, seed: 3 } as any, services: [{ title: 'Skin Fade', subtitle: '', description: '', icon: 'scissors', imageUrl: '', price: '$30' } as any] });
+    expect((d as any).source).toBeUndefined();
+    const r = await runWebPublish({ siteData: d }, deps, { authorization: AUTH });
+    expect(r.status).toBe(200);
+    const written = (deps.writePending as any).mock.calls[0][1] as PendingSite;
+    expect((written.siteData as any).source).toBe('web-app');
+    const out = renderPendingBundle({ siteData: JSON.parse(JSON.stringify(written.siteData)), imageUrlMap: written.imageUrlMap }, { siteBaseUrl: 'https://fresh.example.com' });
+    expect(out.robots).not.toBeNull();
+  });
+  it('a client cannot send another origin: the server value wins', async () => {
+    const { deps } = fakes();
+    await runWebPublish({ siteData: site({ source: 'ios' } as any) }, deps, { authorization: AUTH });
+    expect(((deps.writePending as any).mock.calls[0][1] as PendingSite).siteData.source).toBe('web-app');
   });
 });

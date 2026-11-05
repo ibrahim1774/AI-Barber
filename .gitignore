@@ -32,3 +32,6 @@ server.ts
 service-account.json
 
 package-backup.json
+
+# iOS-parity baseline rebuilt from git at test time
+.cache-ios-baseline/

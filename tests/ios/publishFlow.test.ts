@@ -141,6 +141,13 @@ describe('runIosPublish', () => {
     expect(p.siteData.services[0].imageUrl).toBe('');
   });
 
+  it('N-b: a hand-made iOS request cannot set the web-origin marker; the stored pending copy carries none', async () => {
+    const { deps, pending } = fakes();
+    const r = await runIosPublish(input({ siteData: { ...site(), source: 'web-app' } as any }), deps);
+    expect(r.status).toBe(200);
+    expect((pending.get('fresh-cuts')!.siteData as any).source).toBeUndefined();
+  });
+
   it('does not reuse a slug owned by the web', async () => {
     const { deps } = fakes({ taken: ['fresh-cuts'] });
     const r: any = await runIosPublish(input(), deps);

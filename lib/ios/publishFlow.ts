@@ -189,7 +189,9 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   }
   if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return badRequest;
   if (!validInput(input)) return badRequest;
-  const sd = input.siteData;
+  // The web-origin marker is set by the web app only; a hand-made iOS request cannot turn the web-only page rules on.
+  const sd = { ...input.siteData } as WebsiteData;
+  delete (sd as { source?: unknown }).source;
   if (hasDataUrl(sd)) return badRequest;
   // Build the pending payload up front: any shape problem surfaces here as a
   // 400, never after a slug has been bound.
