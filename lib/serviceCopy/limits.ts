@@ -2,6 +2,8 @@
 // generation REQUEST (review 6b ruling): a classifier call, or the writing call + its optional retry + the claim check together
 // (at most 3 model calls, a hard ceiling in generate.ts). Cached, in-progress and exists answers cost nothing. The counters are public.ab_rate_hits through ab_rate_hit()
 // (migration 006): an atomic upsert in a fixed window aligned to the epoch, swept after a day, so the table stays bounded.
+// The site counter is keyed by the draft id the client sends (review 6c NIT 6): a client that sends a fresh draft id gets a fresh site counter, but the
+// 50-per-account cap still bounds the spend. Accepted.
 // A counter that cannot be read FAILS CLOSED (the caller makes no call). Nothing here ever falls back to a local count.
 import { createHash } from 'node:crypto';
 import type { RateLimitStore } from '../bookings/rateLimit.js';

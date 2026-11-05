@@ -23,6 +23,7 @@ import { isEntitledStatus } from '../webApp/stripeCore.js';
 import { liveModelClient, type ModelClient } from './model.js';
 import { tableCopyStore, type CopyStore } from './store.js';
 
+// Review 6c NIT 7: an App Store subscriber gets 402 here while publish answers 403 app-store-account. Those sites are not web-created, so this is unreachable in practice.
 export const REQUESTS_PER_MINUTE = 20;
 
 export interface HandlerDeps {

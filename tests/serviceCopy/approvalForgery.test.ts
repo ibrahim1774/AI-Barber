@@ -10,7 +10,7 @@ import { renderPendingBundle } from '../../lib/publishSite';
 import { renderSiteBundle } from '../../lib/render/site';
 import { validateWebSnapshot, runWebPublish, type WebPublishDeps } from '../../lib/webApp/publishFlow';
 import type { PendingSite } from '../../lib/publishSite';
-import { GOOD_JSON, TEST_SECRET, U1, U2, site } from './helpers';
+import { GOOD_JSON, TEST_SECRET, U1, U2, rig, site } from './helpers';
 
 const OTHER_SECRET = 'a-different-signing-secret-ffffffff';
 const NICHE = 'Barbershop';
@@ -154,6 +154,31 @@ describe('forging approval on every path: nothing prints', () => {
   });
 });
 function stampedDropped(o: { dropped: string[] }): boolean { return o.dropped.length === 1; }
+
+describe('the endpoints stamp the approval, and only with a signing secret', () => {
+  it('approve returns an entry the server verifies; with no secret it answers 503 and the proposal row is left unapproved', async () => {
+    const r = rig({ autoPublish: false });
+    await r.call({ titleKey: 'scalp massage', mode: 'write' });
+    const a = await r.call({ titleKey: 'scalp massage', mode: 'approve' });
+    expect(verifyApproval(TEST_SECRET, a.body.copy, 'scalp massage', NICHE, U1)).toBe(true);
+    const n = rig({ autoPublish: false, secret: null });
+    await n.call({ titleKey: 'scalp massage', mode: 'write' });
+    const res = await n.call({ titleKey: 'scalp massage', mode: 'approve' });
+    expect([res.code, res.body]).toEqual([503, { error: 'ai_unavailable' }]);
+    expect([...n.store.rows.values()][0].approval).toBeNull();
+  });
+  it('write with the flag on and no secret is only a proposal (nothing renderable can be issued)', async () => {
+    const n = rig({ autoPublish: true, secret: null });
+    const res = await n.call({ titleKey: 'scalp massage', mode: 'write' });
+    expect(res.body.status).toBe('proposal');
+    expect(res.body.copy.approval).toBeUndefined(); expect(res.body.copy.approvalSig).toBeUndefined();
+  });
+  it('a client cannot ask the endpoint for a stamp: body fields are ignored and a proposal comes back unstamped', async () => {
+    const r = rig({ autoPublish: false });
+    const res = await r.call({ titleKey: 'scalp massage', mode: 'write', approval: 'owner', approvalSig: 'a'.repeat(64), copy: { ...text, approval: 'owner' } });
+    expect(res.body.status).toBe('proposal'); expect(res.body.copy.approval).toBeUndefined();
+  });
+});
 
 describe('forging approval through the real publish flow (runWebPublish)', () => {
   const USER = U1;
