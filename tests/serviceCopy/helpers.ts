@@ -5,6 +5,8 @@ import { memoryCopyStore } from '../../lib/serviceCopy/store';
 import type { ModelClient, ModelRequest, ModelResult } from '../../lib/serviceCopy/model';
 import { CHECK_SYSTEM_PROMPT } from '../../lib/serviceCopy/check';
 
+/** The approval signing key used by the tests (never a real secret). */
+export const TEST_SECRET = 'test-signing-secret-0123456789abcdef';
 export const U1 = '10000000-0000-0000-0000-000000000001';
 export const U2 = '10000000-0000-0000-0000-000000000002';
 export const PII = { phone: '(512) 555-0187', phoneDigits: '5125550187', email: 'owner.private@barbermail.test', street: '742 Evergreen Terrace', shop: 'Zanzibar Fades Co', barber: 'Marcus Delgado', review: 'Best haircut of my life says Priya', desc: 'Our signature relaxing hot oil ritual with eucalyptus.' };
@@ -76,7 +78,7 @@ export function scriptedModel(script: Step[] = [JSON.stringify(GOOD_JSON)], chec
 export function response() { const r: any = { code: 0, body: null, headers: {} as Record<string, string>, setHeader: (k: string, v: string) => { r.headers[k] = v; } }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; }
 
 export interface Rig { deps: HandlerDeps; model: ScriptedModel; store: ReturnType<typeof memoryCopyStore>; logs: string[]; drafts: Map<string, any>; clock: { t: number }; limits: ReturnType<typeof memoryStore>; call: (body?: any, opts?: { auth?: string | null; method?: string; raw?: boolean }) => Promise<any> }
-export function rig(opts: { model?: ScriptedModel; siteData?: any; enabled?: boolean; entitled?: boolean | ((userId: string) => Promise<boolean>); /** SERVICE_COPY_AUTO_PUBLISH. The legacy generation tests run with it ON (text prints without approval); the default of the product is OFF. */ autoPublish?: boolean } = {}): Rig {
+export function rig(opts: { secret?: string | null; model?: ScriptedModel; siteData?: any; enabled?: boolean; entitled?: boolean | ((userId: string) => Promise<boolean>); /** SERVICE_COPY_AUTO_PUBLISH. The legacy generation tests run with it ON (text prints without approval); the default of the product is OFF. */ autoPublish?: boolean } = {}): Rig {
   const model = opts.model ?? scriptedModel();
   const store = memoryCopyStore();
   const logs: string[] = [];
@@ -90,6 +92,7 @@ export function rig(opts: { model?: ScriptedModel; siteData?: any; enabled?: boo
     draft: async (uid) => drafts.get(uid) ?? null,
     entitled: typeof opts.entitled === 'function' ? opts.entitled : async () => (opts.entitled as boolean | undefined) ?? true,
     autoPublish: () => opts.autoPublish ?? true,
+    secret: () => (opts.secret === undefined ? TEST_SECRET : opts.secret),
     model: () => model, store, limits, requests: memoryStore(), now: () => clock.t, log: (l) => logs.push(l),
   };
   const handler = makeHandler(deps);

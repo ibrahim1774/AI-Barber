@@ -18,6 +18,7 @@ import { modeOf, readDraft, reliabilityOn, type Draft } from '../webApp/reliabil
 import { serviceFacts } from './facts.js';
 import { approveProposal, classifyServiceFamily, generateServiceCopy, type GenerateDeps } from './generate.js';
 import { serviceCopyAutoPublish } from './flags.js';
+import { signingSecret } from './approval.js';
 import { isEntitledStatus } from '../webApp/stripeCore.js';
 import { liveModelClient, type ModelClient } from './model.js';
 import { tableCopyStore, type CopyStore } from './store.js';
@@ -32,6 +33,8 @@ export interface HandlerDeps {
   entitled: (userId: string) => Promise<boolean>;
   /** SERVICE_COPY_AUTO_PUBLISH is on (read per request). */
   autoPublish: () => boolean;
+  /** The approval signing key (SERVICE_COPY_SIGNING_SECRET), read per request. Null = no approval can be issued. */
+  secret: () => string | null;
   model: () => ModelClient;
   store: CopyStore;
   limits: RateLimitStore;
@@ -52,6 +55,7 @@ export function liveDeps(): HandlerDeps {
       return Array.isArray(rows) && rows.length > 0 && isEntitledStatus(String(rows[0]?.status));
     },
     autoPublish: () => serviceCopyAutoPublish(),
+    secret: () => signingSecret(),
     model: () => liveModelClient(),
     store: tableCopyStore,
     limits: supabaseRateStore(),
@@ -97,12 +101,12 @@ export function makeHandler(deps: HandlerDeps) {
 
       const who = { userId: user.id, draftId: draft.draft_id };
       if (mode === 'approve') {
-        const a = await approveProposal({ store: deps.store, log: deps.log }, who, site, f);
+        const a = await approveProposal({ store: deps.store, log: deps.log, secret: deps.secret() }, who, site, f);
         if (a.status === 'approved') return res.status(200).json({ status: 'approved', titleKey, copy: a.copy });
         if (a.status === 'unavailable') return res.status(503).json({ error: 'ai_unavailable' });
         return res.status(a.status === 'no_proposal' ? 404 : 409).json({ error: a.status });
       }
-      const gen: GenerateDeps = { model: deps.model(), store: deps.store, limits: deps.limits, now: deps.now, log: deps.log, autoPublish: deps.autoPublish() };
+      const gen: GenerateDeps = { model: deps.model(), store: deps.store, limits: deps.limits, now: deps.now, log: deps.log, autoPublish: deps.autoPublish(), secret: deps.secret() };
       if (mode === 'classify') {
         const c = await classifyServiceFamily(gen, who, f);
         switch (c.status) {

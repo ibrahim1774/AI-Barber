@@ -17,6 +17,7 @@ import { stripLapsedLinks } from '../ios/tiers.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
 import { seoProblem, seoSanitize, type SeoFieldProblem } from '../render/seoText.js';
 import { svcCopySanitize } from '../serviceCopy/prune.js';
+import { signingSecret } from '../serviceCopy/approval.js';
 import { serviceCopyAutoPublish } from '../serviceCopy/flags.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from '../ios/siteShape.js';
 import { supabasePurchases } from '../ios/purchases.js';
@@ -106,7 +107,7 @@ export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['
   // An invalid seo.* text is ignored (the page prints its generated default) and reported, never a reason to refuse a publish.
   const { siteData: cleaned, problems: seoFallbacks } = seoSanitize(siteData);
   // Model text with no owner approval (or 'auto' approval while SERVICE_COPY_AUTO_PUBLISH is off) never reaches the render: it is dropped here, so it cannot print, be indexed or reach a sitemap.
-  const sd = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish() }).siteData as WebsiteData;
+  const sd = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret() }).siteData as WebsiteData;
   if (hasDataUrl(sd)) throw new Error('invalid_snapshot');
   let imageUrlMap: Record<string, string>;
   let pendingData: WebsiteData;
@@ -170,6 +171,8 @@ export async function runWebPublish(
     }
     // 3. Tier links.
     pendingData = stripLapsedLinks(pendingData, webProductId(ent.tier, ent.billing_interval));
+    // The signed-in owner is known now: model text approved for another owner is dropped before anything is stored.
+    pendingData = svcCopySanitize(pendingData, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: caller.id }).siteData as WebsiteData;
 
     await deps.assertCurrent?.();
     // 4./5. Slug + bindings.

@@ -12,30 +12,35 @@ vi.mock('../../lib/webApp/reliability.js', async (orig) => ({ ...(await orig<any
 import draft from '../../api/web-app/draft';
 import { svcCopySanitize, serviceKeys } from '../../lib/serviceCopy/prune';
 import { validateWebSnapshot } from '../../lib/webApp/publishFlow';
-import { GOOD_JSON, site } from './helpers';
+import { GOOD_JSON, site, TEST_SECRET, U1 } from './helpers';
+import { stampApproval } from '../../lib/serviceCopy/approval';
+import { businessTypeOf } from '../../lib/serviceCopy/facts';
 
-const entry = { v: 1, aiGenerated: true, approval: 'owner', ...GOOD_JSON };
+const proposalOf = { v: 1, aiGenerated: true, ...GOOD_JSON };
+const signed = (mode: 'owner' | 'auto' = 'owner', key = 'scalp massage') => stampApproval(TEST_SECRET, { userId: U1 }, key, businessTypeOf(site() as any), proposalOf as any, mode) as any;
+const entry = signed();   // server-signed for 'scalp massage' and the signed-in test user
+const OPTS = { secret: TEST_SECRET, userId: U1 };
 const withCopy = (titles: string[], svcCopy: any) => site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcCopy } }, titles);
 const response = () => { const r: any = { code: 0, body: null, setHeader: vi.fn() }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; };
 
 describe('svcCopySanitize', () => {
   it('keeps entries of real services, drops orphans, bad shapes and prototype keys; same object when nothing changes', () => {
     const d = withCopy(['Scalp Massage', 'Eyebrow Styling'], { 'scalp massage': entry, 'removed service': entry, 'eyebrow styling': { ...entry, v: 2 } });
-    const out = svcCopySanitize(d);
+    const out = svcCopySanitize(d, OPTS);
     expect(out.dropped.sort()).toEqual(['eyebrow styling', 'removed service']);
     expect(Object.keys(out.siteData.extraPages.svcCopy)).toEqual(['scalp massage']);
     expect(d.extraPages.svcCopy['removed service']).toBeDefined(); // never mutates
     const clean = withCopy(['Scalp Massage'], { 'scalp massage': entry });
-    expect(svcCopySanitize(clean).siteData).toBe(clean);
+    expect(svcCopySanitize(clean, OPTS).siteData).toBe(clean);
     expect(svcCopySanitize(site()).siteData).toBeDefined();
   });
   it('removes a svcCopy that is not an object; removes the key when nothing is left', () => {
-    for (const bad of ['x', 5, [], null]) expect(svcCopySanitize(withCopy(['Scalp Massage'], bad)).siteData.extraPages).not.toHaveProperty('svcCopy');
-    expect(svcCopySanitize(withCopy(['Scalp Massage'], { gone: entry })).siteData.extraPages).not.toHaveProperty('svcCopy');
+    for (const bad of ['x', 5, [], null]) expect(svcCopySanitize(withCopy(['Scalp Massage'], bad), OPTS).siteData.extraPages).not.toHaveProperty('svcCopy');
+    expect(svcCopySanitize(withCopy(['Scalp Massage'], { gone: entry }), OPTS).siteData.extraPages).not.toHaveProperty('svcCopy');
   });
   it('renaming a service orphans the old key: the text cannot resurface under the new title', () => {
     const renamed = withCopy(['Scalp Ritual'], { 'scalp massage': entry });
-    expect(svcCopySanitize(renamed).siteData.extraPages.svcCopy).toBeUndefined();
+    expect(svcCopySanitize(renamed, OPTS).siteData.extraPages.svcCopy).toBeUndefined();
   });
   it('serviceKeys lists the title keys', () => { expect([...serviceKeys(site({}, ['Scalp Massage']))].sort()).toEqual(['scalp massage', 'skin fade']); });
   it('a hostile svcCopy never throws', () => {
@@ -63,7 +68,7 @@ describe('draft save', () => {
   });
   it('model text with no owner approval never reaches the stored draft; "auto" text only while SERVICE_COPY_AUTO_PUBLISH is on; owner text and families stay', async () => {
     const proposal = { v: 1, aiGenerated: true, ...GOOD_JSON };
-    const auto = { ...proposal, approval: 'auto' };
+    const auto = signed('auto');
     st.previous = prev(withCopy(['Scalp Massage'], undefined));
     delete process.env.SERVICE_COPY_AUTO_PUBLISH;
     for (const e of [proposal, auto]) {
@@ -72,13 +77,29 @@ describe('draft save', () => {
       expect(r.body.draft.site_data.extraPages.svcCopy).toBeUndefined();
     }
     expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': entry }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
-    const fam = site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'scalp massage': 'shave', 'gone': 'shave' } } }, ['Scalp Massage']);
-    expect((await put(fam)).body.draft.site_data.extraPages.svcFamily).toEqual({ 'scalp massage': 'shave' });
+    const fam = site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'bald head polish': 'shave', 'scalp massage': 'shave', 'gone': 'shave' } } }, ['Bald Head Polish', 'Scalp Massage']);
+    expect((await put(fam)).body.draft.site_data.extraPages.svcFamily).toEqual({ 'bald head polish': 'shave' }); // 'Scalp Massage' holds no shave keyword, 'gone' is no service
     process.env.SERVICE_COPY_AUTO_PUBLISH = '1';
     try {
       expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': auto }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
       expect((await put(withCopy(['Scalp Massage'], { 'scalp massage': proposal }))).body.draft.site_data.extraPages.svcCopy).toBeUndefined();
     } finally { delete process.env.SERVICE_COPY_AUTO_PUBLISH; }
+  });
+  it('forged approval through the web draft save (and so a 3-way merge result or an old client re-save): every forgery is dropped, the owner\'s own signed text stays (review 6c B2)', async () => {
+    st.previous = prev(withCopy(['Scalp Massage'], undefined));
+    delete process.env.SERVICE_COPY_AUTO_PUBLISH;
+    const edited = { ...signed(), intro: signed().intro.replace('Learn', 'Study') };
+    const forged: any[] = [{ ...proposalOf, approval: 'owner' }, { ...proposalOf, approval: 'auto' }, { ...proposalOf, approval: 'owner', approvalSig: 'a'.repeat(64), approvalScope: 'b'.repeat(32) },
+      edited, signed('owner', 'eyebrow styling'), stampApproval(TEST_SECRET, { userId: '10000000-0000-0000-0000-000000000002' }, 'scalp massage', businessTypeOf(site() as any), proposalOf as any, 'owner'), { ...signed(), approval: 'auto' }, signed('auto')];
+    for (const e of forged) {
+      const r = await put(withCopy(['Scalp Massage'], { 'scalp massage': e }));
+      expect(r.code).toBe(200);
+      expect(r.body.draft.site_data.extraPages.svcCopy).toBeUndefined();
+    }
+    expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': signed() }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
+    // a family without a keyword in the title is dropped on the same save
+    const fam = await put(site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'scalp massage': 'shave' } } }, ['Scalp Massage']));
+    expect(fam.body.draft.site_data.extraPages.svcFamily).toBeUndefined();
   });
   it('removing a service retires its cached text (only when the feature is on); no cleanup call otherwise', async () => {
     st.previous = prev(withCopy(['Scalp Massage'], { 'scalp massage': entry }));

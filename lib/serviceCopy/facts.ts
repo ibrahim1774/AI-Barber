@@ -14,6 +14,13 @@ export type FactsResult =
 
 const NICHE_OK = /^[A-Za-z][A-Za-z &-]{1,40}$/;
 
+/** The business type sent to the model and bound into an approval signature: the niche's name, or 'Barbershop'. */
+export function businessTypeOf(d: WebsiteData): string {
+  let industry = '';
+  try { industry = nicheOf(d).industry; } catch { /* unusable data: the default below */ }
+  return NICHE_OK.test(industry) ? industry : 'Barbershop';
+}
+
 export function serviceFacts(d: WebsiteData, titleKey: string): FactsResult {
   const subject = titledServices(d).find((s) => svcTitleKey(s.title) === titleKey);
   if (!subject) return { ok: false, reason: 'no_such_service' };
@@ -22,8 +29,7 @@ export function serviceFacts(d: WebsiteData, titleKey: string): FactsResult {
   if (desc >= THIN_DESCRIPTION_MIN) return { ok: false, reason: 'has_description' };
   const title = aiTitle(subject.title);
   if (title === null) return { ok: false, reason: 'title_not_usable' };
-  const industry = nicheOf(d).industry;
-  const businessType = NICHE_OK.test(industry) ? industry : 'Barbershop';
+  const businessType = businessTypeOf(d);
   // The place is never sent to the model (review 6: it only fed leaks). The cache is valid while the service and the niche are the same.
   const facts: Facts = { serviceTitle: title, businessType };
   const hash = createHash('sha256').update(JSON.stringify([titleKey, businessType])).digest('hex');

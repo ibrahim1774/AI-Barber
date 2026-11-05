@@ -2,15 +2,21 @@
 //   - model text (aiGenerated true) with no valid approval is dropped: a proposal never lives in site data, so it can never print, be
 //     indexed or reach a sitemap. approval 'auto' is honoured only when `autoPublish` is true (the server flag SERVICE_COPY_AUTO_PUBLISH);
 //     with the flag off it is dropped too (default deny);
+//   - model text is kept ONLY with a server signature that verifies for this exact text, service key and niche (approval.ts; and this
+//     owner when `userId` is given). A client-written 'owner'/'auto', an edited, moved or re-labelled entry is dropped. Without a
+//     signing secret all model text is dropped (fail closed);
 //   - svcFamily[key] (a classifier choice, Mode A) is kept only for a real service whose title the library does not match, with a real
-//     guide id, with no text of its own under the same key; at most LIMITS.keys entries;
+//     guide id that the title's own keywords allow (familyKeywords.ts), with no text of its own under the same key; at most LIMITS.keys entries;
 //   - an entry whose key is not the title key of a service on the site (a removed or renamed service) is dropped, so text can never
 //     resurface under another service that later gets the same key;
 //   - an entry that fails the stored shape or the caps is dropped (never repaired);
 //   - at most LIMITS.keys entries; a svcCopy that is not an object is removed.
 // Returns the same object when nothing changes. Never mutates.
 import { guideIdForTitle, isGuideId, svcTitleKey, titledServices } from '../render/guides.js';
+import { familyAllowed } from '../render/familyKeywords.js';
 import { checkEntryShape, LIMITS } from '../render/svcCopy.js';
+import { verifyApproval } from './approval.js';
+import { businessTypeOf } from './facts.js';
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -20,15 +26,26 @@ export function serviceKeys(sd: unknown): Set<string> {
   return new Set(titledServices({ services: Array.isArray(services) ? services : [] } as never).map((s) => svcTitleKey(s.title)));
 }
 
-/** The title keys of the services the library has no guide for (the only ones a family or model text may attach to). */
-function customKeys(sd: unknown): Set<string> {
+/** Title key -> title of the services the library has no guide for (the only ones a family or model text may attach to). */
+function customTitles(sd: unknown): Map<string, string> {
   const services = isObj(sd) ? (sd as { services?: unknown }).services : undefined;
-  return new Set(titledServices({ services: Array.isArray(services) ? services : [] } as never).filter((s) => guideIdForTitle(s.title) === null).map((s) => svcTitleKey(s.title)));
+  const out = new Map<string, string>();
+  for (const s of titledServices({ services: Array.isArray(services) ? services : [] } as never)) {
+    const k = svcTitleKey(s.title);
+    if (guideIdForTitle(s.title) === null && !out.has(k)) out.set(k, s.title);
+  }
+  return out;
 }
 
 export interface SanitizeOptions {
   /** SERVICE_COPY_AUTO_PUBLISH is on: model text stamped approval 'auto' may stay. Default false (fail closed). */
   autoPublish?: boolean;
+  /** The signing key (approval.ts signingSecret()). Absent = no model text verifies, so none is kept. */
+  secret?: string | null;
+  /** The signed-in owner, where known (draft save, publish): an approval issued to another owner is dropped. */
+  userId?: string;
+  /** Rendering for a deploy: a verified 'auto' entry is turned into 'owner' for the renderer, which prints nothing else. */
+  forRender?: boolean;
 }
 
 export function svcCopySanitize<T>(sd: T, opts: SanitizeOptions = {}): { siteData: T; dropped: string[] } {
@@ -42,6 +59,10 @@ export function svcCopySanitize<T>(sd: T, opts: SanitizeOptions = {}): { siteDat
   let changed = false;
 
   const kept: Record<string, unknown> = {};
+  let renderChanged = false;
+  let nicheCache: string | null = null;
+  const niche = (): string => (nicheCache ??= businessTypeOf(sd as never));
+  const own = (e: { approval?: unknown; approvalSig?: unknown; approvalScope?: unknown }): boolean => e.approval !== undefined || e.approvalSig !== undefined || e.approvalScope !== undefined;
   if (hasCopy) {
     const raw = ep.svcCopy;
     if (isObj(raw)) {
@@ -49,23 +70,27 @@ export function svcCopySanitize<T>(sd: T, opts: SanitizeOptions = {}): { siteDat
         const shape = k === '__proto__' || !keys.has(k) || Object.keys(kept).length >= LIMITS.keys ? null : checkEntryShape(raw[k]);
         if (!shape || !shape.ok) { dropped.push(k); continue; }
         const e = shape.entry;
-        if (e.aiGenerated && !(e.approval === 'owner' || (e.approval === 'auto' && opts.autoPublish === true))) { dropped.push(k); continue; }
+        if (e.aiGenerated) {
+          if (!(e.approval === 'owner' || (e.approval === 'auto' && opts.autoPublish === true))) { dropped.push(k); continue; }
+          if (!verifyApproval(opts.secret, raw[k], k, niche(), opts.userId)) { dropped.push(k); continue; }
+          if (opts.forRender && e.approval === 'auto') { kept[k] = { ...(raw[k] as object), approval: 'owner' }; renderChanged = true; continue; }
+        } else if (own(e)) { dropped.push(k); continue; }
         kept[k] = raw[k];
       }
-      if (dropped.length) changed = true;
+      if (dropped.length || renderChanged) changed = true;
     } else { dropped.push('(svcCopy)'); changed = true; }
     if (changed) { if (Object.keys(kept).length) nextEp.svcCopy = kept; else delete nextEp.svcCopy; }
   }
 
   if (hasFam) {
     const raw = ep.svcFamily;
-    const custom = customKeys(sd);
+    const custom = customTitles(sd);
     const famKept: Record<string, unknown> = {};
     const before = dropped.length;
     if (isObj(raw)) {
       const withText = hasCopy ? (changed ? kept : (isObj(ep.svcCopy) ? ep.svcCopy : {})) : {};
       for (const k of Object.keys(raw)) {
-        if (k === '__proto__' || !custom.has(k) || !isGuideId(raw[k]) || Object.prototype.hasOwnProperty.call(withText, k) || Object.keys(famKept).length >= LIMITS.keys) { dropped.push(`family:${k}`); continue; }
+        if (k === '__proto__' || !custom.has(k) || !isGuideId(raw[k]) || !familyAllowed(custom.get(k), raw[k]) || Object.prototype.hasOwnProperty.call(withText, k) || Object.keys(famKept).length >= LIMITS.keys) { dropped.push(`family:${k}`); continue; }
         famKept[k] = raw[k];
       }
     } else dropped.push('(svcFamily)');

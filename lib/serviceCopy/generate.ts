@@ -21,9 +21,11 @@ import { estimateCostUsd, MAX_OUTPUT_TOKENS, MODEL_ID, MODEL_TIMEOUT_MS, ModelEr
 import { retryMessage, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { claimCheck } from './check.js';
 import { classifyTitle, ClassifyError, FAMILY_NONE } from './classify.js';
-import { GUIDE_IDS, type GuideId } from '../render/copyLibrary.js';
+import type { GuideId } from '../render/copyLibrary.js';
 import { isFamilyChoice, isTextEntry, LEASE_MS, StoreError, type CopyKey, type CopyStore } from './store.js';
 import { LimitStoreError, takeCall } from './limits.js';
+import { stampApproval } from './approval.js';
+import { familyCandidates } from '../render/familyKeywords.js';
 import type { FactsResult } from './facts.js';
 
 export type GenerateOutcome =
@@ -45,6 +47,8 @@ export interface GenerateDeps {
   token?: () => string;
   /** SERVICE_COPY_AUTO_PUBLISH is on. Default (absent) = off: Mode B text is a proposal until the owner approves it. */
   autoPublish?: boolean;
+  /** The approval signing key (approval.ts signingSecret()). Absent: nothing can be approved or auto-published, so nothing renders (fail closed). */
+  secret?: string | null;
 }
 
 /** Total time the two writing calls may take together; the retry is skipped past this. */
@@ -62,6 +66,7 @@ export async function generateServiceCopy(
   deps: GenerateDeps, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
 ): Promise<GenerateOutcome> {
   const key: CopyKey = { userId: who.userId, draftId: who.draftId, titleKey: f.titleKey };
+  const stampFor = (copy: SvcCopyEntry, mode: 'owner' | 'auto'): SvcCopyEntry | null => stampApproval(deps.secret, who, f.titleKey, f.facts.businessType, copy, mode);
   const token = (deps.token ?? randomUUID)();
   const t0 = deps.now();
   let claimed = false;
@@ -74,7 +79,7 @@ export async function generateServiceCopy(
     // 1. cache and claim (idempotency: one call per site and service, however many taps)
     const row = await deps.store.get(key);
     if (row) {
-      if (row.state === 'done' && isTextEntry(row.copy) && row.factsHash === f.hash) return deliver(row.copy, row.approval, deps.autoPublish === true);
+      if (row.state === 'done' && isTextEntry(row.copy) && row.factsHash === f.hash) return deliver(row.copy, row.approval, deps.autoPublish === true, stampFor);
       if (row.state === 'done') await deps.store.remove(key); // facts changed (niche): the old text is not about this service any more
       else if (t0 - row.claimedAt < LEASE_MS) return { status: 'in_progress' };
       else if (!(await deps.store.takeover(key, token, f.hash, t0))) return { status: 'in_progress' };
@@ -149,10 +154,11 @@ export async function generateServiceCopy(
     if (!(await deps.store.finish(key, token, entry, { tokensIn, tokensOut, approval: auto ? 'auto' : null }))) {
       claimed = false; // the claim was lost (the lease ran out): whoever holds the row decides
       const now = await deps.store.get(key);
-      return now?.state === 'done' && isTextEntry(now.copy) ? deliver(now.copy, now.approval, auto) : { status: 'in_progress' };
+      return now?.state === 'done' && isTextEntry(now.copy) ? deliver(now.copy, now.approval, auto, stampFor) : { status: 'in_progress' };
     }
     claimed = false;
-    return auto ? { status: 'generated', copy: { ...entry, approval: 'auto' } } : { status: 'proposal', copy: entry };
+    const signed = auto ? stampFor(entry, 'auto') : null;
+    return signed ? { status: 'generated', copy: signed } : { status: 'proposal', copy: entry };
   } catch (e) {
     if (claimed) await deps.store.release(key, token).catch(() => {});
     if (calls + checks > 0 || tokensIn + tokensOut > 0) logCost('error');
@@ -187,10 +193,11 @@ function verified(site: WebsiteData, f: Extract<FactsResult, { ok: true }>, entr
  * What a stored write row becomes on the way out: renderable ('cached', approval stamped) only for an owner-approved row, or for any
  * row while the auto flag is on; otherwise it is still a proposal. An 'auto' row is NOT trusted once the flag is off.
  */
-export function deliver(copy: SvcCopyEntry, rowApproval: 'owner' | 'auto' | null, autoPublish: boolean): GenerateOutcome {
-  const { approval: _drop, ...bare } = copy;
-  if (rowApproval === 'owner') return { status: 'cached', copy: { ...bare, approval: 'owner' } };
-  if (autoPublish) return { status: 'cached', copy: { ...bare, approval: 'auto' } };
+export function deliver(copy: SvcCopyEntry, rowApproval: 'owner' | 'auto' | null, autoPublish: boolean, stamp: (copy: SvcCopyEntry, mode: 'owner' | 'auto') => SvcCopyEntry | null): GenerateOutcome {
+  const { approval: _drop, approvalSig: _s, approvalScope: _c, ...bare } = copy;
+  // The approval is stamped (signed) here, on the server, for this exact text; a row that cannot be signed is only a proposal.
+  const signed = rowApproval === 'owner' ? stamp(bare, 'owner') : autoPublish ? stamp(bare, 'auto') : null;
+  if (signed) return { status: 'cached', copy: signed };
   return { status: 'proposal', copy: bare };
 }
 
@@ -204,21 +211,26 @@ export type ApproveOutcome =
  * Approving an already approved row returns it again (idempotent). No model call, no quota.
  */
 export async function approveProposal(
-  deps: Pick<GenerateDeps, 'store' | 'log'>, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
+  deps: Pick<GenerateDeps, 'store' | 'log' | 'secret'>, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
 ): Promise<ApproveOutcome> {
   const key: CopyKey = { userId: who.userId, draftId: who.draftId, titleKey: f.titleKey };
   try {
+    // No signing key = no approval can be issued (nothing signed would ever render): fail closed before touching the row.
+    if (!deps.secret) return { status: 'unavailable' };
+    const signed = (bare: SvcCopyEntry): SvcCopyEntry | null => stampApproval(deps.secret, who, f.titleKey, f.facts.businessType, bare, 'owner');
     const row = await deps.store.get(key);
     if (!row || row.state !== 'done' || !isTextEntry(row.copy)) return { status: 'no_proposal' };
     if (row.factsHash !== f.hash) { await deps.store.remove(key); return { status: 'proposal_stale' }; }
-    const { approval: _drop, ...bare } = row.copy;
+    const { approval: _drop, approvalSig: _s, approvalScope: _c, ...bare } = row.copy;
     if (!verified(site, f, bare)) { await deps.store.remove(key); return { status: 'not_renderable' }; }
-    if (row.approval === 'owner') return { status: 'approved', copy: { ...bare, approval: 'owner' } };
+    const out = signed(bare);
+    if (!out) return { status: 'unavailable' };
+    if (row.approval === 'owner') return { status: 'approved', copy: out };
     if (!(await deps.store.approve(key))) {
       const again = await deps.store.get(key);
-      return again?.state === 'done' && again.approval === 'owner' && isTextEntry(again.copy) ? { status: 'approved', copy: { ...bare, approval: 'owner' } } : { status: 'no_proposal' };
+      return again?.state === 'done' && again.approval === 'owner' && isTextEntry(again.copy) ? { status: 'approved', copy: out } : { status: 'no_proposal' };
     }
-    return { status: 'approved', copy: { ...bare, approval: 'owner' } };
+    return { status: 'approved', copy: out };
   } catch (e) {
     deps.log(`[service-copy] approve unavailable: ${e instanceof StoreError ? 'store' : 'error'}`);
     return { status: 'unavailable' };
@@ -245,10 +257,14 @@ export async function classifyServiceFamily(
   let claimed = false;
   let usage = { input: 0, output: 0 };
   const logCost = (result: string): void => deps.log(`[service-copy] mode=classify model=${MODEL_ID} in=${usage.input} out=${usage.output} cost_usd=${estimateCostUsd(usage).toFixed(5)} result=${result}`);
+  // Review 6c B1: a family needs a keyword of that family in the title itself. No candidate = no family, decided here with no store
+  // access, no model call and no counted unit; the model may only choose among the candidates.
+  const candidates = familyCandidates(f.subject.title);
+  if (!candidates.length) { deps.log('[service-copy] mode=classify result=no_candidate'); return { status: 'not_generated' }; }
   try {
     const row = await deps.store.get(key);
     if (row) {
-      if (row.state === 'done' && isFamilyChoice(row.copy) && row.factsHash === f.hash && (FAMILY_IDS as readonly string[]).includes(row.copy.family)) return { status: 'family', family: row.copy.family, cached: true };
+      if (row.state === 'done' && isFamilyChoice(row.copy) && row.factsHash === f.hash && candidates.includes(row.copy.family)) return { status: 'family', family: row.copy.family, cached: true };
       if (row.state === 'done') await deps.store.remove(key);
       else if (t0 - row.claimedAt < LEASE_MS) return { status: 'in_progress' };
       else if (!(await deps.store.takeover(key, token, f.hash, t0))) return { status: 'in_progress' };
@@ -262,7 +278,7 @@ export async function classifyServiceFamily(
     if (unit !== 'ok') { await deps.store.release(key, token).catch(() => {}); claimed = false; return { status: 'rate_limited', scope: unit }; }
     let family: GuideId | typeof FAMILY_NONE;
     try {
-      const r = await classifyTitle(deps.model, f.facts.serviceTitle);
+      const r = await classifyTitle(deps.model, f.facts.serviceTitle, candidates);
       usage = r.usage; family = r.family;
     } catch (e) {
       if (e instanceof ModelError && e.usage) usage = e.usage;
@@ -273,7 +289,7 @@ export async function classifyServiceFamily(
     if (!(await deps.store.finish(key, token, { v: 1, family }, { tokensIn: usage.input, tokensOut: usage.output }))) {
       claimed = false;
       const now = await deps.store.get(key);
-      return now?.state === 'done' && isFamilyChoice(now.copy) && (FAMILY_IDS as readonly string[]).includes(now.copy.family) ? { status: 'family', family: now.copy.family, cached: true } : { status: 'in_progress' };
+      return now?.state === 'done' && isFamilyChoice(now.copy) && candidates.includes(now.copy.family) ? { status: 'family', family: now.copy.family, cached: true } : { status: 'in_progress' };
     }
     claimed = false;
     logCost(`family=${family}`);
@@ -286,4 +302,3 @@ export async function classifyServiceFamily(
   }
 }
 
-const FAMILY_IDS = GUIDE_IDS;

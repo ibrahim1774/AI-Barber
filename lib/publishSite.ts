@@ -20,6 +20,9 @@ import type { WebsiteData } from '../types';
 import { deployRenderedSite } from './deploySite.js';
 import { stripMarkersDeep, stripMarkersText } from './render/markers.js';
 import { renderSiteBundle, type RenderedSite, type RenderSiteOptions } from './render/site.js';
+import { svcCopySanitize } from './serviceCopy/prune.js';
+import { signingSecret } from './serviceCopy/approval.js';
+import { serviceCopyAutoPublish } from './serviceCopy/flags.js';
 import { isMultiPage, type SiteFile } from './render/pages.js';
 import { movedMap, pagePathsOf, planPublishedPaths, redirectsApply, type PublishedPaths, type SiteRedirect } from './siteRedirects.js';
 import { defaultPathsStore, type PathsStore } from './publishedPathsStore.js';
@@ -394,7 +397,11 @@ export function renderPendingBundle(
   // Named fields only: nothing from a request or a stored row may reach the renderer's options.
   // The editor's invisible markers exist only in the app's preview render. A barber can paste one, so none may reach a published
   // page: the data is cleaned here, before the renderer (which keeps them for the preview) sees it. The sitemap is cleaned too.
-  const out = renderSiteBundle(stripMarkersDeep(pending.siteData), { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: stripMarkersDeep(pending.imageUrlMap || {}) });
+  // Model text (extraPages.svcCopy) is the one thing a deploy must not take on trust: every deploy of every kind (publish, webhook,
+  // sweeper, lapse restore, admin redeploy, iOS re-save, save-pending-site) renders through here, so the server's approval signature
+  // is checked HERE (review 6c B2) and unsigned, forged, edited or moved text is dropped. A valid 'auto' prints only while the flag is on.
+  const checked = svcCopySanitize(pending.siteData, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), forRender: true }).siteData;
+  const out = renderSiteBundle(stripMarkersDeep(checked), { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: stripMarkersDeep(pending.imageUrlMap || {}) });
   return { ...out, sitemap: out.sitemap === null ? null : stripMarkersText(out.sitemap), robots: out.robots === null ? null : stripMarkersText(out.robots) };
 }
 

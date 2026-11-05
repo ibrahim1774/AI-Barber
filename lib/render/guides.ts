@@ -17,6 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
+import { familyAllowed } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -70,7 +71,8 @@ export function titledServices(d: Pick<WebsiteData, 'services'> & Partial<Pick<W
  * The family a custom service was assigned (Mode A: a model only CLASSIFIED the title into one of the closed set of library
  * guides, nothing it wrote is ever printed). Stored at extraPages.svcFamily[titleKey]. Honoured only on web-created pages-v2 sites with
  * service guides on, only for a title the library does not match, only with a real guide id, and never when the service has text of
- * its own (svcCopy) - the barber's own wording or approved text wins. Anything else is ignored.
+ * its own (svcCopy) - the barber's own wording or approved text wins - and only when the title itself holds a keyword of that family
+ * (familyAllowed; a vetoed title never gets one). Anything else is ignored.
  */
 export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
   const ep = d.extraPages as { svcFamily?: unknown; svcCopy?: unknown } | undefined;
@@ -82,7 +84,8 @@ export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>
   const copy = ep.svcCopy;
   if (copy && typeof copy === 'object' && !Array.isArray(copy) && Object.prototype.hasOwnProperty.call(copy, key)) return null;
   const g = (fam as Record<string, unknown>)[key];
-  return isGuideId(g) ? g : null;
+  // Review 6c B1: a family prints specific wording, so it needs a keyword of that family in the title itself (familyKeywords.ts), whoever chose it.
+  return isGuideId(g) && familyAllowed(title, g) ? g : null;
 }
 
 /** The guide a service title gets on this site: the library match first, else the family the barber (or the classifier, approved by the barber) assigned. */
@@ -693,8 +696,11 @@ export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
       metaDescription: e.metaDescription ?? null, metaTitle: e.metaTitle ?? null,
     };
   }
-  // Model text prints only with an approval (the barber's "Looks right", or the server's auto-publish flag at write time). A proposal never prints.
-  if (e.approval !== 'owner' && e.approval !== 'auto') return null;
+  // Model text prints only with an approval. The renderer is pure (it also runs in the browser preview) so it cannot verify the server's
+  // signature: the server steps (svcCopySanitize at draft save and publish, and again inside renderPendingBundle for every deploy) drop
+  // unsigned or forged text and turn a valid 'auto' (flag on) into 'owner' for the render. 'auto' itself NEVER prints from here, so
+  // with the flag off a stored 'auto' cannot print on any path. A proposal never prints.
+  if (e.approval !== 'owner') return null;
   const allow = serviceWordsIn(subject.title);
   let count = 0;
   const para = (t: string): string[] => { const l = lintParagraph(t, allow); const r = l.text ? resolveAiSentences(env, l.text, allow, subject) : []; count += r.length; return r.length ? [r.join(' ')] : []; };

@@ -465,6 +465,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       // Editable SEO title and description (2026-11-05, Phase 1 step 4). Add to the app's sync-web.sh.
       'lib/render/seoText.ts',
       'lib/render/svcCopy.ts', 'lib/render/svcDeny.ts',
+      // Which family a custom service title may be assigned (review 6c B1). Add to the app's sync-web.sh.
+      'lib/render/familyKeywords.ts',
       // Page heroes and section settings (pages v2, Phase C). Add to the app's sync-web.sh.
       'lib/render/heroes.ts', 'lib/render/sections.ts', 'lib/pagesV2.ts',
       // Editable everywhere (2026-10-24): marker helpers + the data paths the preview makes tappable. Add to the app's sync-web.sh.

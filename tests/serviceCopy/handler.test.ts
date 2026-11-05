@@ -6,7 +6,8 @@ import { accountCounterKey, ACCOUNT_CALLS_PER_DAY, DAY_MS, SITE_CALLS_PER_DAY, s
 import { ModelError } from '../../lib/serviceCopy/model';
 import { LEASE_MS } from '../../lib/serviceCopy/store';
 import { aiPageFor, lenientEnv, titledServices } from '../../lib/render/guides';
-import { blockNetwork, GOOD_JSON, PII, rig, scriptedModel, site, U1, U2 } from './helpers';
+import { blockNetwork, GOOD_JSON, PII, rig, scriptedModel, site, TEST_SECRET, U1, U2 } from './helpers';
+import { svcCopySanitize } from '../../lib/serviceCopy/prune';
 
 let net: ReturnType<typeof blockNetwork>;
 beforeEach(() => { net = blockNetwork(); });
@@ -94,7 +95,8 @@ describe('happy path, cache and idempotency', () => {
     expect([b.body.status, r.model.calls.length]).toEqual(['cached', 1]);
     expect(b.body.copy).toEqual(a.body.copy);
     // the text prints through the real renderer
-    const d = { ...r.drafts.get(U1).site_data, extraPages: { ...r.drafts.get(U1).site_data.extraPages, svcCopy: { 'scalp massage': a.body.copy } } };
+    const d0 = { ...r.drafts.get(U1).site_data, extraPages: { ...r.drafts.get(U1).site_data.extraPages, svcCopy: { 'scalp massage': a.body.copy } } };
+    const d = svcCopySanitize(d0, { autoPublish: true, secret: TEST_SECRET, userId: U1, forRender: true }).siteData as any; // what a deploy render does with a verified 'auto' entry
     const page = aiPageFor(lenientEnv(d, { place: 'Brooklyn, NY' }), titledServices(d).find((s) => s.title === 'Scalp Massage')!);
     expect(page?.heading).toBe('What to expect from Scalp Massage');
     expect(page?.metaDescription).toContain('Scalp Massage');
@@ -260,7 +262,7 @@ describe('generateServiceCopy direct', () => {
     const r = rig();
     const f = (await import('../../lib/serviceCopy/facts')).serviceFacts(r.drafts.get(U1).site_data, 'scalp massage');
     if (!f.ok) throw new Error('facts');
-    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true }, { userId: U1, draftId: 'draft-1' }, r.drafts.get(U1).site_data, f);
+    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true, secret: TEST_SECRET }, { userId: U1, draftId: 'draft-1' }, r.drafts.get(U1).site_data, f);
     expect(out.status).toBe('generated');
     expect((out as any).copy.at).toBe('2026-11-05T12:00:00.000Z');
   });

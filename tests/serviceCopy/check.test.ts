@@ -1,7 +1,7 @@
 // Review 6 fix: the layered default-deny defence. The end-to-end proof inputs, the claim checker (mocked, never live),
 // default deny on every checker failure, cost accounting, title gate, live-client retry, boundaries.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { blockNetwork, GOOD_JSON, PII, rig, scriptedModel, site, U1, verdictsFor } from './helpers';
+import { blockNetwork, GOOD_JSON, PII, rig, scriptedModel, site, TEST_SECRET, U1, verdictsFor } from './helpers';
 import { CHECK_SYSTEM_PROMPT, checkMessage, claimCheck, parseVerdicts, CheckError } from '../../lib/serviceCopy/check';
 import { ModelError, liveModelClient, MAX_OUTPUT_TOKENS } from '../../lib/serviceCopy/model';
 import { aiTitle } from '../../lib/serviceCopy/titleGate';
@@ -273,13 +273,13 @@ describe('boundaries and the renderer gate (should-fix 7, nit 6)', () => {
     const f = serviceFacts(d, 'scalp massage');
     if (!f.ok) throw new Error('facts');
     const wrong = { ...f, subject: { ...f.subject, index: 7 } }; // a service that is not on the site: aiPageFor refuses it
-    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true }, { userId: U1, draftId: 'draft-1' }, d, wrong);
+    const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true, secret: TEST_SECRET }, { userId: U1, draftId: 'draft-1' }, d, wrong);
     expect(out.status).toBe('not_generated');
     expect(r.store.rows.size).toBe(0);
     // the same facts with the right subject do print
-    const ok2 = await generateServiceCopy({ model: scriptedModel(), store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true }, { userId: U1, draftId: 'draft-1' }, d, f);
+    const ok2 = await generateServiceCopy({ model: scriptedModel(), store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true, secret: TEST_SECRET }, { userId: U1, draftId: 'draft-1' }, d, f);
     expect(ok2.status).toBe('generated');
-    const page = aiPageFor(lenientEnv({ ...d, extraPages: { ...d.extraPages, svcCopy: { 'scalp massage': (ok2 as any).copy } } }, { place: '' }), titledServices(d).find((s) => s.title === 'Scalp Massage')!);
+    const page = aiPageFor(lenientEnv({ ...d, extraPages: { ...d.extraPages, svcCopy: { 'scalp massage': { ...(ok2 as any).copy, approval: 'owner' } } } }, { place: '' }), titledServices(d).find((s) => s.title === 'Scalp Massage')!);
     expect(page).not.toBeNull();
   });
 });
