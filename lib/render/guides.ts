@@ -99,7 +99,7 @@ export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>
     const g = (fam as Record<string, unknown>)[key];
     if (g === NO_FAMILY) return null;
     // A family prints specific wording, so it needs a keyword of that family in the title itself (familyKeywords.ts), whoever chose it.
-    if (isGuideId(g)) return familyAllowed(title, g) ? g : null;
+    if (isGuideId(g) && familyAllowed(title, g)) return g;
   }
   return auto;
 }
@@ -127,9 +127,15 @@ export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>,
   if (d.extraPages?.serviceGuides !== true) return out;
   const used = new Set<GuideId>();
   const services = Array.isArray(d.services) ? d.services : [];
-  for (const index of pagedIndexes) {
-    const g = guideForTitle(d, services[index]?.title);
-    if (g && !used.has(g)) { used.add(g); out.set(index, g); }
+  // Two passes: a service the library pattern itself matches claims its guide first, wherever it sits in the barber's order. A title that
+  // only resolves automatically (a custom Mohawk) must never take the guide from a library-matched Haircut listed after it, or that page
+  // would turn thin and leave the sitemap. Off the gate guideForTitle is the library pattern, so the second pass adds nothing there.
+  for (const libPass of [true, false]) {
+    for (const index of pagedIndexes) {
+      if (out.has(index) || (guideIdForTitle(services[index]?.title) !== null) !== libPass) continue;
+      const g = guideForTitle(d, services[index]?.title);
+      if (g && !used.has(g)) { used.add(g); out.set(index, g); }
+    }
   }
   return out;
 }

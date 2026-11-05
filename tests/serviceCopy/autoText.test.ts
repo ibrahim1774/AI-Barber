@@ -2,7 +2,7 @@
 // from the library's own reviewed wording (closed all-token vocabulary, guides.ts). No model, no network, no plan prompt is involved.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
-import { guideForTitle, NO_FAMILY } from '../../lib/render/guides';
+import { guideForTitle, NO_FAMILY, serviceAltFor, serviceGuideFor } from '../../lib/render/guides';
 import { svcCopySanitize } from '../../lib/serviceCopy/prune';
 import { serviceCopyWriteMode } from '../../lib/serviceCopy/flags';
 import { liveDeps } from '../../lib/serviceCopy/handler';
@@ -32,6 +32,17 @@ describe('automatic page text from the closed vocabulary (no model, no click)', 
     expect(page(d, 'mohawk')).not.toContain(NOINDEX);
     expect(bundle(d).sitemap).toContain('/services/mohawk/');
   });
+  it('an automatic Mohawk listed BEFORE Haircut never takes the haircut guide: Haircut stays indexable and in the sitemap, Mohawk gets the alt block', () => {
+    for (const order of [['Mohawk', 'Haircut'], ['Haircut', 'Mohawk']]) {
+      const d = shop(order);
+      expect(page(d, 'haircut'), order.join()).not.toContain(NOINDEX);
+      expect(page(d, 'haircut'), order.join()).toContain('About this service');
+      expect(bundle(d).sitemap, order.join()).toContain('/services/haircut/');
+      expect(serviceAltFor(d, [0, 1]).get(order.indexOf('Mohawk')), order.join()).toBe('haircut');
+      expect(serviceGuideFor(d, [0, 1]).get(order.indexOf('Haircut')), order.join()).toBe('haircut');
+    }
+    expect(page(shop(['Mohawk', 'Haircut']), 'mohawk')).toContain(NOINDEX); // alt block only: thin, as the second of a kind
+  });
   it('a title with an unknown word, a title with no family and a vetoed title stay thin and noindex: the neutral stub only', () => {
     for (const [t, slug] of [['Mohawk Zorbo', 'mohawk-zorbo'], ['Scalp Massage', 'scalp-massage'], ['Haircut Gift Card', 'haircut-gift-card'], ['Haircut Membership', 'haircut-membership']] as const) {
       const d = shop([t]);
@@ -44,7 +55,7 @@ describe('automatic page text from the closed vocabulary (no model, no click)', 
   it('the barber\'s choice beats the automatic type: none is thin and noindex; another allowed type prints that type', () => {
     expect(guideForTitle(shop(['Mohawk'], { svcFamily: { mohawk: NO_FAMILY } }), 'Mohawk')).toBeNull();
     expect(page(shop(['Mohawk'], { svcFamily: { mohawk: 'none' } }), 'mohawk')).toContain(NOINDEX);
-    expect(guideForTitle(shop(['Mohawk'], { svcFamily: { mohawk: 'fade' } }), 'Mohawk')).toBeNull(); // not allowed by the title's own keywords: never another family's wording
+    expect(guideForTitle(shop(['Mohawk'], { svcFamily: { mohawk: 'fade' } }), 'Mohawk')).toBe('haircut'); // 'fade' is not allowed by the title's keywords: never another family's wording; counts as not chosen (automatic)
   });
   it('own text wins over both the automatic type and a stored type: the library text never prints beside it', () => {
     const own = { v: 1, aiGenerated: false, intro: 'A mohawk is cut with the sides short. Tell us how tall you want the middle. Bring a photo.', sections: [{ h: 'Care', p: 'Ask how to style it at home. Use a little product.' }] };
