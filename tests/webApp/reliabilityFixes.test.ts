@@ -386,3 +386,34 @@ describe('S10: webhook wake expires the newest open session', () => {
     expect((await intents()).find((x) => x.id === rev2.id)?.status).not.toBe('awaiting_payment');
   });
 });
+
+describe('SEO title and description overrides (copy keys seo.*)', () => {
+  const withCopy = (copy: Record<string, unknown>) => ({ ...site(), copy } as any);
+  const count = async () => (await db.query('select count(*)::int n from web_app_drafts')).rows[0].n;
+  it('a valid override saves, and an older app that re-saves the same copy keeps it', async () => {
+    const copy = { 'seo.home.title': 'Test Cuts | Brooklyn', 'seo.svc.fade.description': 'A fade, booked online.', 'faq.book': 'Our own words.' };
+    expect((await save(withCopy(copy))).code).toBe(200);
+    const stored = (await db.query('select site_data from web_app_drafts')).rows[0].site_data;
+    expect(stored.copy).toEqual(copy);
+    const again = await save({ ...withCopy(copy), futureField: 1 }, 1);
+    expect(again.code).toBe(200);
+    expect((await db.query('select site_data from web_app_drafts')).rows[0].site_data.copy).toEqual(copy);
+  });
+  it('hostile or over-long values are refused with 400 and nothing is written', async () => {
+    for (const v of ['<script>alert(1)</script>', 'x'.repeat(10_000), 'Test\nCuts', '💈 Cuts', 'BEST BARBER IN TOWN', '!!!!!', 'x'.repeat(61)]) {
+      const r = await save(withCopy({ 'seo.home.title': v }));
+      expect(r.code, v.slice(0, 20)).toBe(400); expect(r.body.error).toBe('invalid_seo');
+    }
+    expect((await save(withCopy({ 'seo.home.description': 'x'.repeat(161) }))).code).toBe(400);
+    expect((await save(withCopy({ 'seo.home.title': 5 }))).code).toBe(400);
+    expect(await count()).toBe(0);
+  });
+  it('an empty override (cleared in the editor) saves', async () => {
+    expect((await save(withCopy({ 'seo.home.title': '' }))).code).toBe(200);
+  });
+  it('an invalid value cannot replace a good draft', async () => {
+    expect((await save(withCopy({ 'seo.home.title': 'Test Cuts' }))).code).toBe(200);
+    expect((await save(withCopy({ 'seo.home.title': '<b>x</b>' }), 1)).code).toBe(400);
+    expect((await db.query('select site_data from web_app_drafts')).rows[0].site_data.copy['seo.home.title']).toBe('Test Cuts');
+  });
+});

@@ -15,6 +15,7 @@ import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from '../ios/
 import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { stripLapsedLinks } from '../ios/tiers.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
+import { seoProblem } from '../render/seoText.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from '../ios/siteShape.js';
 import { supabasePurchases } from '../ios/purchases.js';
 import { normEmail, supabaseSiteOwners, type SiteOwnerRow, type SiteOwnerStore } from '../siteOwners.js';
@@ -108,7 +109,7 @@ export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['
     imageUrlMap = buildImageUrlMap(sd);
     pendingData = toPendingSiteData(sd, imageUrlMap);
   } catch { throw new Error('invalid_snapshot'); }
-  const problem = validationProblem(sd);
+  const problem = validationProblem(sd) ?? seoProblem(sd);
   if (problem) { console.warn(`[web-app/publish] refused before any write: ${problem}`); throw new Error('invalid_snapshot'); }
   if (sd.logo != null) {
     const logo = logoProblem(sd.logo, { bucketName: configuredBucket(), allowFolder: isDraftLogoFolder });

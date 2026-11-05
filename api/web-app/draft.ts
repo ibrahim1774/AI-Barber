@@ -2,6 +2,7 @@ import { accountRow, digest, draftPath, modeOf, publishedBinding, readDraft, rel
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/ios/siteShape.js';
+import { seoProblem } from '../../lib/render/seoText.js';
 
 /** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
 export const DRAFT_WRITES_PER_MINUTE = 120;
@@ -34,6 +35,9 @@ export default async function handler(req: any, res: any) {
       Buffer.byteLength(JSON.stringify(req.body)) > MAX_BODY_BYTES || !validSiteData(site_data) || hasDataUrl(site_data)) {
       return res.status(400).json({ error: 'invalid_draft' });
     }
+    // An over-long or hostile SEO title / description (copy keys `seo.*`) is refused here, so it is never stored (Phase 1 step 4).
+    const seo = seoProblem(site_data);
+    if (seo) return res.status(400).json({ error: 'invalid_seo', detail: seo });
     // Deployment URLs are server-owned. The browser cannot turn an arbitrary URL into a published account site.
     const content = { ...site_data, source: 'web-app' };
     if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: accountRow(previous) });
