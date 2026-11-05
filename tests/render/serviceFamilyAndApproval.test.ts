@@ -43,11 +43,11 @@ const shop = (extraPages: Record<string, unknown> = {}, extra: Partial<WebsiteDa
   source: 'web-app',
   ...extra,
 });
-const shopA = (extraPages: Record<string, unknown> = {}, extra: Partial<WebsiteData> = {}): WebsiteData => shop(extraPages, { services: [svc('Skin Fade', { description: 'A close fade with a straight razor finish around the ears and the neckline, booked as one visit.' }), svc('Bald Head Polish')], ...extra });
+const shopA = (extraPages: Record<string, unknown> = {}, extra: Partial<WebsiteData> = {}): WebsiteData => shop(extraPages, { services: [svc('Skin Fade', { description: 'A close fade with a straight razor finish around the ears and the neckline, booked as one visit.' }), svc('Mohawk')], ...extra });
 const BASE = { siteBaseUrl: 'https://fresh.example.com' };
 const NOINDEX = '<meta name="robots" content="noindex,follow">';
 const all = (d: WebsiteData) => renderSiteBundle(d, BASE);
-const htmlA = (d: WebsiteData, p = 'services/bald-head-polish/index.html') => all(d).pages.find((x) => x.path === p)?.html ?? '';
+const htmlA = (d: WebsiteData, p = 'services/mohawk/index.html') => all(d).pages.find((x) => x.path === p)?.html ?? '';
 const html = (d: WebsiteData, p = 'services/scalp-massage/index.html') => all(d).pages.find((x) => x.path === p)?.html ?? '';
 const everything = (d: WebsiteData) => { const b = all(d); return [b.sitemap, ...b.pages.map((p) => p.html)].join('\n'); };
 
@@ -55,77 +55,77 @@ describe('Mode A: a family chosen by the classifier', () => {
   it('without a family a custom service is thin (noindex, not in the sitemap)', () => {
     const d = shopA();
     expect(htmlA(d)).toContain(NOINDEX);
-    expect(all(d).sitemap).not.toContain('/services/bald-head-polish/');
+    expect(all(d).sitemap).not.toContain('/services/mohawk/');
   });
   it('with a family the page prints the library guide of that family exactly as a built-in service of that kind does, and is indexable', () => {
-    const d = shopA({ svcFamily: { 'bald head polish': 'shave' } });
-    const built = htmlA(shopA({}, { services: [svc('Hot Shave'), svc('Bald Head Polish')] }), 'services/hot-shave/index.html');
+    const d = shopA({ svcFamily: { 'mohawk': 'haircut' } });
+    const built = htmlA(shopA({}, { services: [svc('Haircut'), svc('Mohawk')] }), 'services/haircut/index.html');
     const page = htmlA(d);
     expect(page).not.toContain(NOINDEX);
-    expect(all(d).sitemap).toContain('/services/bald-head-polish/');
+    expect(all(d).sitemap).toContain('/services/mohawk/');
     expect(page).toContain('About this service');
-    // the guide wording is the library's: the first paragraph of the shave guide is on both pages
+    // the guide wording is the library's: the first paragraph of the haircut guide is on both pages
     const libText = (built.match(/<div class="ab-copy[^>]*>[\s\S]*?<\/p>/) ?? [''])[0].replace(/<[^>]+>/g, '').slice(0, 40);
     expect(libText.length).toBeGreaterThan(10);
-    expect(page.replace(/<[^>]+>/g, '')).toContain(libText.replace(/Hot Shave/g, 'Bald Head Polish').slice(0, 25));
+    expect(page.replace(/<[^>]+>/g, '')).toContain(libText.replace(/Haircut/g, 'Mohawk').slice(0, 25));
     // not a word of any model text anywhere
     expect(everything(d)).not.toContain(MARK);
   });
   it('is the same guide machinery: serviceGuideFor / serviceAltFor / thinServiceIndexes see the family (a second service of a kind gets the alt block)', () => {
-    const d = shopA({ svcFamily: { 'bald head polish': 'shave', 'bald head buff': 'shave' } }, { services: [svc('Bald Head Polish'), svc('Bald Head Buff')] });
-    expect(serviceGuideFor(d, [0, 1]).get(0)).toBe('shave');
-    expect(serviceAltFor(d, [0, 1]).get(1)).toBe('shave');
+    const d = shopA({ svcFamily: { 'mohawk': 'haircut', 'mullet': 'haircut' } }, { services: [svc('Mohawk'), svc('Mullet')] });
+    expect(serviceGuideFor(d, [0, 1]).get(0)).toBe('haircut');
+    expect(serviceAltFor(d, [0, 1]).get(1)).toBe('haircut');
     const thin = thinServiceIndexes(d, [0, 1]);
     expect(thin.has(0)).toBe(false); expect(thin.has(1)).toBe(true); // the alt block does not make a page indexable (B4)
-    expect(titledServices(d).map((s) => s.guide)).toEqual(['shave', 'shave']);
+    expect(titledServices(d).map((s) => s.guide)).toEqual(['haircut', 'haircut']);
   });
   it('NIT 1: the second service of a family gets the family\'s alt block (and stays thin), the first gets the guide', () => {
-    const d = shopA({ svcFamily: { 'bald head polish': 'shave', 'bald head buff': 'shave' } }, { services: [svc('Bald Head Polish'), svc('Bald Head Buff')] });
-    const page1 = htmlA(d, 'services/bald-head-polish/index.html'); const page2 = htmlA(d, 'services/bald-head-buff/index.html');
+    const d = shopA({ svcFamily: { 'mohawk': 'haircut', 'mullet': 'haircut' } }, { services: [svc('Mohawk'), svc('Mullet')] });
+    const page1 = htmlA(d, 'services/mohawk/index.html'); const page2 = htmlA(d, 'services/mullet/index.html');
     expect(page1).toContain('About this service'); expect(page1).not.toContain(NOINDEX);
-    expect(serviceAltFor(d, [0, 1]).get(1)).toBe('shave');
+    expect(serviceAltFor(d, [0, 1]).get(1)).toBe('haircut');
     expect(page2).toContain(NOINDEX);
-    const dNoFam = shopA({}, { services: [svc('Bald Head Polish'), svc('Bald Head Buff')] });
-    expect(htmlA(dNoFam, 'services/bald-head-buff/index.html')).not.toBe(page2); // the family changes the second page (its alt block); without it the page is bare
-    expect(page2).toContain('Bald Head Buff');
+    const dNoFam = shopA({}, { services: [svc('Mohawk'), svc('Mullet')] });
+    expect(htmlA(dNoFam, 'services/mullet/index.html')).not.toBe(page2); // the family changes the second page (its alt block); without it the page is bare
+    expect(page2).toContain('Mullet');
   });
   it('is ignored unless every gate holds: web-created pages v2, guides on, a real guide id, a title the library does not match, no text of its own', () => {
-    const fam = { svcFamily: { 'bald head polish': 'shave' } };
-    expect(familyFor(shopA(fam), 'Bald Head Polish')).toBe('shave');
-    expect(familyFor(shopA(fam, { source: 'ios' as never }), 'Bald Head Polish')).toBeNull();
-    expect(familyFor(shopA({ ...fam, serviceGuides: false }), 'Bald Head Polish')).toBeNull();
-    expect(familyFor(shopA({ svcFamily: { 'bald head polish': 'hair-loss-cure' } }), 'Bald Head Polish')).toBeNull();
-    expect(familyFor(shopA({ svcFamily: { 'bald head polish': ['shave'] } as never }), 'Bald Head Polish')).toBeNull();
-    expect(familyFor(shopA({ svcFamily: ['shave'] as never }), 'Bald Head Polish')).toBeNull();
+    const fam = { svcFamily: { 'mohawk': 'haircut' } };
+    expect(familyFor(shopA(fam), 'Mohawk')).toBe('haircut');
+    expect(familyFor(shopA(fam, { source: 'ios' as never }), 'Mohawk')).toBeNull();
+    expect(familyFor(shopA({ ...fam, serviceGuides: false }), 'Mohawk')).toBeNull();
+    expect(familyFor(shopA({ svcFamily: { 'mohawk': 'hair-loss-cure' } }), 'Mohawk')).toBeNull();
+    expect(familyFor(shopA({ svcFamily: { 'mohawk': ['haircut'] } as never }), 'Mohawk')).toBeNull();
+    expect(familyFor(shopA({ svcFamily: ['haircut'] as never }), 'Mohawk')).toBeNull();
     expect(familyFor(shopA({ svcFamily: { __proto__: 'shave' } as never }), '__proto__')).toBeNull();
     expect(guideForTitle(shopA({ svcFamily: { 'skin fade': 'shave' } }), 'Skin Fade')).toBe('fade'); // the library match wins
-    expect(familyFor(shopA({ ...fam, svcCopy: { 'bald head polish': { ...PROPOSAL, aiGenerated: false, approval: undefined } } }), 'Bald Head Polish')).toBeNull(); // the barber's own text wins
+    expect(familyFor(shopA({ ...fam, svcCopy: { 'mohawk': { ...PROPOSAL, aiGenerated: false, approval: undefined } } }), 'Mohawk')).toBeNull(); // the barber's own text wins
     const legacy = shopA(fam, { source: undefined });
     expect(htmlA(legacy)).not.toContain('About this service');
   });
   it('iOS parity: a site that is not web-created renders byte-identical with or without a family or model text in its data', () => {
     for (const source of [undefined, 'ios'] as const) {
       const plain = renderSiteBundle(shopA({}, { source: source as never }), BASE);
-      const noisy = renderSiteBundle(shopA({ svcFamily: { 'bald head polish': 'shave' }, svcCopy: { 'bald head polish': { ...PROPOSAL, approval: 'owner' } } }, { source: source as never }), BASE);
+      const noisy = renderSiteBundle(shopA({ svcFamily: { 'mohawk': 'haircut' }, svcCopy: { 'mohawk': { ...PROPOSAL, approval: 'owner' } } }, { source: source as never }), BASE);
       expect(noisy.sitemap).toBe(plain.sitemap);
       const stamp = (h: string) => h.replace(/name="published-at" content="\d+"/, 'name="published-at"');
       expect(noisy.pages.map((p) => [p.path, stamp(p.html)])).toEqual(plain.pages.map((p) => [p.path, stamp(p.html)]));
     }
   });
   it('sanitize keeps a family only for a real custom service with a real guide id; drops the rest; never mutates', () => {
-    const d = shopA({ svcFamily: { 'bald head polish': 'shave', 'skin fade': 'fade', 'removed': 'shave', 'x': 'nope' } });
+    const d = shopA({ svcFamily: { 'mohawk': 'haircut', 'skin fade': 'fade', 'removed': 'haircut', 'x': 'nope' } });
     const out = svcCopySanitize(d, SOPTS);
-    expect(out.siteData.extraPages!.svcFamily).toEqual({ 'bald head polish': 'shave' });
+    expect(out.siteData.extraPages!.svcFamily).toEqual({ 'mohawk': 'haircut' });
     expect(out.dropped.sort()).toEqual(['family:removed', 'family:skin fade', 'family:x']);
-    expect((d.extraPages as any).svcFamily.removed).toBe('shave');
-    const clean = shopA({ svcFamily: { 'bald head polish': 'shave' } });
+    expect((d.extraPages as any).svcFamily.removed).toBe('haircut');
+    const clean = shopA({ svcFamily: { 'mohawk': 'haircut' } });
     expect(svcCopySanitize(clean, SOPTS).siteData).toBe(clean);
     expect(svcCopySanitize(shopA({ svcFamily: 'x' as never }), SOPTS).siteData.extraPages).not.toHaveProperty('svcFamily');
-    expect(svcCopySanitize(shopA({ svcFamily: { 'bald head polish': 'shave' }, svcCopy: { 'bald head polish': signedFor('owner', 'bald head polish') } }), SOPTS).siteData.extraPages).not.toHaveProperty('svcFamily'); // stale next to text
+    expect(svcCopySanitize(shopA({ svcFamily: { 'mohawk': 'haircut' }, svcCopy: { 'mohawk': signedFor('owner', 'mohawk') } }), SOPTS).siteData.extraPages).not.toHaveProperty('svcFamily'); // stale next to text
   });
   it('survives the publish snapshot (the server cleaning step) and still renders', () => {
-    const r = validateWebSnapshot(shopA({ svcFamily: { 'bald head polish': 'shave' } }));
-    expect((r.sd.extraPages as any).svcFamily).toEqual({ 'bald head polish': 'shave' });
+    const r = validateWebSnapshot(shopA({ svcFamily: { 'mohawk': 'haircut' } }));
+    expect((r.sd.extraPages as any).svcFamily).toEqual({ 'mohawk': 'haircut' });
   });
 });
 

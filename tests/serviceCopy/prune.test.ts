@@ -77,8 +77,8 @@ describe('draft save', () => {
       expect(r.body.draft.site_data.extraPages.svcCopy).toBeUndefined();
     }
     expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': entry }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
-    const fam = site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'bald head polish': 'shave', 'scalp massage': 'shave', 'gone': 'shave' } } }, ['Bald Head Polish', 'Scalp Massage']);
-    expect((await put(fam)).body.draft.site_data.extraPages.svcFamily).toEqual({ 'bald head polish': 'shave' }); // 'Scalp Massage' holds no shave keyword, 'gone' is no service
+    const fam = site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'mohawk': 'haircut', 'scalp massage': 'haircut', 'gone': 'haircut' } } }, ['Mohawk', 'Scalp Massage']);
+    expect((await put(fam)).body.draft.site_data.extraPages.svcFamily).toEqual({ 'mohawk': 'haircut' }); // 'Scalp Massage' holds no shave keyword, 'gone' is no service
     process.env.SERVICE_COPY_AUTO_PUBLISH = '1';
     try {
       expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': auto }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);

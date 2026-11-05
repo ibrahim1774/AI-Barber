@@ -126,6 +126,6 @@ describe('a product word vetoes a family keyword too', () => {
   it('a keyword next to a retail noun never gets a family', async () => {
     const { familyCandidates } = await import('../../lib/render/familyKeywords');
     for (const t of ['Goatee Oil', 'Goatee Balm', 'Bleach Kit', 'Mohawk Pomade', 'Hairline Cream', 'Temple Spray', 'Bald Head Oil', 'Bald Head Gift Card', 'Ombre Shampoo', 'Balayage Kit', 'Freestyle Brush', 'Stencil Kit', 'Toddler Shampoo', 'Soul Patch Wax', 'Undercut Clay', 'Pompadour Powder', 'Mullet Comb']) expect(familyCandidates(t), t).toEqual([]);
-    for (const t of ['Goatee Trim', 'Bald Head Polish', 'Balayage', 'Toddler Mohawk', 'Hairline Cleanup']) expect(familyCandidates(t).length, t).toBeGreaterThan(0);
+    for (const t of ['Mohawk', 'Undercut', 'Balayage', 'Toddler Mohawk', 'Bleach']) expect(familyCandidates(t).length, t).toBeGreaterThan(0);
   });
 });

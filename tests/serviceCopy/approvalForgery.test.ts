@@ -358,7 +358,7 @@ describe('forging approval through the real publish flow (runWebPublish)', () =>
 describe('families cannot be forged either: the title itself decides', () => {
   const famSite = (title: string, family: string) => site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { [title.toLowerCase()]: family } } }, [title]);
   it('a family without a keyword in the title is dropped on every server step and never renders library wording', async () => {
-    for (const [t, f] of [['Scalp Massage', 'shave'], ['Gel Manicure', 'color'], ['Brow Wax', 'shave'], ['Platinum Experience', 'color'], ['Locs Retwist', 'haircut'], ['Bald Head Polish', 'color']] as const) {
+    for (const [t, f] of [['Scalp Massage', 'haircut'], ['Gel Manicure', 'color'], ['Brow Wax', 'haircut'], ['Platinum Experience', 'color'], ['Locs Retwist', 'haircut'], ['Mohawk', 'color']] as const) {
       const d = famSite(t, f);
       expect((svcCopySanitize(d, { secret: TEST_SECRET }).siteData.extraPages as any).svcFamily, `${t}/${f}`).toBeUndefined();
       expect((validateWebSnapshot(d, () => []).sd.extraPages as any).svcFamily).toBeUndefined();
@@ -368,9 +368,9 @@ describe('families cannot be forged either: the title itself decides', () => {
       expect(b.sitemap ?? '').not.toContain(`/services/${slug}/`);
     }
     // and the allowed one survives and renders
-    const ok = famSite('Bald Head Polish', 'shave');
-    expect((validateWebSnapshot(ok, () => []).sd.extraPages as any).svcFamily).toEqual({ 'bald head polish': 'shave' });
-    expect(deploy(ok).pages.find((p) => p.path === 'services/bald-head-polish/index.html')?.html).toContain('About this service');
+    const ok = famSite('Mohawk', 'haircut');
+    expect((validateWebSnapshot(ok, () => []).sd.extraPages as any).svcFamily).toEqual({ 'mohawk': 'haircut' });
+    expect(deploy(ok).pages.find((p) => p.path === 'services/mohawk/index.html')?.html).toContain('About this service');
   });
 });
 
