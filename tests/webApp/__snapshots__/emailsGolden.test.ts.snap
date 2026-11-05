@@ -1,0 +1,283 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden email output (env unset) > alert mail 1`] = `
+{
+  "html": "<pre style="font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:pre-wrap">line 1
+a &amp; b</pre>",
+  "subject": "Subject <x>",
+  "text": "line 1
+a & b",
+}
+`;
+
+exports[`golden email output (env unset) > duplicate refund and iOS overlap > ios overlap no site 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">You have an App Store plan and a web plan. Cancel the web plan to stop paying twice.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0d0d0d;border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:#f4a100">BARBER</span></span></td></tr>
+<tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">You now pay for Prime Barber twice</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">You have a Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.</div></td></tr>
+<tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a"><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Plan</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">Custom site + booking</td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Account</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">a@b.co</td></tr></table></td></tr>
+<tr><td style="padding:26px 28px 6px 28px"><a href="https://www.aibarber.org/app/sign-in" style="display:block;text-align:center;background:#f4a100;color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">Manage web plan</a></td></tr>
+
+<tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="https://www.aibarber.org/app/forgot-password" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
+</table></td></tr></table></body></html>",
+  "subject": "You now pay for Prime Barber twice",
+  "text": "You now pay for Prime Barber twice
+
+You have a Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.
+
+Plan: Custom site + booking
+Account: a@b.co
+
+Manage web plan: https://www.aibarber.org/app/sign-in
+
+Forgot your password? https://www.aibarber.org/app/forgot-password
+We never email passwords.",
+}
+`;
+
+exports[`golden email output (env unset) > duplicate refund and iOS overlap > ios overlap with site 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">You have an App Store plan and a web plan. Cancel the web plan to stop paying twice.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0d0d0d;border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:#f4a100">BARBER</span></span></td></tr>
+<tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">You now pay for Prime Barber twice</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">You have a Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.</div></td></tr>
+<tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a"><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Site</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap"><a href="https://joes.vercel.app" style="color:#f4a100;text-decoration:none">joes.vercel.app</a></td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Plan</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">Custom site + booking</td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Account</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">a@b.co</td></tr></table></td></tr>
+<tr><td style="padding:26px 28px 6px 28px"><a href="https://www.aibarber.org/app/sign-in" style="display:block;text-align:center;background:#f4a100;color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">Manage web plan</a></td></tr>
+<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:19px;color:#8b919e">Note: your web site address joes.vercel.app goes offline when the web plan ends.</td></tr>
+<tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="https://www.aibarber.org/app/forgot-password" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
+</table></td></tr></table></body></html>",
+  "subject": "You now pay for Prime Barber twice",
+  "text": "You now pay for Prime Barber twice
+
+You have a Prime Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.
+
+Site: https://joes.vercel.app
+Plan: Custom site + booking
+Account: a@b.co
+
+Manage web plan: https://www.aibarber.org/app/sign-in
+
+Note: your web site address joes.vercel.app goes offline when the web plan ends.
+
+Forgot your password? https://www.aibarber.org/app/forgot-password
+We never email passwords.",
+}
+`;
+
+exports[`golden email output (env unset) > duplicate refund and iOS overlap > refund 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">You were charged twice. We refunded the second charge.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0d0d0d;border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:#f4a100">BARBER</span></span></td></tr>
+<tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">We refunded a duplicate charge</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">You were charged twice for Prime Barber, so we cancelled the second subscription and refunded it. Your plan stays active: <b style="color:#fff">Custom site + booking</b>.</div></td></tr>
+<tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a"><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Site</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap"><a href="https://joes.vercel.app" style="color:#f4a100;text-decoration:none">joes.vercel.app</a></td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Plan</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">Custom site + booking</td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Account</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">a@b.co</td></tr></table></td></tr>
+<tr><td style="padding:26px 28px 6px 28px"><a href="https://www.aibarber.org/app/sign-in" style="display:block;text-align:center;background:#f4a100;color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">Sign in</a></td></tr>
+<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:19px;color:#8b919e">To change your plan, sign in and open Settings, then Manage plan.</td></tr>
+<tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="https://www.aibarber.org/app/forgot-password" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
+</table></td></tr></table></body></html>",
+  "subject": "We refunded a duplicate Prime Barber charge",
+  "text": "We refunded a duplicate charge
+
+You were charged twice for Prime Barber, so we cancelled the second subscription and refunded it. Your plan stays active: Custom site + booking.
+
+Site: https://joes.vercel.app
+Plan: Custom site + booking
+Account: a@b.co
+
+Sign in: https://www.aibarber.org/app/sign-in
+
+To change your plan, sign in and open Settings, then Manage plan.
+
+Forgot your password? https://www.aibarber.org/app/forgot-password
+We never email passwords.",
+}
+`;
+
+exports[`golden email output (env unset) > failed payment: first, reminder, no name, no site > first 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your payment didn't go through</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Site</td><td style="padding:4px 0;color:#111;font-size:14px">joes.vercel.app</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Plan</td><td style="padding:4px 0;color:#111;font-size:14px">Custom site + booking</td></tr></table>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://invoice.stripe.com/i/x" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you have a Prime Barber plan. Questions? Reply to this email.</p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Jack, your payment didn't go through",
+  "text": "Your payment didn't go through
+
+We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.
+
+Site: joes.vercel.app
+Plan: Custom site + booking
+
+Update payment method: https://invoice.stripe.com/i/x
+
+You are getting this because you have a Prime Barber plan. Questions? Reply to this email.",
+}
+`;
+
+exports[`golden email output (env unset) > failed payment: first, reminder, no name, no site > no site, sign-in fallback 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your payment didn't go through</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">We couldn't charge your card for your barber store + booking + site plan. Update your card to keep your site online.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Plan</td><td style="padding:4px 0;color:#111;font-size:14px">Custom site, booking + your own store</td></tr></table>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/app/sign-in" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you have a Prime Barber plan. Questions? Reply to this email.</p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Your payment didn't go through",
+  "text": "Your payment didn't go through
+
+We couldn't charge your card for your barber store + booking + site plan. Update your card to keep your site online.
+
+Plan: Custom site, booking + your own store
+
+Update payment method: https://www.aibarber.org/app/sign-in
+
+You are getting this because you have a Prime Barber plan. Questions? Reply to this email.",
+}
+`;
+
+exports[`golden email output (env unset) > failed payment: first, reminder, no name, no site > reminder no name 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your payment still hasn't gone through</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Site</td><td style="padding:4px 0;color:#111;font-size:14px">joes.vercel.app</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Plan</td><td style="padding:4px 0;color:#111;font-size:14px">Custom site + booking</td></tr></table>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://invoice.stripe.com/i/x" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you have a Prime Barber plan. Questions? Reply to this email.</p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Reminder: Your payment didn't go through",
+  "text": "Your payment still hasn't gone through
+
+We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.
+
+Site: joes.vercel.app
+Plan: Custom site + booking
+
+Update payment method: https://invoice.stripe.com/i/x
+
+You are getting this because you have a Prime Barber plan. Questions? Reply to this email.",
+}
+`;
+
+exports[`golden email output (env unset) > owner email 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">New booking</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi Ibrahim, Jake booked Cut.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Who</td><td style="padding:4px 0;color:#111;font-size:14px">Jake</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">What</td><td style="padding:4px 0;color:#111;font-size:14px">Cut</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">When</td><td style="padding:4px 0;color:#111;font-size:14px">Saturday, October 24 at 3:00 PM</td></tr></table>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/app" style="color:#0b57d0">Open Prime Barber</a></p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.</p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "New booking: Jake, Sat 3:00 PM",
+  "text": "New booking
+
+Hi Ibrahim, Jake booked Cut.
+
+Who: Jake
+What: Cut
+When: Saturday, October 24 at 3:00 PM
+
+Open Prime Barber: https://www.aibarber.org/app
+
+You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.",
+}
+`;
+
+exports[`golden email output (env unset) > welcome, every tier, with and without name and site > bookings named 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Your plan: Custom site + booking.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0d0d0d;border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:#f4a100">BARBER</span></span></td></tr>
+<tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">You're signed up</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">Your plan is active: <b style="color:#fff">Custom site + booking</b>. Sign in to edit your site and manage your plan.</div></td></tr>
+<tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a"><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Site</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap"><a href="https://joes.vercel.app" style="color:#f4a100;text-decoration:none">joes.vercel.app</a></td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Plan</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">Custom site + booking</td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Account</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">a@b.co</td></tr></table></td></tr>
+<tr><td style="padding:26px 28px 6px 28px"><a href="https://www.aibarber.org/app/sign-in" style="display:block;text-align:center;background:#f4a100;color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">Sign in</a></td></tr>
+
+<tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="https://www.aibarber.org/app/forgot-password" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
+</table></td></tr></table></body></html>",
+  "subject": "Welcome Jake! Barber plan active",
+  "text": "You're signed up
+
+Your plan is active: Custom site + booking. Sign in to edit your site and manage your plan.
+
+Site: https://joes.vercel.app
+Plan: Custom site + booking
+Account: a@b.co
+
+Sign in: https://www.aibarber.org/app/sign-in
+
+Forgot your password? https://www.aibarber.org/app/forgot-password
+We never email passwords.",
+}
+`;
+
+exports[`golden email output (env unset) > welcome, every tier, with and without name and site > store 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Your plan: Custom site, booking + your own store.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0d0d0d;border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:#f4a100">BARBER</span></span></td></tr>
+<tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">You're signed up</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">Your plan is active: <b style="color:#fff">Custom site, booking + your own store</b>. Sign in to edit your site and manage your plan.</div></td></tr>
+<tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a"><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Site</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap"><a href="https://joes.vercel.app" style="color:#f4a100;text-decoration:none">joes.vercel.app</a></td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Plan</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">Custom site, booking + your own store</td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Account</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">a@b.co</td></tr></table></td></tr>
+<tr><td style="padding:26px 28px 6px 28px"><a href="https://www.aibarber.org/app/sign-in" style="display:block;text-align:center;background:#f4a100;color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">Sign in</a></td></tr>
+
+<tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="https://www.aibarber.org/app/forgot-password" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
+</table></td></tr></table></body></html>",
+  "subject": "Welcome! Barber plan active",
+  "text": "You're signed up
+
+Your plan is active: Custom site, booking + your own store. Sign in to edit your site and manage your plan.
+
+Site: https://joes.vercel.app
+Plan: Custom site, booking + your own store
+Account: a@b.co
+
+Sign in: https://www.aibarber.org/app/sign-in
+
+Forgot your password? https://www.aibarber.org/app/forgot-password
+We never email passwords.",
+}
+`;
+
+exports[`golden email output (env unset) > welcome, every tier, with and without name and site > website anon no site 1`] = `
+{
+  "html": "<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Your plan: Custom site.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0d0d0d;border-radius:18px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:#f4a100">BARBER</span></span></td></tr>
+<tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">You're signed up</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">Your plan is active: <b style="color:#fff">Custom site</b>. Sign in to edit your site and manage your plan.</div></td></tr>
+<tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a"><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Plan</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">Custom site</td></tr><tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">Account</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">a@b.co</td></tr></table></td></tr>
+<tr><td style="padding:26px 28px 6px 28px"><a href="https://www.aibarber.org/app/sign-in" style="display:block;text-align:center;background:#f4a100;color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">Sign in</a></td></tr>
+
+<tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="https://www.aibarber.org/app/forgot-password" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
+</table></td></tr></table></body></html>",
+  "subject": "Welcome! Barber plan active",
+  "text": "You're signed up
+
+Your plan is active: Custom site. Sign in to edit your site and manage your plan.
+
+Plan: Custom site
+Account: a@b.co
+
+Sign in: https://www.aibarber.org/app/sign-in
+
+Forgot your password? https://www.aibarber.org/app/forgot-password
+We never email passwords.",
+}
+`;

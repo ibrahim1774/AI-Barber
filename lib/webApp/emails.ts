@@ -69,7 +69,7 @@ ${l.note ? `<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:1
   return { subject: l.subject ?? l.headline, html, text };
 }
 
-function facts(i: EmailInput, bare = false): Layout['facts'] {
+function facts(i: EmailInput): Layout['facts'] {
   const f: Layout['facts'] = [];
   if (i.siteUrl) f.push(['Site', i.siteUrl, `<a href="${esc(i.siteUrl)}" style="color:${AMBER};text-decoration:none">${esc(i.siteUrl.replace(/^https?:\/\//, ''))}</a>`]);
   f.push(['Plan', TIER_NAME[i.tier] ?? i.tier]);
@@ -92,7 +92,8 @@ export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   });
 }
 
-const SUPPORT_REPLY_TO = 'support@davoxa.com';
+/** Reply-To for customer and owner mail: WEB_APP_REPLY_TO when set, else support@davoxa.com. Read per call so tests and env changes apply. */
+export const replyToAddress = (): string => process.env.WEB_APP_REPLY_TO?.trim() || 'support@davoxa.com';
 
 /**
  * Plain, light failed-payment mail: white page, dark text, ONE action link (the update-payment button), a text part
@@ -119,7 +120,7 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">${esc(footer)}</p>
 </body></html>`;
   const text = [headline, '', lead, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', `Update payment method: ${href}`, '', footer].join('\n');
-  return { subject, html, text, replyTo: SUPPORT_REPLY_TO };
+  return { subject, html, text, replyTo: replyToAddress() };
 }
 
 export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch = fetch, idempotencyKey: string = randomUUID()): Promise<string> {

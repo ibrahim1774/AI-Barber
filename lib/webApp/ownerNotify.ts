@@ -4,7 +4,7 @@
 // A shop with neither an iOS link nor a web plan (pre-web-app shops) never gets these emails.
 // Everything here swallows its own errors: a mail problem must never fail or delay a booking/order
 // flow. No password is ever included.
-import { firstOf, esc, sendMail, type Mail } from './emails.js';
+import { firstOf, esc, sendMail, replyToAddress, type Mail } from './emails.js';
 import { APP_ORIGIN, webAppEntitlementsOn, sbRest } from './webAppServer.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 
@@ -153,8 +153,6 @@ export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_
   return renderOwner({ subject, headline, lead, leadText, first, facts, cta });
 }
 
-const OWNER_REPLY_TO = 'support@davoxa.com';
-
 /**
  * Plain, light owner notification: light background, dark text, one link, a text part that mirrors the HTML,
  * no hidden preheader, no password-reset link, a one-line reason for the email. Looks like a person's note, not a campaign.
@@ -169,7 +167,7 @@ function renderOwner(l: { subject: string; headline: string; lead: string; leadT
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.</p>
 </body></html>`;
   const text = [l.headline, '', `${l.first ? `Hi ${l.first}, ` : ''}${l.leadText}`, '', ...l.facts.map(([k, v]) => `${k}: ${v}`), '', `${l.cta.label}: ${l.cta.href}`, '', 'You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.'].join('\n');
-  return { subject: l.subject, html, text, replyTo: OWNER_REPLY_TO };
+  return { subject: l.subject, html, text, replyTo: replyToAddress() };
 }
 
 /** Owner's account email + first name from Supabase auth (service role), same source as dunning's contactFor. */
