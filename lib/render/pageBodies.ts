@@ -12,11 +12,12 @@ import {
   serviceChipName, serviceMeta, siteDescription, teamBookLink, teamOf, to12h, visibleReviews, type TeamCard,
 } from './honest.js';
 import {
-  beardServices, extraBlocks, guideBlocks, howOftenRows, resolveBlock, serviceAltFor, serviceGuideFor, serviceTextOn, svcCopyKey, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
+  aiPageFor, beardServices, extraBlocks, guideBlocks, howOftenRows, resolveBlock, serviceAltFor, serviceGuideFor, serviceTextOn, svcCopyKey, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
 } from './guides.js';
 import { defaultRatingLine, navLabelKey, plainLabel, PAGE_TITLE_KEY, ratingLineCustom, t, type LabelKey } from './labels.js';
 import { aboutParagraphs, isExtraKey, ownGallerySlots, pageHref as pageHrefOf, plainText, type PageContext, type PageFile, type PageSet } from './pages.js';
 import { heroSlot } from './heroes.js';
+import { validSeoText } from './seoText.js';
 import { composeSections, pageSectionsOf, type SectionPage } from './sections.js';
 import { escapeAttr } from './shell.js';
 import { printable } from './markers.js';
@@ -201,7 +202,14 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const altB = altId && subject ? resolveBlock(copyEnv, svcCopyKey(subject.title, 'alt'), subject) : null;
     const visitB = subject && serviceTextOn(d) ? resolveBlock(copyEnv, svcCopyKey(subject.title, 'visit'), subject) : null;
     const aboutBs = guideBs.length ? guideBs : altB ? [altB] : [];
-    const guideBlock = (aboutBs.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgGuideHeading')}</h2>${blocksHtml(aboutBs)}` : '') + (visitB ? blocksHtml([visitB]) : '');
+    // Dedicated text written for a service with no library guide (svcCopy.ts): stored text is re-checked, resolved and escaped here.
+    const ai = subject ? aiPageFor(copyEnv, subject) : null;
+    const aiHtml = ai
+      ? `<h2 class="ab-h2" style="margin-top:32px">${ai.heading ? esc(ai.heading) : L('pgGuideHeading')}</h2><div class="ab-copy ab-prose">${ai.intro.map((t) => `<p>${esc(t)}</p>`).join('')}${ai.sections.map((x) => `<h3 class="ab-copy-h">${esc(x.h)}</h3>${x.p.map((t) => `<p>${esc(t)}</p>`).join('')}`).join('')}${ai.faq.map((x) => `<h3 class="ab-copy-h">${esc(x.q)}</h3>${x.a.map((t) => `<p>${esc(t)}</p>`).join('')}`).join('')}</div>`
+      : '';
+    const guideShown = !pageSectionsOf(d, 'service').find((x) => x.id === 'guide')?.hidden;
+    const aiMeta = ai && guideShown && ai.metaDescription ? validSeoText('description', ai.metaDescription) ?? '' : '';
+    const guideBlock = (aboutBs.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgGuideHeading')}</h2>${blocksHtml(aboutBs)}` : '') + aiHtml + (visitB ? blocksHtml([visitB]) : '');
     const parts: Record<string, string> = {
       hero: heroHtml(file, plainText(s.title)),
       description: `<div class="ab-prose">${desc}</div>`,
@@ -213,7 +221,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     return {
       heading: plainText(s.title),
       title: place ? clip(`${plainText(s.title)} in ${place} · ${plainText(d.shopName)}`, 120) : undefined,
-      description: (pageSectionsOf(d, 'service').find((x) => x.id === 'description')?.hidden ? '' : clip(s.description || '', 155)) || generic,
+      description: (pageSectionsOf(d, 'service').find((x) => x.id === 'description')?.hidden ? '' : clip(s.description || '', 155)) || aiMeta || generic,
       body: `<section class="ab-sec"><div class="ab-wrap"><a class="ab-back" href="/services/">${L('pgBackServices')}</a>${eyebrow}<h1 class="ab-h1">${esc(s.title)}</h1>${price ? `<p class="ab-price">${esc(price)}</p>` : ''}${meta ? `<div class="ab-meta">${esc(meta)}</div>` : ''}${composeSections(d, 'service', parts)}${alsoSee()}</div></section>`,
     };
   }

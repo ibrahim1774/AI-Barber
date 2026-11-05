@@ -15,7 +15,8 @@
 // Pure, no DOM. Imports only vendored modules (never pages.ts or labels.ts: pages.ts imports this one).
 import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
-import { copyProblems, outputProblems, TOKEN_RE, type VocabGroup } from './copyRules.js';
+import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
+import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -109,6 +110,9 @@ export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number
     if (!unique && shown('guide') && subject) {
       const g = guides.get(index);
       if (g && guideBlocks(env, g, subject).length > 0) unique = true;
+      // Dedicated text of its own (written for the service, step 6) is real text. The lenient env has no place, so this is
+      // the least the page prints (a sentence with {place} only adds to it): a page counted here as having text always does.
+      if (!unique && aiPageFor(env, subject)) unique = true;
     }
     if (!unique) out.add(index);
   }
@@ -600,4 +604,84 @@ export function visibleCopyKeys(d: WebsiteData, file: { key: string; child?: { i
     return out;
   }
   return [];
+}
+
+
+// ── Dedicated text for a service the library has no guide for (svcCopy.ts, step 6) ──────────────
+/** What a service page prints from extraPages.svcCopy: plain strings, escaped by the caller. Every field is already resolved. */
+export interface AiPage {
+  /** The barber's own words (an edit) rather than model text. */
+  own: boolean;
+  heading: string | null;
+  intro: string[];
+  sections: { h: string; p: string[] }[];
+  faq: { q: string; a: string[] }[];
+  /** One resolved, linted sentence; the caller still applies the seo description validator. */
+  metaDescription: string | null;
+  metaTitle: string | null;
+}
+
+const PRONOUN_OPEN_RENDER = /^(?:it|its|this|that|these|those|they|them|their|he|she|his|her|there|such|doing so|also|and|but|so|then|however)\b/i;
+
+/** Resolves the tokens of already-linted sentences. A sentence whose token has no usable value is dropped, and so is a following one that opens with a pronoun. */
+function resolveAiSentences(env: CopyEnv, text: string, allow: readonly VocabGroup[], subject: Svc): string[] {
+  const out: string[] = [];
+  let droppedBefore = false;
+  for (const s of sentencesOf(text)) {
+    const segs = resolveSentence(env, s, allow, subject, true);
+    if (!segs) { droppedBefore = true; continue; }
+    if (droppedBefore && PRONOUN_OPEN_RENDER.test(s)) continue;
+    droppedBefore = false;
+    out.push(segsText(segs));
+  }
+  return out;
+}
+
+/**
+ * The dedicated text of this service page, or null (nothing stored, a library guide exists, not the first service with this
+ * title, or the entry is unusable). Web-created pages-v2 sites with service guides on only (serviceTextOn).
+ * The stored entry is never trusted: shape and caps are checked, model text is linted again and its tokens resolved through the
+ * strict whitelist; the barber's own edit (aiGenerated false) is printed as written. Nothing is repaired: an entry that fails
+ * its shape, or keeps fewer than MIN_SENTENCES sentences, is omitted whole.
+ */
+export function aiPageFor(env: CopyEnv, subject: Svc): AiPage | null {
+  const d = env.d;
+  if (!serviceTextOn(d) || subject.guide) return null;
+  const store = d.extraPages?.svcCopy as unknown;
+  const key = svcTitleKey(subject.title);
+  if (!key || !store || typeof store !== 'object' || Array.isArray(store) || !Object.prototype.hasOwnProperty.call(store, key)) return null;
+  if (titledServices(d).find((x) => svcTitleKey(x.title) === key)?.index !== subject.index) return null;
+  const shape = checkEntryShape((store as Record<string, unknown>)[key]);
+  if (!shape.ok) return null;
+  const e = shape.entry;
+  if (!e.aiGenerated) {
+    const paras = (t: string): string[] => t.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+    return {
+      own: true, heading: e.heading ?? null, intro: paras(e.intro),
+      sections: e.sections.map((x) => ({ h: x.h, p: paras(x.p) })),
+      faq: e.faq.map((x) => ({ q: x.q, a: paras(x.a) })),
+      metaDescription: e.metaDescription ?? null, metaTitle: e.metaTitle ?? null,
+    };
+  }
+  const allow = serviceWordsIn(subject.title);
+  let count = 0;
+  const para = (t: string): string[] => { const l = lintParagraph(t, allow); const r = l.text ? resolveAiSentences(env, l.text, allow, subject) : []; count += r.length; return r.length ? [r.join(' ')] : []; };
+  const line = (t: string): string | null => {
+    if (lintLine(t, allow).length) return null;
+    const segs = resolveSentence(env, t, allow, subject, true);
+    return segs ? segsText(segs) : null;
+  };
+  const intro = para(e.intro);
+  const sections: AiPage['sections'] = [];
+  for (const x of e.sections) { const h = line(x.h); const p = para(x.p); if (h !== null && p.length) sections.push({ h, p }); }
+  const faq: AiPage['faq'] = [];
+  for (const x of e.faq) { const q = line(x.q); const a = para(x.a); if (q !== null && a.length) faq.push({ q, a }); }
+  if (!intro.length || count < MIN_SENTENCES) return null;
+  const md = e.metaDescription ? lintParagraph(e.metaDescription, allow) : null;
+  const metaSents = md && md.written === 1 && md.kept === 1 ? resolveAiSentences(env, md.text, allow, subject) : [];
+  return {
+    own: false, heading: e.heading ? line(e.heading) : null, intro, sections, faq,
+    metaDescription: metaSents.length === 1 ? metaSents[0] : null,
+    metaTitle: e.metaTitle && !lintLine(e.metaTitle, allow).length ? (() => { const g = resolveSentence(env, e.metaTitle!, allow, subject, true); return g ? segsText(g) : null; })() : null,
+  };
 }

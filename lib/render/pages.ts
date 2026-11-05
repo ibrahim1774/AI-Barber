@@ -45,6 +45,8 @@ export interface ExtraPagesModel {
   images?: Partial<Record<ExtraKey, string>>;
   /** Old service page slug -> new slug, written by the web editor when a service is renamed. Read by lib/siteRedirects.ts (movedMap) only; never rendered. */
   moved?: Record<string, string>;
+  /** Dedicated text for services the library has no guide for, keyed by svcTitleKey(title). Written by the web editor from api/web-app/service-copy.ts. Shape: lib/render/svcCopy.ts (SvcCopyEntry). */
+  svcCopy?: Record<string, unknown>;
 }
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */
