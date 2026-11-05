@@ -77,14 +77,20 @@ export function isLabel(v: string): boolean {
   return words.every((w, i) => LABEL_WORD.test(w) || (w === '&' && i > 0 && i < words.length - 1 && words[i - 1] !== '&'));
 }
 
+// A period is allowed only right after a known abbreviation in the middle of a value ("St. Louis Cuts", "12 Main St., Austin").
+// A value may never END with one, and no other period passes. The abbreviation list is closed.
+const ABBREV = /\b(St|Ave|Rd|Blvd|Mr|Mrs|Ms|Dr|Jr|Sr|Co|No|Av|Col|Ste|Mt|Ft)\.(?=,? \S)/g;
+const dropAbbrevDots = (v: string): string => v.replace(ABBREV, '$1');
+
 // ── name ──
 const NAME_CHARS = /^[\p{L}\p{M}\p{N} &'’()+#/,.\-–]+$/u;
 export function isName(v: string): boolean {
   if (v.length > NAME_MAX || !hasAlnum(v) || !NAME_CHARS.test(v) || !ampOk(v)) return false;
   if (!/^(?:[\p{L}\p{N}]|#\d)/u.test(v)) return false; // opens with a letter or digit ("#1 Cut" is fine)
   if (!/[\p{L}\p{N})'’]$/u.test(v)) return false; // ends with a letter, digit, closing bracket or apostrophe
-  if (/[.](?:\s|$)|[,](?!\s)|\s[,.]/.test(v)) return false; // no sentence end inside; a comma is followed by a space
-  if (/[^\p{L}\p{M}\p{N}\s][^\p{L}\p{M}\p{N}\s]/u.test(v)) return false; // no two symbols side by side
+  const t = dropAbbrevDots(v);
+  if (/[.](?:\s|$)|[,](?!\s)|\s[,.]/.test(t)) return false; // no sentence end inside; a comma is followed by a space
+  if (/[^\p{L}\p{M}\p{N}\s][^\p{L}\p{M}\p{N}\s]/u.test(t)) return false; // no two symbols side by side
   if (/(?:^|\s)[&+/\-–,.#]\s+[&+/\-–,.#](?:\s|$)/.test(v)) return false;
   if (/#(?!\d)/.test(v) || /\d#/.test(v)) return false; // "#" only in front of a digit
   let depth = 0;
@@ -102,7 +108,7 @@ export const isStreetAddress = (v: string): boolean =>
 export function isAddress(v: string): boolean {
   if (v.length > ADDRESS_MAX || !ADDRESS_CHARS.test(v) || !ampOk(v) || !isStreetAddress(v)) return false;
   if (!/^[\p{L}\p{N}#]/u.test(v) || !/[\p{L}\p{N})]$/u.test(v)) return false;
-  if (/[,.\-–][,.\-–]|\s[,.]|,(?!\s)/.test(v)) return false;
+  if (/[,.\-–][,.\-–]|\s[,.]|,(?!\s)/.test(dropAbbrevDots(v))) return false;
   let depth = 0;
   for (const c of v) { if (c === '(') depth++; if (c === ')') depth--; if (depth < 0 || depth > 1) return false; }
   return depth === 0;

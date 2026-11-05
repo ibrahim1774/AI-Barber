@@ -42,12 +42,12 @@ describe('spliceable: exhaustive tables', () => {
       bad: ['Book Now!', 'Book now.', 'Where Are We?', 'Call us!!!', 'Book now. Pay later', 'Hours: 9-5', 'Book →', '<script>x</script>', '<b>Book</b>', '', '   ', '!!!', '💈', '#', '&', 'Book & ', '& Book', 'Book && Pay', 'https://x.com/book', 'a b c d', 'Reserve your spot at our shop today now', 'Book\nNow', 'Check-in', 'Book (Online', '📍 Map', 'Find Us;'],
     },
     name: {
-      ok: ['Fresh Cuts', 'FRESH CUTS', 'fresh cuts', '#1 Barbers', '#1 Cut', 'Skin Fade (Mid)', "Kids' Cut", 'Cut & Style', 'Fade + Beard', 'Fade 2.0', 'R&B Cuts', 'Line-Up', 'The Works', 'MVP Cut', 'Cuts, Fades', 'Tony’s', 'قص شعر', 'Café Niño', 'Boys\''],
-      bad: ['#', '&', '$$$', '%', '💈', '💈💈', '!!!', '', '   ', '- Fade', '+ Beard', '¿Corte?', '**Fade**', '*New* Fade', '•Fade', '— Fade —', 'Cut & Style &', 'Fade*', 'Fade.', 'Shave? Yes!', 'Fade (', 'Fade )', '"Fade', '“Fade', "'Fade", '<script>alert(1)</script>', '<b>x</b> Cut', 'Call us!!!', '~$30 Cut', 'Cut #', 'Fade & & Beard', 'Fade (Mid), Cut', 'Cut.Fade, ', 'A'.repeat(101), 'Fade\nCut', 'Fade 💈', 'Fade; Cut', 'Fade@home', 'Fade () Cut', '(Fade)', 'Fade​'],
+      ok: ['Fresh Cuts', 'St. Louis Cuts', 'Mr. Fade', 'No. 1 Cut', 'Dr. Fade & Co. Cuts', 'FRESH CUTS', 'fresh cuts', '#1 Barbers', '#1 Cut', 'Skin Fade (Mid)', "Kids' Cut", 'Cut & Style', 'Fade + Beard', 'Fade 2.0', 'R&B Cuts', 'Line-Up', 'The Works', 'MVP Cut', 'Cuts, Fades', 'Tony’s', 'قص شعر', 'Café Niño', 'Boys\''],
+      bad: ['#', '&', '$$$', '%', '💈', '💈💈', '!!!', '', '   ', '- Fade', '+ Beard', '¿Corte?', '**Fade**', '*New* Fade', '•Fade', '— Fade —', 'Cut & Style &', 'Fade*', 'Fade.', 'Barber & Co.', 'Fast. Cuts', 'Cut. Fade', 'Mr..Fade', 'Mr. ', 'Shave? Yes!', 'Fade (', 'Fade )', '"Fade', '“Fade', "'Fade", '<script>alert(1)</script>', '<b>x</b> Cut', 'Call us!!!', '~$30 Cut', 'Cut #', 'Fade & & Beard', 'Fade (Mid), Cut', 'Cut.Fade, ', 'A'.repeat(101), 'Fade\nCut', 'Fade 💈', 'Fade; Cut', 'Fade@home', 'Fade () Cut', '(Fade)', 'Fade​', 'Fade -', 'Fade +', 'Fade /', 'Fade –', 'Fade ,', 'Fade #'],
     },
     address: {
-      ok: ['12 Main St, Austin, TX', '#4 Oak Ave', '123 Calle 5, Col. Centro', 'Suite 4, 12 Main St', '12 Main St'],
-      bad: ['Mobile - I come to you', 'Austin, TX', '', 'PO Box 12 Main', '<b>12 Main St</b>', '12 Main St\nAustin, TX', '123 Calle 5; Col. Centro', 'Call us!!!', '12 Main St.', '12 Main St,', '12 Main St ,', '12 Main St,,Austin', `12 ${'Main '.repeat(30)}St`, '12 Main St →', '💈 12 Main St', '((12 Main St)'],
+      ok: ['12 Main St, Austin, TX', '12 Main St., Austin, TX', '12 Main St. Suite 4', '#4 Oak Ave', '123 Calle 5, Col. Centro', 'Suite 4, 12 Main St', '12 Main St'],
+      bad: ['Mobile - I come to you', 'Austin, TX', '', 'PO Box 12 Main', '<b>12 Main St</b>', '12 Main St\nAustin, TX', '123 Calle 5; Col. Centro', 'Call us!!!', '12 Main St.', '12 Main St,', '12 Main St ,', '12 Main St,,Austin', `12 ${'Main '.repeat(30)}St`, '12 Main St →', '- 12 Main St', '– 12 Main St', ', 12 Main St', '(12 Main St)', '. 12 Main St', '/ 12 Main St', '💈 12 Main St', '((12 Main St)'],
     },
     count: { ok: ['1', '7', ' 5 '], bad: ['0', '8', '10', 'seven', '', '5\n', '5.0'] },
   };
@@ -172,6 +172,11 @@ describe('property: 2000 random strings per kind are omitted or print lint-clean
           noSeamRepeat(out, value!);
           expect(/[\p{L}\p{N}]/u.test(value!)).toBe(true);
           expect(value!).not.toMatch(/^[^\p{L}\p{N}]+$/u);
+          // Independent of the validators: what prints must start and end like a real name, phone, price or address.
+          if (c.kind === 'name' || c.kind === 'address') {
+            expect(value!, `start of ${value}`).toMatch(/^[\p{L}\p{N}#]/u);
+            expect(value!, `end of ${value}`).toMatch(/[\p{L}\p{N})'’]$/u);
+          }
         }
         if (value === null) for (const t of templates) expect(run(d, t, links), `${JSON.stringify(v)} must be omitted`).toBeNull();
       }
