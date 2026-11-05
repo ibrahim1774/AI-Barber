@@ -12,7 +12,7 @@ const ORIG = process.env.WEB_APP_REPLY_TO;
 afterEach(() => { if (ORIG === undefined) delete process.env.WEB_APP_REPLY_TO; else process.env.WEB_APP_REPLY_TO = ORIG; });
 
 describe('golden email output (env unset)', () => {
-  delete process.env.WEB_APP_REPLY_TO;
+  beforeEach(() => { delete process.env.WEB_APP_REPLY_TO; });
   it('welcome, every tier, with and without name and site', () => {
     expect(welcomeEmail({ ...base, firstName: 'Jake Lee' }, O)).toMatchSnapshot('bookings named');
     expect(welcomeEmail({ ...base, tier: 'website', siteUrl: null }, O)).toMatchSnapshot('website anon no site');

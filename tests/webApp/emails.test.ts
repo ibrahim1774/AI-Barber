@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { failedPaymentEmail, resetLink, signInLink, welcomeEmail } from '../../lib/webApp/emails';
 
 const O = 'https://www.aibarber.org';
 const site = 'https://joes.vercel.app';
+const ORIG_REPLY_TO = process.env.WEB_APP_REPLY_TO;
+beforeEach(() => { delete process.env.WEB_APP_REPLY_TO; });
+afterEach(() => { if (ORIG_REPLY_TO === undefined) delete process.env.WEB_APP_REPLY_TO; else process.env.WEB_APP_REPLY_TO = ORIG_REPLY_TO; });
 describe('web app emails', () => {
   it('welcome: short subject saying what they signed up for, with site, account, sign-in and reset links, no password', () => {
     const m = welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
