@@ -428,6 +428,21 @@ describe('SEO title and description overrides (copy keys seo.*)', () => {
     expect(r.code).toBe(200); expect(r.body.seoProblems).toHaveLength(30);
     expect(Object.keys(((await db.query('select site_data from web_app_drafts')).rows[0] as any).site_data.copy)).toHaveLength(100);
   });
+  it('guide page texts (copy keys guides.*, Step 8): invalid values are dropped and listed next to the seo ones, valid ones and the guide settings are stored as typed', async () => {
+    const ep = { on: ['faq'], serviceGuides: true, seed: 3, guidesHidden: ['face-shape'], guidesSel: ['hair-types', 'face-shape'], guidesOff: false };
+    const good = { 'guides.hub.title': 'Read first', 'guides.hair-types.intro': 'Two paragraphs.\n\nSecond one.', 'seo.home.title': 'Test Cuts' };
+    const r = await save({ ...withCopy({ ...good, 'guides.face-shape.intro': '<b>x</b>', 'guides.nope.title': 'x', 'guides.hair-types.tip': 5 }), extraPages: ep } as any);
+    expect(r.code).toBe(200);
+    expect(r.body.seoProblems.map((p: any) => [p.key, p.reason]).sort()).toEqual([['guides.face-shape.intro', 'markup'], ['guides.hair-types.tip', 'not_text'], ['guides.nope.title', 'bad_key']]);
+    const stored = ((await db.query('select site_data from web_app_drafts')).rows[0] as any).site_data;
+    expect(stored.copy).toEqual(good);
+    expect(stored.extraPages).toMatchObject(ep);
+    // an older client re-saves the same draft (it spreads extraPages and copy): nothing is lost
+    const again = await save({ ...stored, futureField: 1 } as any, r.body.draft.revision);
+    expect(again.code).toBe(200); expect(again.body.seoProblems).toEqual([]);
+    const stored2 = ((await db.query('select site_data from web_app_drafts')).rows[0] as any).site_data;
+    expect(stored2.copy).toEqual(good); expect(stored2.extraPages).toMatchObject(ep);
+  });
   it('an empty override (cleared in the editor) saves', async () => {
     expect((await save(withCopy({ 'seo.home.title': '' }))).code).toBe(200);
   });

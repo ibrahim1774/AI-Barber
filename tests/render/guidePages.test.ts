@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
 import { buildPageSet, assertSiteFilePath, isPageKey, PAGE_KEYS, EXTRA_KEYS, RESERVED_PATHS } from '../../lib/render/pages';
-import { countPages, countRealPages, GUIDE_ADDED_CAP, guideCopySanitize, guideOverrides, guideSettings, PAGE_FLOOR, planGuides, resolveGuide, styleMatchesTitle } from '../../lib/render/guidePages';
+import { guidesApply, countPages, countRealPages, GUIDE_ADDED_CAP, guideCopySanitize, guideOverrides, guideSettings, PAGE_FLOOR, planGuides, resolveGuide, styleMatchesTitle } from '../../lib/render/guidePages';
 import { GUIDE_PAGE_IDS, isGuideFile } from '../../lib/render/guideIds';
 import { GUIDE_LIBRARY } from '../../lib/render/guideLibrary';
 import { variantIndex } from '../../lib/render/guides';
@@ -278,7 +278,7 @@ describe('the gate: guides only for web-created pages-v2 multi-page barber sites
     expect(bundle(single as WebsiteData).pages).toHaveLength(1);
   });
   it('a non-barber niche gets none (the library talks to the reader about "your barber")', () => {
-    for (const niche of ['nails', 'lashes', 'hair', 'medspa', 'tattoo']) expect(guidePaths(bundle(shop({ niche } as Partial<WebsiteData>)).valueOf()), niche).toEqual([]);
+    for (const niche of ['nails', 'lashes', 'hair', 'medspa', 'tattoo']) expect(guidePaths(bundle(shop({ niche } as Partial<WebsiteData>))), niche).toEqual([]);
     expect(guidePaths(bundle(shop({ niche: 'barber' } as Partial<WebsiteData>)))).toHaveLength(11);
   });
   it('decided: the serviceGuides flag does NOT decide this feature (it controls the About-this-service text), so a web site with it off still reaches 21', () => {
@@ -319,6 +319,15 @@ describe('the gate: guides only for web-created pages-v2 multi-page barber sites
     const trap = shop({ services: [svc('Fade Away Gift Card'), svc('Kids Nails'), svc('Shave Cream')] });
     const t = ids(trap);
     expect(t).not.toContain('fade-and-taper'); expect(t).not.toContain('child-first-haircut'); expect(t).not.toContain('shave-guide');
+  });
+});
+
+describe('the gate holds on its own (planGuides / guidesApply called directly, not only through the renderer)', () => {
+  it('iOS-made, unmarked and pre-pages-v2 data get no plan even when called directly', () => {
+    for (const source of ['ios', '', undefined]) { const d = shop({ source } as Partial<WebsiteData>); expect(guidesApply(d, buildPageSet(d)), String(source)).toBe(false); expect(planGuides(d, buildPageSet(d))).toBeNull(); }
+    const { extraPages: _e, ...v1 } = shop();
+    expect(guidesApply(v1 as WebsiteData, buildPageSet(v1 as WebsiteData))).toBe(false);
+    expect(guidesApply(shop(), buildPageSet(shop()))).toBe(true);
   });
 });
 

@@ -3,6 +3,7 @@ import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/ios/siteShape.js';
 import { seoProblem, seoSanitize } from '../../lib/render/seoText.js';
+import { guideCopySanitize } from '../../lib/render/guidePages.js';
 import { serviceKeys, svcCopySanitize } from '../../lib/serviceCopy/prune.js';
 import { serviceCopyAutoPublish } from '../../lib/serviceCopy/flags.js';
 import { draftRef, signingSecret, siteRef } from '../../lib/serviceCopy/approval.js';
@@ -45,7 +46,10 @@ export default async function handler(req: any, res: any) {
     // `seoProblems` (page, field, reason), so one bad title never blocks the autosave of the rest of the draft.
     const seo = seoProblem(site_data);
     if (seo) return res.status(400).json({ error: 'invalid_draft', detail: seo });
-    const { siteData: cleaned, problems: seoProblems } = seoSanitize(site_data);
+    // The guide pages' own texts (copy keys `guides.*`, Step 8) are cleaned the same way and reported in the same list (page `guide:<id>`).
+    const { siteData: seoClean, problems: seoOnly } = seoSanitize(site_data);
+    const { siteData: cleaned, problems: guideProblems } = guideCopySanitize(seoClean);
+    const seoProblems = [...seoOnly, ...guideProblems];
     // Deployment URLs are server-owned. The browser cannot turn an arbitrary URL into a published account site.
     // AI service text (extraPages.svcCopy) and family choices (svcFamily) stay tied to real services: an entry of a removed or renamed service, or one that is not the stored shape, is dropped; so is model text with no owner approval.
     // Model text must be approved to THIS account and bound to THIS draft (an id the client names, but the signature covers it) or to this

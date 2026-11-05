@@ -30,6 +30,11 @@ describe('validateWebSnapshot and seo.* copy keys', () => {
   it('a valid snapshot reports no fallbacks', () => {
     expect(validateWebSnapshot(site({ 'seo.home.title': 'Fresh Cuts' }), () => []).seoFallbacks).toEqual([]);
   });
+  it('guide page texts: an invalid guides.* value is ignored and reported with the seo ones, a valid one reaches the pending data', () => {
+    const r = validateWebSnapshot(site({ 'guides.hub.title': 'Read first', 'guides.face-shape.intro': '<b>x</b>', 'guides.zzz.title': 'x', 'seo.home.title': 'Fresh Cuts' }), () => []);
+    expect(r.seoFallbacks.map((p) => [p.key, p.reason])).toEqual([['guides.face-shape.intro', 'markup'], ['guides.zzz.title', 'bad_key']]);
+    expect(r.pendingData.copy).toEqual({ 'guides.hub.title': 'Read first', 'seo.home.title': 'Fresh Cuts' });
+  });
   it('still refuses a structurally broken copy', () => {
     expect(() => validateWebSnapshot({ ...site(), copy: ['x'] }, () => [])).toThrow('invalid_snapshot');
   });

@@ -12,6 +12,7 @@
 // Pure, no I/O. Imports only other pure modules.
 import { RESERVED_PATHS, isMultiPage, isPageSlug, type SiteFile } from './render/pages.js';
 import { hasPagesV2, isWebCreated } from './pagesV2.js';
+import { isGuideHref } from './render/guideIds.js';
 
 /** Most redirects a site carries; beyond it the oldest are dropped. DECISION: 200 and no expiry (the plan said 100 and 12 months; no timestamps are
  *  stored, a dead URL costs one small rule and an old link should keep working). Three vercel.json rules per redirect: 600 at most. */
@@ -56,8 +57,11 @@ export function isPagePath(p: unknown): p is string {
 const SERVICE_PATH = /^\/services\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/;
 /** `/services/<slug>/`, the only kind of path that is redirected from. */
 export const isServicePath = (p: unknown): p is string => isPagePath(p) && SERVICE_PATH.test(p);
-/** `/services/<slug>/` or the group page `/services/`: the only kinds of path redirected to. */
-export const isRedirectTarget = (p: unknown): p is string => p === '/services/' || isServicePath(p);
+/** `/services/<slug>/` or the group page `/services/`: the only kinds of path redirected to (and `/guides/`, the hub, for a removed guide page). */
+export const isRedirectTarget = (p: unknown): p is string => p === '/services/' || p === HUB || isServicePath(p);
+const HUB = '/guides/';
+/** `/guides/<id>/` (closed library ids): a removed guide page is redirected to the hub while the hub is live. The hub itself is never redirected from (guides are filler, a gone hub is a plain 404). */
+export const isGuidePagePath = (p: unknown): p is string => typeof p === 'string' && p !== HUB && isGuideHref(p) && isPagePath(p);
 const slugOf = (p: string): string => SERVICE_PATH.exec(p)![1];
 
 /** `index.html` -> `/`, `services/fade/index.html` -> `/services/fade/`; null for anything that is not a page file. */
@@ -97,8 +101,14 @@ export function movedMap(d: { extraPages?: unknown } | null | undefined): Map<st
   return out;
 }
 
-const validRedirect = (r: unknown): r is SiteRedirect =>
-  !!r && typeof r === 'object' && isServicePath((r as SiteRedirect).from) && isRedirectTarget((r as SiteRedirect).to) && (r as SiteRedirect).from !== (r as SiteRedirect).to;
+const validRedirect = (r: unknown): r is SiteRedirect => {
+  if (!r || typeof r !== 'object') return false;
+  const { from, to } = r as SiteRedirect;
+  if (from === to) return false;
+  // A service page goes to /services/ or its renamed page; a guide page goes ONLY to the hub (never to /services/, never to another guide).
+  if (isGuidePagePath(from)) return to === HUB;
+  return isServicePath(from) && isRedirectTarget(to) && to !== HUB;
+};
 
 /** The stored value read back: well-formed entries only (the rest are omitted), or null when it is not a v1 record at all. */
 export function parsePublishedPaths(raw: unknown): PublishedPaths | null {
@@ -153,12 +163,16 @@ export function planPublishedPaths(prev: PublishedPaths | null, newPaths: readon
     if (to) fresh.set(p, to);
   }
 
+  // A guide page that was published and is gone while the hub is live: to the hub. With the hub gone too, nothing (a plain 404).
+  if (live.has(HUB)) for (const p of [...before].filter(isGuidePagePath).sort()) if (!live.has(p)) fresh.set(p, HUB);
+
   const out: SiteRedirect[] = [];
   for (const r of prev?.redirects ?? []) {
     if (live.has(r.from) || fresh.has(r.from)) continue;
     let to = r.to;
     for (let i = 0; i < 4 && !live.has(to) && fresh.has(to); i++) to = fresh.get(to)!;
-    if (!live.has(to)) { if (!hasServices) continue; to = '/services/'; }
+    // A guide redirect whose hub is gone is dropped, never re-pointed at /services/.
+    if (!live.has(to)) { if (isGuidePagePath(r.from) || !hasServices) continue; to = '/services/'; }
     out.push({ from: r.from, to });
   }
   for (const [from, to] of fresh) out.push({ from, to });

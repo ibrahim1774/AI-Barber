@@ -16,6 +16,7 @@ import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { stripLapsedLinks } from '../ios/tiers.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
 import { seoProblem, seoSanitize, type SeoFieldProblem } from '../render/seoText.js';
+import { guideCopySanitize } from '../render/guidePages.js';
 import { svcCopySanitize } from '../serviceCopy/prune.js';
 import { draftRef, signingSecret, siteRef } from '../serviceCopy/approval.js';
 import { serviceCopyAutoPublish } from '../serviceCopy/flags.js';
@@ -105,7 +106,10 @@ export function siteBody(slug: string, pending: PendingSite | null, active: bool
 export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['render']) {
   if (!validSiteData(siteData) || Buffer.byteLength(JSON.stringify(siteData)) > MAX_BODY_BYTES) throw new Error('invalid_snapshot');
   // An invalid seo.* text is ignored (the page prints its generated default) and reported, never a reason to refuse a publish.
-  const { siteData: cleaned, problems: seoFallbacks } = seoSanitize(siteData);
+  const { siteData: seoClean, problems: seoOnly } = seoSanitize(siteData);
+  // An invalid guide page text (copy keys `guides.*`, Step 8) is ignored the same way and reported in the same list.
+  const { siteData: cleaned, problems: guideProblems } = guideCopySanitize(seoClean);
+  const seoFallbacks = [...seoOnly, ...guideProblems];
   // Model text with no owner approval (or 'auto' approval while SERVICE_COPY_AUTO_PUBLISH is off) never reaches the render: it is dropped here, so it cannot print, be indexed or reach a sitemap.
   // Signature only here (no account yet): the authenticated step in runWebPublish narrows this to the caller, the draft and the site.
   const sd = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), refs: 'any' }).siteData as WebsiteData;
