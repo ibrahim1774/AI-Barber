@@ -1,4 +1,6 @@
 begin;
+-- The CHECK validates existing rows under ACCESS EXCLUSIVE: do not queue behind a long transaction and stall live readers.
+set local lock_timeout = '5s';
 -- Additive. NOT applied by the build agent: apply and test before the redirects (Phase 1 step 5) can take effect.
 -- Until it is applied the publish flow cannot read the column, ships no redirects and logs it; nothing else changes.
 -- Shape: {"v":1,"paths":["/","/services/","/services/skin-fade/"],"redirects":[{"from":"/services/fade/","to":"/services/skin-fade/"}]}

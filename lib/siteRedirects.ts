@@ -13,7 +13,8 @@
 import { RESERVED_PATHS, isMultiPage, isPageSlug, type SiteFile } from './render/pages.js';
 import { hasPagesV2, isWebCreated } from './pagesV2.js';
 
-/** Most redirects a site carries; beyond it the oldest are dropped. */
+/** Most redirects a site carries; beyond it the oldest are dropped. DECISION: 200 and no expiry (the plan said 100 and 12 months; no timestamps are
+ *  stored, a dead URL costs one small rule and an old link should keep working). Three vercel.json rules per redirect: 600 at most. */
 export const REDIRECT_CAP = 200;
 /** Most `moved` entries read from the owner's data. */
 export const MOVED_CAP = 200;
@@ -130,6 +131,7 @@ export function planPublishedPaths(prev: PublishedPaths | null, newPaths: readon
   const live = new Set(paths);
   const hasServices = live.has('/services/');
   const before = new Set(prev?.paths ?? []);
+  // DECISION: a rename onto a service page that already existed (a merge) goes to /services/, not to the merged page: `moved` can be stale.
 
   const targetFor = (slug: string): string | null => {
     let cur = slug;
@@ -176,7 +178,7 @@ export function redirectRules(list: readonly SiteRedirect[] | null | undefined):
   for (const r of (Array.isArray(list) ? list : []).slice(-REDIRECT_CAP)) {
     if (!validRedirect(r) || seen.has(r.from)) continue;
     seen.add(r.from);
-    out.push({ source: r.from.slice(0, -1), destination: r.to, permanent: true }, { source: r.from, destination: r.to, permanent: true });
+    out.push({ source: r.from.slice(0, -1), destination: r.to, permanent: true }, { source: r.from, destination: r.to, permanent: true }, { source: `${r.from}index.html`, destination: r.to, permanent: true });
   }
   return out;
 }

@@ -48,7 +48,7 @@ function fakeStore(initial: PublishedPaths | null = null) {
   let value: PublishedPaths | null = initial;
   const s = {
     read: vi.fn(async (_slug: string) => (value ? parsePublishedPaths(JSON.parse(JSON.stringify(value))) : null)),
-    write: vi.fn(async (_slug: string, v: PublishedPaths) => { value = JSON.parse(JSON.stringify(v)); }),
+    write: vi.fn(async (_slug: string, v: PublishedPaths, _prev?: PublishedPaths | null) => { value = JSON.parse(JSON.stringify(v)); }),
   };
   return { s: s as PathsStore & typeof s, get: () => value };
 }
@@ -93,6 +93,7 @@ describe('remove, rename, re-add, chains', () => {
     expect(get()!.redirects).toEqual([R('beard-trim', '')]);
     expect(vercelJson(arg).redirects).toEqual([
       { source: '/services/beard-trim', destination: '/services/', permanent: true }, { source: '/services/beard-trim/', destination: '/services/', permanent: true },
+      { source: '/services/beard-trim/index.html', destination: '/services/', permanent: true },
     ]);
     expect(arg.sitemap).toContain('https://freshcuts.com/services/fade/');
     expect(arg.sitemap).not.toContain('beard-trim');
@@ -166,16 +167,99 @@ describe('republishing', () => {
 });
 
 describe('failures never fail the publish', () => {
-  it('an unreadable record: deploys without redirects, keeps the stored record, and the next publish brings them back', async () => {
+  const publishWith = async (titles: string[], ps: PathsStore, opts: Record<string, unknown> = {}) => {
+    deployRenderedSite.mockClear();
+    await writePendingSite('fresh-cuts', pending(titles));
+    return publishSite('fresh-cuts', { force: true, findShop: async () => null, siteBase: siteBase(BASE) as any, pathsStore: ps, ...opts });
+  };
+  it('a read that fails once is retried and the publish keeps its redirects', async () => {
+    const { s } = fakeStore();
+    await go(['Fade', 'Beard Trim'], s);
+    s.read.mockRejectedValueOnce(new Error('blip'));
+    deployRenderedSite.mockClear();
+    const arg = await go(['Fade'], s);
+    expect(s.read).toHaveBeenCalledTimes(3); // go #1, the failed try, the retry
+    expect(arg.redirects).toEqual([R('beard-trim', '')]);
+  });
+  it('a read that keeps failing FAILS the publish before any deploy: live redirects are never shrunk, the record is kept, the next publish works', async () => {
     const { s, get } = fakeStore();
     await go(['Fade', 'Beard Trim'], s);
+    await go(['Fade'], s); // the redirect is live and recorded
     const before = JSON.stringify(get());
-    s.read.mockRejectedValueOnce(new Error('column does not exist'));
-    const arg = await go(['Fade'], s);
-    expect(arg.redirects).toBeUndefined();
+    s.read.mockRejectedValueOnce(new Error('supabase 503')).mockRejectedValueOnce(new Error('supabase 503'));
+    const out = await publishWith(['Fade'], s);
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe('deploy-failed');
+    expect(out.error).toMatch(/published paths/);
+    expect(deployRenderedSite).not.toHaveBeenCalled();
     expect(JSON.stringify(get())).toBe(before);
-    expect(s.write).toHaveBeenCalledTimes(1);
+    expect(s.write).toHaveBeenCalledTimes(2); // the two earlier publishes only
     expect((await go(['Fade'], s)).redirects).toEqual([R('beard-trim', '')]);
+  });
+  it('a hanging read is cut off by the timeout (twice), the publish fails retryably, nothing is deployed', async () => {
+    const { s } = fakeStore();
+    s.read.mockImplementation(() => new Promise(() => {}));
+    const t0 = Date.now();
+    const out = await publishWith(['Fade'], s, { pathsTimeoutMs: 25 });
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatch(/timed out/);
+    expect(s.read).toHaveBeenCalledTimes(2);
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+  it('a slow read that finishes inside the limit is fine', async () => {
+    const { s } = fakeStore();
+    await go(['Fade', 'Beard Trim'], s);
+    const real = s.read.getMockImplementation()!;
+    s.read.mockImplementation(async (slug: string) => { await new Promise((r) => setTimeout(r, 20)); return real(slug); });
+    deployRenderedSite.mockClear();
+    expect((await publishWith(['Fade'], s, { pathsTimeoutMs: 500 })).ok).toBe(true);
+    expect(deployRenderedSite.mock.calls[0][0].redirects).toEqual([R('beard-trim', '')]);
+  });
+  it('a hanging write is cut off: the publish that is already live still succeeds', async () => {
+    const { s } = fakeStore();
+    await go(['Fade', 'Beard Trim'], s);
+    s.write.mockImplementation(() => new Promise(() => {}));
+    const t0 = Date.now();
+    const out = await publishWith(['Fade'], s, { pathsTimeoutMs: 25 });
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(out.ok).toBe(true);
+    expect(deployRenderedSite).toHaveBeenCalledTimes(1);
+  });
+  it('a write that updates no row (false) is logged, and the publish is ok', async () => {
+    const { s } = fakeStore();
+    s.write.mockResolvedValueOnce(false as any);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await publishWith(['Fade'], s)).ok).toBe(true);
+    expect(warn.mock.calls.some((c) => /no stored row/.test(String(c[0])))).toBe(true);
+    warn.mockRestore();
+  });
+  it('write receives the record that was read (the live store guards a first write)', async () => {
+    const { s } = fakeStore();
+    await go(['Fade', 'Beard Trim'], s);
+    expect(s.write.mock.calls[0][2]).toBeNull();
+    await go(['Fade'], s);
+    expect(s.write.mock.calls[1][2]).toMatchObject({ v: 1 });
+  });
+  it('a redeploy round that no longer qualifies (the stored copy turned pages v1) does not record round 0\'s paths', async () => {
+    const { s } = fakeStore();
+    deployRenderedSite.mockClear();
+    await writePendingSite('fresh-cuts', { ...pending(['Fade', 'Beard Trim']), version: 1, timestamp: 1 });
+    deployRenderedSite.mockImplementationOnce(async () => {
+      await writePendingSite('fresh-cuts', { ...pending(['Fade'], { extraPages: undefined }), version: 2, timestamp: 2 });
+      return { deploymentUrl: 'https://fresh-cuts.vercel.app', uploadedImages: {}, projectName: 'fresh-cuts' };
+    });
+    const out = await publishSite('fresh-cuts', { force: true, findShop: async () => null, siteBase: siteBase(BASE) as any, pathsStore: s });
+    expect(out.ok).toBe(true);
+    expect(deployRenderedSite).toHaveBeenCalledTimes(2);
+    expect('redirects' in deployRenderedSite.mock.calls[1][0]).toBe(false);
+    expect(s.write).not.toHaveBeenCalled();
+  });
+  it('a rename onto a service page that already existed (a merge) redirects to /services/ (decision: moved can be stale)', async () => {
+    const { s } = fakeStore();
+    await go(['Fade', 'Beard Trim'], s);
+    const arg = await go(['Fade'], s, { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, moved: { 'beard-trim': 'fade' } } });
+    expect(arg.redirects).toEqual([R('beard-trim', '')]);
   });
   it('a failed write is logged; the publish is ok and the next one recomputes from the older record', async () => {
     const { s, get } = fakeStore();

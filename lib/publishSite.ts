@@ -403,6 +403,24 @@ export function renderPendingBundle(
  * site is already serving, this returns that URL without touching Vercel.
  * `opts.force` skips that check and redeploys regardless.
  */
+
+/** Rejects when `p` has not settled in `ms` (the work itself is not cancelled; the live store also aborts its fetch). */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const t = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error(`${what} timed out after ${ms} ms`)), ms); });
+  return Promise.race([p, t]).finally(() => clearTimeout(timer));
+}
+
+/** The previous publish's record: one retry, then throws (the web publish fails retryably before deploying). */
+async function readPrevPaths(store: PathsStore, slug: string, ms: number): Promise<PublishedPaths | null> {
+  let last: any;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { return await withTimeout(Promise.resolve(store.read(slug)), ms, 'reading the published paths'); }
+    catch (e: any) { last = e; console.warn(`[Publish] ${slug}: reading the published paths failed (${e?.message || e})${attempt ? '' : '; retrying once'}`); }
+  }
+  throw new Error(`could not read the site's published paths (${last?.message || last}); nothing was deployed, publish again in a moment`);
+}
+
 /**
  * The same rules authorizeDeploy applies to a browser pay-first rename, for the server's follow
  * (both pointers come from the unauthenticated save-pending-site): the target is brand-new (no
@@ -480,6 +498,8 @@ export async function publishSite(
      * the service role is configured. `null`: tracking off. Never touched for any other site.
      */
     pathsStore?: PathsStore | null;
+    /** Longest the paths store may take per call (read, retry, write). Default 8 s. A hung call counts as a failed one. */
+    pathsTimeoutMs?: number;
   } = {},
 ): Promise<PublishOutcome> {
   const safe = slugify(siteId);
@@ -585,7 +605,8 @@ export async function publishSite(
     // Removed and renamed service pages (siteRedirects.ts): only for a web-created pages-v2 site. The record of the previous publish is read
     // once; each round computes its redirects and the record to store from it, and the last round's record is written after the deploy.
     let pathsStore: PathsStore | null = null;
-    let prevPaths: Promise<{ ok: true; prev: PublishedPaths | null } | { ok: false }> | null = null;
+    let prevPaths: Promise<PublishedPaths | null> | null = null;
+    const pathsTimeout = opts.pathsTimeoutMs ?? 8000;
     let nextPaths: PublishedPaths | null = null;
     for (let round = 0; ; round++) {
       const csd = current.siteData;
@@ -600,15 +621,12 @@ export async function publishSite(
         pathsStore ??= opts.pathsStore === undefined ? defaultPathsStore() : opts.pathsStore;
         const store = pathsStore;
         if (store) {
-          const prev = await (prevPaths ??= store.read(safe).then((p) => ({ ok: true as const, prev: p }), (e: any) => {
-            console.warn(`[Publish] ${safe}: reading the published paths failed (${e?.message || e}); no redirects this time, the stored record is kept`);
-            return { ok: false as const };
-          }));
-          if (prev.ok) {
-            nextPaths = planPublishedPaths(prev.prev, pagePathsOf(rendered.pages), movedMap(csd));
-            if (nextPaths.redirects.length) redirects = nextPaths.redirects;
-            if (JSON.stringify(nextPaths) === JSON.stringify(prev.prev)) nextPaths = null; // nothing new to record
-          }
+          // The previous record decides which redirects are already live. If it cannot be told (after one retry) the publish FAILS before anything
+          // is deployed: a vercel.json without them would 404 every old service URL. The owner just publishes again.
+          const prev = await (prevPaths ??= readPrevPaths(store, safe, pathsTimeout));
+          nextPaths = planPublishedPaths(prev, pagePathsOf(rendered.pages), movedMap(csd));
+          if (nextPaths.redirects.length) redirects = nextPaths.redirects;
+          if (JSON.stringify(nextPaths) === JSON.stringify(prev)) nextPaths = null; // nothing new to record
         }
       }
       const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, robots: rendered.robots, imageUrls: current.imageUrlMap || {}, subpages, ...(redirects ? { redirects } : {}) });
@@ -629,8 +647,10 @@ export async function publishSite(
       console.warn(`[Publish] ${safe}: deployed but stamping the backup failed:`, e?.message),
     );
     if (nextPaths && pathsStore) {
-      await pathsStore.write(safe, nextPaths).catch((e) =>
-        console.warn(`[Publish] ${safe}: live, but recording the published paths failed (${e?.message || e}); the next publish compares against the older record`));
+      const prevRecord = await prevPaths!.catch(() => null);
+      await withTimeout(Promise.resolve(pathsStore.write(safe, nextPaths, prevRecord)), pathsTimeout, 'recording the published paths').then(
+        (done) => { if (done === false) console.warn(`[Publish] ${safe}: live, but no stored row took the published paths (row missing, or a record this version does not understand is there); the next publish compares against the older record`); },
+        (e) => console.warn(`[Publish] ${safe}: live, but recording the published paths failed (${e?.message || e}); the next publish compares against the older record`));
     }
     if (shop) {
       // Customer-facing URLs (Stripe returns, emails) follow the site's domain from now on.

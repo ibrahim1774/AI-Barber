@@ -139,7 +139,7 @@ describe('the reserved-path guard', () => {
     const p = parsePublishedPaths(raw)!;
     expect(p.paths).toEqual(['/', '/services/']);
     expect(p.redirects).toEqual([{ from: '/services/ok/', to: '/services/' }]);
-    expect(redirectRules(raw.redirects as SiteRedirect[]).map((x) => x.source)).toEqual(['/services/ok', '/services/ok/']);
+    expect(redirectRules(raw.redirects as SiteRedirect[]).map((x) => x.source)).toEqual(['/services/ok', '/services/ok/', '/services/ok/index.html']);
   });
   it('the owner moved map cannot name a reserved or unsafe slug', () => {
     const hostile: Record<string, unknown> = {
@@ -185,10 +185,10 @@ describe('no open redirects: every source and destination is a clean relative /s
   it('every emitted rule matches the one allowed shape', () => {
     const rules = redirectRules([R('a', ''), R('b-c', 'd-e')]);
     expect(rules).toEqual([
-      { source: '/services/a', destination: '/services/', permanent: true }, { source: '/services/a/', destination: '/services/', permanent: true },
-      { source: '/services/b-c', destination: '/services/d-e/', permanent: true }, { source: '/services/b-c/', destination: '/services/d-e/', permanent: true },
+      { source: '/services/a', destination: '/services/', permanent: true }, { source: '/services/a/', destination: '/services/', permanent: true }, { source: '/services/a/index.html', destination: '/services/', permanent: true },
+      { source: '/services/b-c', destination: '/services/d-e/', permanent: true }, { source: '/services/b-c/', destination: '/services/d-e/', permanent: true }, { source: '/services/b-c/index.html', destination: '/services/d-e/', permanent: true },
     ]);
-    for (const r of rules) { expect(r.source).toMatch(/^\/services\/[a-z0-9]+(-[a-z0-9]+)*\/?$/); expect(r.destination).toMatch(/^\/services\/([a-z0-9]+(-[a-z0-9]+)*\/)?$/); }
+    for (const r of rules) { expect(r.source).toMatch(/^\/services\/[a-z0-9]+(-[a-z0-9]+)*(\/|\/index\.html)?$/); expect(r.destination).toMatch(/^\/services\/([a-z0-9]+(-[a-z0-9]+)*\/)?$/); }
   });
   it('a tampered stored record cannot smuggle anything into the plan', () => {
     const tampered = parsePublishedPaths({ v: 1, paths: ['/', '/services/', '/services/x/', 'https://evil.com/'], redirects: [{ from: '/services/a/', to: 'https://evil.com/' }, { from: 'https://evil.com/', to: '/services/' }, { from: '/services/b/', to: '/services/' }] })!;
@@ -216,9 +216,9 @@ describe('the cap', () => {
     expect(p.redirects).toHaveLength(REDIRECT_CAP);
     expect(p.redirects[0]).toEqual(R('o-30', ''));
   });
-  it('the rules never exceed two per redirect', () => {
+  it('the rules never exceed three per redirect', () => {
     const list = Array.from({ length: 500 }, (_, i) => R(`o-${i}`, ''));
-    expect(redirectRules(list)).toHaveLength(REDIRECT_CAP * 2);
+    expect(redirectRules(list)).toHaveLength(REDIRECT_CAP * 3);
   });
 });
 
@@ -276,17 +276,17 @@ describe('invariants over random publish histories', () => {
 
 describe('the vercel.json format', () => {
   const list = [R('fade', 'skin-fade'), R('beard', '')];
-  it('redirects sit next to headers (and rewrites), 308 via permanent, two rules per page, only on a multi-page deploy', () => {
+  it('redirects sit next to headers (and rewrites), 308 via permanent, three rules per page, only on a multi-page deploy', () => {
     const cfg = siteVercelConfig({ mode: 'full', shopSlug: 'fresh' }, { nestedPages: true, redirects: list });
     expect(cfg.redirects).toEqual([
-      { source: '/services/fade', destination: '/services/skin-fade/', permanent: true }, { source: '/services/fade/', destination: '/services/skin-fade/', permanent: true },
-      { source: '/services/beard', destination: '/services/', permanent: true }, { source: '/services/beard/', destination: '/services/', permanent: true },
+      { source: '/services/fade', destination: '/services/skin-fade/', permanent: true }, { source: '/services/fade/', destination: '/services/skin-fade/', permanent: true }, { source: '/services/fade/index.html', destination: '/services/skin-fade/', permanent: true },
+      { source: '/services/beard', destination: '/services/', permanent: true }, { source: '/services/beard/', destination: '/services/', permanent: true }, { source: '/services/beard/index.html', destination: '/services/', permanent: true },
     ]);
     expect(Object.keys(cfg)).toEqual(['headers', 'rewrites', 'redirects']);
     expect(Object.keys(siteVercelConfig(null, { nestedPages: true, redirects: list }))).toEqual(['headers', 'redirects']);
     expect(siteVercelConfig(null, { redirects: list }).redirects).toBeUndefined(); // a single-page deploy never carries them
     // a JSON round trip is the same thing Vercel reads
-    expect(JSON.parse(JSON.stringify(cfg)).redirects).toHaveLength(4);
+    expect(JSON.parse(JSON.stringify(cfg)).redirects).toHaveLength(6);
   });
   it('none, an empty list or only invalid entries: the key is absent and the config is byte-identical to the one without the option', () => {
     for (const sp of [null, { mode: 'full', shopSlug: 'fresh' } as const, { mode: 'manage-only' } as const]) {
@@ -350,8 +350,8 @@ describe('with the real page set: the 12 service page cap and hostile titles', (
     const after = planPublishedPaths(before, pathsOf(titles.slice(0, 1)));
     expect(after.redirects).toHaveLength(titles.length - 1);
     const rules = redirectRules(after.redirects);
-    expect(rules).toHaveLength(2 * (titles.length - 1));
-    for (const r of rules) expect(r.source).toMatch(/^\/services\/[a-z0-9]+(-[a-z0-9]+)*\/?$/);
+    expect(rules).toHaveLength(3 * (titles.length - 1));
+    for (const r of rules) expect(r.source).toMatch(/^\/services\/[a-z0-9]+(-[a-z0-9]+)*(\/|\/index\.html)?$/);
   });
   it('the sitemap-facing path set of the new publish never contains a redirected page', () => {
     const before = planPublishedPaths(null, pathsOf(['Fade', 'Beard Trim', 'Kids Cut']));

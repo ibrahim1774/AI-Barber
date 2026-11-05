@@ -15,14 +15,15 @@ export async function stripeCall(path: string, body: Record<string, string> | nu
   return j;
 }
 
-export async function sbRest(path: string, init: { method?: string; body?: unknown; prefer?: string } = {}): Promise<any> {
+export async function sbRest(path: string, init: { method?: string; body?: unknown; prefer?: string; timeoutMs?: number } = {}): Promise<any> {
   const { url, key } = SB();
   const r = await fetch(`${url}/rest/v1/${path}`, {
     method: init.method || 'GET',
     headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.prefer ? { Prefer: init.prefer } : {}) },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    ...(init.timeoutMs ? { signal: AbortSignal.timeout(init.timeoutMs) } : {}),
   });
-  if (!r.ok) throw new Error(`supabase ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(`supabase ${r.status}`), { status: r.status });
   const t = await r.text();
   return t ? JSON.parse(t) : null;
 }
