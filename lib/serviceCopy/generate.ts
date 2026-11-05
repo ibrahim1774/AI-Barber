@@ -66,7 +66,7 @@ export async function generateServiceCopy(
   deps: GenerateDeps, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
 ): Promise<GenerateOutcome> {
   const key: CopyKey = { userId: who.userId, draftId: who.draftId, titleKey: f.titleKey };
-  const stampFor = (copy: SvcCopyEntry, mode: 'owner' | 'auto'): SvcCopyEntry | null => stampApproval(deps.secret, who, f.titleKey, f.facts.businessType, copy, mode);
+  const stampFor = (copy: SvcCopyEntry, mode: 'owner' | 'auto'): SvcCopyEntry | null => stampApproval(deps.secret, who, f.titleKey, f.facts.businessType, copy, mode, deps.now());
   const token = (deps.token ?? randomUUID)();
   const t0 = deps.now();
   let claimed = false;
@@ -194,7 +194,7 @@ function verified(site: WebsiteData, f: Extract<FactsResult, { ok: true }>, entr
  * row while the auto flag is on; otherwise it is still a proposal. An 'auto' row is NOT trusted once the flag is off.
  */
 export function deliver(copy: SvcCopyEntry, rowApproval: 'owner' | 'auto' | null, autoPublish: boolean, stamp: (copy: SvcCopyEntry, mode: 'owner' | 'auto') => SvcCopyEntry | null): GenerateOutcome {
-  const { approval: _drop, approvalSig: _s, approvalScope: _c, ...bare } = copy;
+  const { approval: _drop, approvalSig: _s, approvalScope: _c, approvalRef: _r, approvalAt: _t, ...bare } = copy;
   // The approval is stamped (signed) here, on the server, for this exact text; a row that cannot be signed is only a proposal.
   const signed = rowApproval === 'owner' ? stamp(bare, 'owner') : autoPublish ? stamp(bare, 'auto') : null;
   if (signed) return { status: 'cached', copy: signed };
@@ -211,17 +211,17 @@ export type ApproveOutcome =
  * Approving an already approved row returns it again (idempotent). No model call, no quota.
  */
 export async function approveProposal(
-  deps: Pick<GenerateDeps, 'store' | 'log' | 'secret'>, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
+  deps: Pick<GenerateDeps, 'store' | 'log' | 'secret'> & { now?: () => number }, who: { userId: string; draftId: string }, site: WebsiteData, f: Extract<FactsResult, { ok: true }>,
 ): Promise<ApproveOutcome> {
   const key: CopyKey = { userId: who.userId, draftId: who.draftId, titleKey: f.titleKey };
   try {
     // No signing key = no approval can be issued (nothing signed would ever render): fail closed before touching the row.
     if (!deps.secret) return { status: 'unavailable' };
-    const signed = (bare: SvcCopyEntry): SvcCopyEntry | null => stampApproval(deps.secret, who, f.titleKey, f.facts.businessType, bare, 'owner');
+    const signed = (bare: SvcCopyEntry): SvcCopyEntry | null => stampApproval(deps.secret, who, f.titleKey, f.facts.businessType, bare, 'owner', deps.now?.());
     const row = await deps.store.get(key);
     if (!row || row.state !== 'done' || !isTextEntry(row.copy)) return { status: 'no_proposal' };
     if (row.factsHash !== f.hash) { await deps.store.remove(key); return { status: 'proposal_stale' }; }
-    const { approval: _drop, approvalSig: _s, approvalScope: _c, ...bare } = row.copy;
+    const { approval: _drop, approvalSig: _s, approvalScope: _c, approvalRef: _r, approvalAt: _t, ...bare } = row.copy;
     if (!verified(site, f, bare)) { await deps.store.remove(key); return { status: 'not_renderable' }; }
     const out = signed(bare);
     if (!out) return { status: 'unavailable' };

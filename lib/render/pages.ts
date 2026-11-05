@@ -333,8 +333,8 @@ function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {
   const address = has(d.contact?.address);
   const hours = hasOpenDay(d.hours);
   if (key === 'first-visit') return (book || phone) && (address || hours);
-  if (key === 'hair-care') return titled.some((s) => isHaircutTitle(s.title));
-  if (key === 'beard-care') return titled.some((s) => isBeardTitle(s.title));
+  if (key === 'hair-care') return titled.some((s) => isHaircutTitle(s.title, d));
+  if (key === 'beard-care') return titled.some((s) => isBeardTitle(s.title, d));
   // FAQ: at least 3 questions the data can answer (guides.ts faqDataQuestions).
   return faqDataQuestions(d) >= 3;
 }

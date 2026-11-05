@@ -2,6 +2,10 @@ import { Storage } from '@google-cloud/storage';
 import { publicLabel, VERCEL_LABEL_MAX } from '../lib/ios/siteAddress.js';
 import { supabasePurchases } from '../lib/ios/purchases.js';
 import { draftOwnFolder, logoProblem } from '../lib/logoUrl.js';
+import { signingSecret, siteRef } from '../lib/serviceCopy/approval.js';
+import { serviceCopyAutoPublish } from '../lib/serviceCopy/flags.js';
+import { svcCopySanitize } from '../lib/serviceCopy/prune.js';
+import { sbRest } from '../lib/webApp/webAppServer.js';
 import { bucket, isPreconditionFailed, readPendingSite, readPendingVersioned, slugify, type VersionedPending } from '../lib/publishSite.js';
 
 // Server-side persistence for the pendingSite payload that drives
@@ -51,12 +55,22 @@ export interface SavePendingDeps {
    * slug longer than VERCEL_LABEL_MAX, never for an existing site (those are never renamed). Fails open.
    */
   longNameClash?(slug: string): Promise<boolean>;
+  /**
+   * The account recorded as owner of this slug (site_owners), or null. This endpoint has no signed-in user, so model service text
+   * (extraPages.svcCopy) is kept only when its approval was issued to THIS slug's recorded owner and bound to THIS slug. Absent, null
+   * or throwing: no model text is kept (fail closed; the rest of the payload saves as before).
+   */
+  ownerOf?(slug: string): Promise<string | null>;
 }
 
 const liveDeps: SavePendingDeps = {
   isAppSlug: async (slug) => (await supabasePurchases().findBySlug(slug)) != null,
   isPublished: async (slug) => !!(await readPendingSite(slug))?.deployedUrl,
   readVersioned: readPendingVersioned,
+  async ownerOf(slug) {
+    const rows = await sbRest(`site_owners?slug=eq.${encodeURIComponent(slug)}&select=user_id&limit=1`);
+    return Array.isArray(rows) && typeof rows[0]?.user_id === 'string' ? rows[0].user_id : null;
+  },
   async longNameClash(slug) {
     const [files] = await bucket().getFiles({ prefix: `pending-sites/${publicLabel(slug)}`, maxResults: 50 });
     return files.some((f) => {
@@ -177,8 +191,20 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     // A shop logo must be a png/jpeg this site uploaded to its own <site>/logo folder in our bucket (lib/logoUrl.ts).
     // The stored copy is { siteId, siteData, imageUrlMap }: the logo is siteData.logo, with its URL either inline or, in the
     // pending shape, the 'uploaded' marker plus imageUrlMap.logo. A stray imageUrlMap.logo with no siteData.logo is refused too.
-    const sdata = clean.siteData && typeof clean.siteData === 'object' ? (clean.siteData as Record<string, any>) : null;
+    let sdata = clean.siteData && typeof clean.siteData === 'object' ? (clean.siteData as Record<string, any>) : null;
     const umap = clean.imageUrlMap && typeof clean.imageUrlMap === 'object' ? (clean.imageUrlMap as Record<string, unknown>) : null;
+    // Model service text is the one thing here that is not the visitor's own: it is kept only with a server approval issued to this slug's
+    // recorded owner and bound to this slug (a signature minted for another account or site is dropped). The rest of the payload is untouched.
+    if (sdata && sdata.extraPages && typeof sdata.extraPages === 'object' && ('svcCopy' in sdata.extraPages || 'svcFamily' in sdata.extraPages)) {
+      let owner: string | null = null;
+      if (deps.ownerOf && Object.keys((sdata.extraPages as any).svcCopy && typeof (sdata.extraPages as any).svcCopy === 'object' ? (sdata.extraPages as any).svcCopy : {}).length) {
+        try { owner = await deps.ownerOf(safeSiteId); } catch (e: any) { console.warn(`[save-pending-site] ${safeSiteId}: owner lookup failed (model text dropped):`, e?.message || e); }
+      }
+      const cleaned = svcCopySanitize(sdata, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: owner ?? undefined, refs: owner ? [siteRef(safeSiteId)] : [] });
+      if (cleaned.dropped.length) console.warn(`[save-pending-site] ${safeSiteId}: dropped ${cleaned.dropped.length} service text/family entries that are not approved for this site`);
+      clean.siteData = cleaned.siteData;
+      sdata = cleaned.siteData as Record<string, any>;
+    }
     // headerShow is 'logo' or 'name' (absent = logo and name); any other value is dropped, never stored. The logo is not touched.
     if (sdata && 'headerShow' in sdata && sdata.headerShow !== 'logo' && sdata.headerShow !== 'name') {
       clean.siteData = Object.fromEntries(Object.entries(sdata).filter(([k]) => k !== 'headerShow'));

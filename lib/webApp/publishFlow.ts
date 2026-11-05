@@ -17,7 +17,7 @@ import { stripLapsedLinks } from '../ios/tiers.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
 import { seoProblem, seoSanitize, type SeoFieldProblem } from '../render/seoText.js';
 import { svcCopySanitize } from '../serviceCopy/prune.js';
-import { signingSecret } from '../serviceCopy/approval.js';
+import { draftRef, signingSecret, siteRef } from '../serviceCopy/approval.js';
 import { serviceCopyAutoPublish } from '../serviceCopy/flags.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from '../ios/siteShape.js';
 import { supabasePurchases } from '../ios/purchases.js';
@@ -107,7 +107,8 @@ export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['
   // An invalid seo.* text is ignored (the page prints its generated default) and reported, never a reason to refuse a publish.
   const { siteData: cleaned, problems: seoFallbacks } = seoSanitize(siteData);
   // Model text with no owner approval (or 'auto' approval while SERVICE_COPY_AUTO_PUBLISH is off) never reaches the render: it is dropped here, so it cannot print, be indexed or reach a sitemap.
-  const sd = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret() }).siteData as WebsiteData;
+  // Signature only here (no account yet): the authenticated step in runWebPublish narrows this to the caller, the draft and the site.
+  const sd = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), refs: 'any' }).siteData as WebsiteData;
   if (hasDataUrl(sd)) throw new Error('invalid_snapshot');
   let imageUrlMap: Record<string, string>;
   let pendingData: WebsiteData;
@@ -137,7 +138,7 @@ export function validateWebSnapshot(siteData: unknown, render?: WebPublishDeps['
 export async function runWebPublish(
   input: { siteData?: unknown; baseVersion?: number | null },
   deps: WebPublishDeps,
-  ctx: { authorization?: unknown } = {},
+  ctx: { authorization?: unknown; /** The draft being published (the job's draft id): the only draft whose approvals may be used. */ draftId?: string } = {},
 ): Promise<WebPublishResult> {
   let raw: string;
   try { raw = JSON.stringify(input ?? null); } catch { return badRequest; }
@@ -171,9 +172,6 @@ export async function runWebPublish(
     }
     // 3. Tier links.
     pendingData = stripLapsedLinks(pendingData, webProductId(ent.tier, ent.billing_interval));
-    // The signed-in owner is known now: model text approved for another owner is dropped before anything is stored.
-    pendingData = svcCopySanitize(pendingData, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: caller.id }).siteData as WebsiteData;
-
     await deps.assertCurrent?.();
     // 4./5. Slug + bindings.
     const existing = await deps.sites.byUser(caller.id, deps.environment);
@@ -234,6 +232,13 @@ export async function runWebPublish(
     }
     if (freshBind && deps.rememberSlug) await deps.rememberSlug(ent.stripe_subscription_id, slug).catch(() => {});
 
+    // Model text: the signed-in owner and the site are known now. Only text approved to THIS account, for the draft being published or this
+    // account's own site, survives; it is re-stamped to this slug ('s:<slug>') so every later deploy render can verify it against the site it
+    // reads from. Another account's, another draft's, an expired or an unbound approval is dropped here, before anything is stored.
+    pendingData = svcCopySanitize(pendingData, {
+      autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: caller.id,
+      refs: [...(ctx.draftId ? [draftRef(ctx.draftId)] : []), siteRef(slug)], rebindToSlug: slug,
+    }).siteData as WebsiteData;
     // 6. Write the copy (compare-and-set), honouring admin versions like iOS.
     const io = { readPending: deps.readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned };
     type Refusal = { status: 409; body: { error: 'site-updated'; site: WebSiteBody } | { error: 'slug-owned' } };

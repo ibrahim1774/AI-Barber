@@ -259,7 +259,7 @@ export const LABELS = {
   pgHcStyle: { title: 'Hair care: styling heading', default: 'Styling', max: 40, multi: { page: 'hair-care' } },
   pgHcScalp: { title: 'Hair care: scalp heading', default: 'Scalp', max: 40, multi: { page: 'hair-care' } },
   pgHcBetween: { title: 'Hair care: between cuts heading', default: 'Between cuts', max: 40, multi: { page: 'hair-care' } },
-  pgHcOften: { title: 'Hair care: how often heading', default: 'How often to come back', max: 40, multi: { page: 'hair-care', shows: (s: WebsiteData) => titledServices(s).some((x) => isHaircutTitle(x.title)) } },
+  pgHcOften: { title: 'Hair care: how often heading', default: 'How often to come back', max: 40, multi: { page: 'hair-care', shows: (s: WebsiteData) => titledServices(s).some((x) => isHaircutTitle(x.title, s)) } },
   pgBcWash: { title: 'Beard care: washing heading', default: 'Washing', max: 40, multi: { page: 'beard-care' } },
   pgBcBrush: { title: 'Beard care: brushing heading', default: 'Brushing', max: 40, multi: { page: 'beard-care' } },
   pgBcSkin: { title: 'Beard care: skin heading', default: 'Skin', max: 40, multi: { page: 'beard-care' } },

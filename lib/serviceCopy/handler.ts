@@ -70,6 +70,9 @@ export function makeHandler(deps: HandlerDeps) {
   return async function handler(req: any, res: any) {
     if (webAppCors(req, res)) return;
     if (!deps.enabled()) return res.status(404).json({ error: 'not_found' });
+    // No usable signing secret: nothing can be approved and nothing would verify, so the feature is OFF (404, like the flag), with a clear line
+    // in the log (never the value). Set SERVICE_COPY_SIGNING_SECRET (16+ characters) in the server env before turning SERVICE_COPY_AI on.
+    if (!deps.secret()) { deps.log('[service-copy] SERVICE_COPY_SIGNING_SECRET is not set (or shorter than 16 characters): service text AI is off'); return res.status(404).json({ error: 'not_found' }); }
     if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -102,7 +105,7 @@ export function makeHandler(deps: HandlerDeps) {
 
       const who = { userId: user.id, draftId: draft.draft_id };
       if (mode === 'approve') {
-        const a = await approveProposal({ store: deps.store, log: deps.log, secret: deps.secret() }, who, site, f);
+        const a = await approveProposal({ store: deps.store, log: deps.log, secret: deps.secret(), now: deps.now }, who, site, f);
         if (a.status === 'approved') return res.status(200).json({ status: 'approved', titleKey, copy: a.copy });
         if (a.status === 'unavailable') return res.status(503).json({ error: 'ai_unavailable' });
         return res.status(a.status === 'no_proposal' ? 404 : 409).json({ error: a.status });

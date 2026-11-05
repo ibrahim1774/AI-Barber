@@ -41,7 +41,53 @@ export const FAMILY_VETO: RegExp = new RegExp(
     // bundles, products and tiers that say nothing about the work
     "packages?", "combos?", "bundles?", "memberships?", "subscriptions?", "gifts?", "cards?", "vouchers?", "products?", "special", "specials", "experiences?", "deluxe", "vip",
     "wedding", "bridal", "party", "event", "fee", "deposit", "consultations?", "lessons?", "class(?:es)?",
+    // retail goods (review 6d): a product is not a service, whatever else the title says
+    "oils?", "balms?", "pomades?", "butters?", "serums?", "creams?", "lotions?", "sprays?", "powders?", "clays?", "tonics?", "brush(?:es)?", "combs?", "kits?", "colognes?", "fragrances?", "aftershaves?", "certificates?", "merch\\w*", "retail", "wholesale",
   ].join('|') + ')\\b', 'i');
+
+// ── Library matches on a WEB-created site (review 6d) ────────────────────────────────────────────────
+// The library patterns match single words ("beard", "design", "cut") and so give a retail product or a non-service the wording of a
+// service ("Beard Oil" -> "A beard trim tidies the length ...", "Henna Design" -> "A hair design is a pattern cut into short hair").
+// On a web-created site a title like that resolves to NO guide (thin, noindex). iOS and legacy sites are untouched (same library, same
+// output). Two lists:
+//   HARD: never a service whatever else the title says (gift card, product, kit, henna, tattoo, piercing, pomade ...).
+//   SOFT: a product noun (oil, balm, wax, shampoo, wash ...) that ENDS the title; it is a product unless a service word AND a joiner (and, &, with, +) show it is one item of a service:
+//         "Beard Oil" and "Shave Oil" are products, "Haircut & Beard Oil" and "Beard Trim with Oil" are services.
+const HARD_NON_SERVICE = new RegExp('\\b(?:' + [
+  'gifts?', 'e-?gifts?', 'vouchers?', 'certificates?', 'products?', 'merch\\w*', 'retail', 'wholesale', 'kits?', 'pomades?', 'colognes?', 'fragrances?', 'aftershaves?',
+  'henna', 'tattoo\\w*', 'piercings?', 'ink(?:ing)?', 'sticker\\w*', 'gear',
+].join('|') + ')\\b', 'i');
+const SOFT_SRC = [
+  'oils?', 'balms?', 'wax(?:es)?', 'butters?', 'serums?', 'creams?', 'lotions?', 'sprays?', 'powders?', 'clays?', 'tonics?', 'gels?', 'brush(?:es)?', 'combs?',
+  'shampoo(?:s)?', 'conditioners?', 'wash(?:es)?', 'soaps?', 'scrubs?', 'masks?', 'pads?', 'blades?',
+].join('|');
+/** The title ENDS with the product noun ("Shave Oil", "Beard Balm"): the thing sold. */
+const SOFT_LAST = new RegExp('\\b(?:' + SOFT_SRC + ')\\s*$', 'i');
+const JOINER = /(?:\band\b|&|\+|\bwith\b|\bw\/|\bplus\b|,)/i;
+const SERVICE_WORD = /\b(?:hair)?cuts?\b|\b(?:trims?|shav\w*|fades?|tapers?|line[\s-]?ups?|edge[\s-]?ups?|shape[\s-]?ups?|designs?|colou?r\w*|dye\w*|highlights?|blend\w*|gr[ae]y)\b/i;
+/** Extra words that take a title out of ONE library guide on a web site (the library pattern matched a word that does not mean what the guide says). */
+const LIBRARY_EXCLUDE_WEB: Partial<Record<GuideId, RegExp>> = {
+  'beard-trim': /\b(?:bleach\w*|lighten\w*|tint\w*|perm\w*|relax\w*|extensions?|transplant\w*|growth|regrowth|restor\w*|implants?|filler|botox)\b/i,
+  design: /\b(?:nails?|nail\s?art|brows?|eyebrows?|lash\w*|makeup|make-up|logo|web\w*|graphic\w*|interior|invitation\w*)\b/i,
+};
+
+/** True when the title names something that is not a barber service (a product, a gift card, a tattoo ...). Used by the library guide lookup on web sites and by the AI text gate. */
+export function nonServiceTitle(title: unknown): boolean {
+  const t = fold(title);
+  if (!t) return false;
+  if (HARD_NON_SERVICE.test(t)) return true;
+  // The title ENDS with the product noun (the thing sold: "Beard Oil", "Shave Oil"), and either no service word is beside it or nothing joins a
+  // second item. "Haircut & Beard Oil", "Beard Trim with Oil", "Hot Oil Treatment" and "Beard Wash & Trim" are services.
+  if (!SOFT_LAST.test(t)) return false;
+  return !SERVICE_WORD.test(t) || !JOINER.test(t);
+}
+/** True when a web-created site must NOT use the library guide `guide` for this title although the library pattern matched. */
+export function libraryGuideOverruled(title: unknown, guide: GuideId | null): boolean {
+  if (!guide) return false;
+  if (nonServiceTitle(title)) return true;
+  const extra = LIBRARY_EXCLUDE_WEB[guide];
+  return !!extra && extra.test(fold(title));
+}
 
 type Keywords = Partial<Record<GuideId, RegExp[]>>;
 

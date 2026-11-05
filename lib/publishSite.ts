@@ -21,7 +21,7 @@ import { deployRenderedSite } from './deploySite.js';
 import { stripMarkersDeep, stripMarkersText } from './render/markers.js';
 import { renderSiteBundle, type RenderedSite, type RenderSiteOptions } from './render/site.js';
 import { svcCopySanitize } from './serviceCopy/prune.js';
-import { signingSecret } from './serviceCopy/approval.js';
+import { signingSecret, siteRef } from './serviceCopy/approval.js';
 import { serviceCopyAutoPublish } from './serviceCopy/flags.js';
 import { isMultiPage, type SiteFile } from './render/pages.js';
 import { movedMap, pagePathsOf, planPublishedPaths, redirectsApply, type PublishedPaths, type SiteRedirect } from './siteRedirects.js';
@@ -137,10 +137,16 @@ export async function readPendingSite(siteId: string): Promise<PendingSite | nul
   if (!exists) return null;
   const [buf] = await file.download();
   try {
-    return (JSON.parse(buf.toString('utf-8')) || {}).data || null;
+    return keyed((JSON.parse(buf.toString('utf-8')) || {}).data, siteId);
   } catch {
     return null;
   }
+}
+
+/** The stored copy with siteId taken from the storage key: the stored body is not trusted to say which site it is (approval binding). */
+function keyed(data: unknown, siteId: string): PendingSite | null {
+  if (!data || typeof data !== 'object') return null;
+  return { ...(data as PendingSite), siteId: slugify(siteId) };
 }
 
 // ─── compare-and-set on the stored copy (e2e I1) ───
@@ -209,7 +215,7 @@ export async function readPendingVersioned(siteId: string): Promise<VersionedPen
       throw e;
     }
     try {
-      return { pending: (JSON.parse(buf.toString('utf-8')) || {}).data || null, generation };
+      return { pending: keyed((JSON.parse(buf.toString('utf-8')) || {}).data, siteId), generation };
     } catch {
       return { pending: null, generation };
     }
@@ -391,7 +397,7 @@ export function renderPending(
 
 /** renderPending() with the sitemap. */
 export function renderPendingBundle(
-  pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'>,
+  pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'> & { siteId?: string },
   opts: Pick<RenderSiteOptions, 'customDomain' | 'siteBaseUrl'> = {},
 ): RenderedSite {
   // Named fields only: nothing from a request or a stored row may reach the renderer's options.
@@ -400,7 +406,10 @@ export function renderPendingBundle(
   // Model text (extraPages.svcCopy) is the one thing a deploy must not take on trust: every deploy of every kind (publish, webhook,
   // sweeper, lapse restore, admin redeploy, iOS re-save, save-pending-site) renders through here, so the server's approval signature
   // is checked HERE (review 6c B2) and unsigned, forged, edited or moved text is dropped. A valid 'auto' prints only while the flag is on.
-  const checked = svcCopySanitize(pending.siteData, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), forRender: true }).siteData;
+  // The approval must be bound to THIS site: the slug the copy was read from (the readers set pending.siteId from the storage key, never from the
+  // stored body). A render that does not know its site prints no model text.
+  const refs = typeof pending.siteId === 'string' && pending.siteId ? [siteRef(pending.siteId)] : [];
+  const checked = svcCopySanitize(pending.siteData, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), forRender: true, refs }).siteData;
   const out = renderSiteBundle(stripMarkersDeep(checked), { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: stripMarkersDeep(pending.imageUrlMap || {}) });
   return { ...out, sitemap: out.sitemap === null ? null : stripMarkersText(out.sitemap), robots: out.robots === null ? null : stripMarkersText(out.robots) };
 }

@@ -96,7 +96,7 @@ describe('happy path, cache and idempotency', () => {
     expect(b.body.copy).toEqual(a.body.copy);
     // the text prints through the real renderer
     const d0 = { ...r.drafts.get(U1).site_data, extraPages: { ...r.drafts.get(U1).site_data.extraPages, svcCopy: { 'scalp massage': a.body.copy } } };
-    const d = svcCopySanitize(d0, { autoPublish: true, secret: TEST_SECRET, userId: U1, forRender: true }).siteData as any; // what a deploy render does with a verified 'auto' entry
+    const d = svcCopySanitize(d0, { autoPublish: true, secret: TEST_SECRET, userId: U1, refs: ['d:draft-1'], forRender: true }).siteData as any; // what a deploy render does with a verified 'auto' entry
     const page = aiPageFor(lenientEnv(d, { place: 'Brooklyn, NY' }), titledServices(d).find((s) => s.title === 'Scalp Massage')!);
     expect(page?.heading).toBe('What to expect from Scalp Massage');
     expect(page?.metaDescription).toContain('Scalp Massage');
@@ -260,6 +260,7 @@ describe('errors and logging', () => {
 describe('generateServiceCopy direct', () => {
   it('uses the injected clock and returns the stored text with its time', async () => {
     const r = rig();
+    r.clock.t = Date.UTC(2026, 10, 5, 12, 0, 0);
     const f = (await import('../../lib/serviceCopy/facts')).serviceFacts(r.drafts.get(U1).site_data, 'scalp massage');
     if (!f.ok) throw new Error('facts');
     const out = await generateServiceCopy({ model: r.model, store: r.store, limits: r.limits, now: () => r.clock.t, log: () => {}, autoPublish: true, secret: TEST_SECRET }, { userId: U1, draftId: 'draft-1' }, r.drafts.get(U1).site_data, f);

@@ -4,6 +4,7 @@ import { makeHandler, type HandlerDeps } from '../../lib/serviceCopy/handler';
 import { memoryCopyStore } from '../../lib/serviceCopy/store';
 import type { ModelClient, ModelRequest, ModelResult } from '../../lib/serviceCopy/model';
 import { CHECK_SYSTEM_PROMPT } from '../../lib/serviceCopy/check';
+import { svcCopySanitize } from '../../lib/serviceCopy/prune';
 
 /** The approval signing key used by the tests (never a real secret). */
 export const TEST_SECRET = 'test-signing-secret-0123456789abcdef';
@@ -82,7 +83,7 @@ export function rig(opts: { secret?: string | null; model?: ScriptedModel; siteD
   const model = opts.model ?? scriptedModel();
   const store = memoryCopyStore();
   const logs: string[] = [];
-  const clock = { t: Date.UTC(2026, 10, 5, 12, 0, 0) };
+  const clock = { t: Date.now() - 60_000 };
   const drafts = new Map<string, any>();
   drafts.set(U1, { user_id: U1, draft_id: 'draft-1', revision: 1, site_data: opts.siteData ?? site(), suspended: false });
   const limits = memoryStore();
@@ -111,4 +112,9 @@ export function blockNetwork() {
   const spy = vi.fn(async () => { throw new Error('network is blocked in tests'); });
   vi.stubGlobal('fetch', spy);
   return spy;
+}
+
+/** What publish does to verified model text: checks it against the signed-in owner and the draft, then re-stamps it to the published site's slug. */
+export function publishedAs(d: any, slug = 'fresh-site', userId = U1, draftId = 'draft-1', autoPublish = true) {
+  return svcCopySanitize(d, { secret: TEST_SECRET, userId, refs: [`d:${draftId}`, `s:${slug}`], rebindToSlug: slug, autoPublish }).siteData;
 }

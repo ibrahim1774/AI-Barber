@@ -8,11 +8,13 @@ import { checkEntryShape, type SvcCopyEntry } from '../../lib/render/svcCopy';
 import { svcCopySanitize } from '../../lib/serviceCopy/prune';
 import { validateWebSnapshot } from '../../lib/webApp/publishFlow';
 import { renderPendingBundle } from '../../lib/publishSite';
-import { stampApproval } from '../../lib/serviceCopy/approval';
+import { draftRef, siteRef, stampApproval } from '../../lib/serviceCopy/approval';
 import type { WebsiteData } from '../../types';
 
 const SECRET = 'test-signing-secret-0123456789abcdef';
-const SOPTS = { secret: SECRET, userId: '10000000-0000-0000-0000-000000000001' };
+const SLUG = 'fresh-cuts';
+const DRAFT = 'draft-1';
+const SOPTS = { secret: SECRET, userId: '10000000-0000-0000-0000-000000000001', refs: [draftRef(DRAFT), siteRef(SLUG)] };
 const OWNER = '10000000-0000-0000-0000-000000000001';
 
 const svc = (title: string, extra: Record<string, unknown> = {}) => ({ title, subtitle: '', description: '', icon: 'scissors' as const, imageUrl: '', ...extra });
@@ -27,7 +29,7 @@ const PROPOSAL: SvcCopyEntry = {
   metaTitle: 'What to know about {service}', metaDescription: 'Learn what a visit for {service} involves and how to prepare.',
 };
 /** Model text signed by the server for this service key and the test owner (what the approve endpoint returns). */
-const signedFor = (mode: 'owner' | 'auto' = 'owner', key = 'scalp massage', user = OWNER): SvcCopyEntry => stampApproval(SECRET, { userId: user }, key, 'Barbershop', PROPOSAL, mode)!;
+const signedFor = (mode: 'owner' | 'auto' = 'owner', key = 'scalp massage', user = OWNER, where: 'draft' | 'site' = 'draft'): SvcCopyEntry => stampApproval(SECRET, where === 'site' ? { userId: user, slug: SLUG } : { userId: user, draftId: DRAFT }, key, 'Barbershop', PROPOSAL, mode)!;
 const MARK = 'Learn what the service involves before you decide';
 const shop = (extraPages: Record<string, unknown> = {}, extra: Partial<WebsiteData> = {}): WebsiteData => ({
   shopName: 'Fresh Cuts', area: 'Brooklyn, NY', phone: '(512) 555-0100', bookingUrl: '/book', template: 'luxe',
@@ -152,14 +154,14 @@ describe('Mode B: model text prints only with an approval; a proposal never rend
   });
   it('an entry with approval "auto" NEVER prints from the pure renderer (S1): only the server\'s deploy render turns a verified "auto" into printable text, and only while the flag is on', () => {
     expect(everything(withEntry({ ...PROPOSAL, approval: 'auto' }))).not.toContain(MARK);
-    expect(everything(withEntry(signedFor('auto')))).not.toContain(MARK);
-    const d = withEntry(signedFor('auto'));
+    expect(everything(withEntry(signedFor('auto', 'scalp massage', OWNER, 'site')))).not.toContain(MARK);
+    const d = withEntry(signedFor('auto', 'scalp massage', OWNER, 'site'));
     delete process.env.SERVICE_COPY_AUTO_PUBLISH;
-    const off = renderPendingBundle({ siteData: d, imageUrlMap: {} }, BASE);
+    const off = renderPendingBundle({ siteData: d, imageUrlMap: {}, siteId: SLUG }, BASE);
     expect([off.sitemap, ...off.pages.map((p) => p.html)].join('\n')).not.toContain(MARK);
     process.env.SERVICE_COPY_AUTO_PUBLISH = '1';
     try {
-      const on = renderPendingBundle({ siteData: d, imageUrlMap: {} }, BASE);
+      const on = renderPendingBundle({ siteData: d, imageUrlMap: {}, siteId: SLUG }, BASE);
       expect(on.pages.map((p) => p.html).join('\n')).toContain(MARK);
     } finally { delete process.env.SERVICE_COPY_AUTO_PUBLISH; }
   });
@@ -197,9 +199,9 @@ describe('Mode B: model text prints only with an approval; a proposal never rend
   it('with the flag ON a SIGNED "auto" entry survives the publish snapshot and prints on the deploy render; an unsigned one and a bare proposal do not', () => {
     process.env.SERVICE_COPY_AUTO_PUBLISH = '1';
     try {
-      const r = validateWebSnapshot(shop({ svcCopy: { 'scalp massage': signedFor('auto') } }));
+      const r = validateWebSnapshot(shop({ svcCopy: { 'scalp massage': signedFor('auto', 'scalp massage', OWNER, 'site') } }));
       expect((r.sd.extraPages as any).svcCopy['scalp massage'].approval).toBe('auto');
-      const out = renderPendingBundle({ siteData: r.pendingData, imageUrlMap: r.imageUrlMap }, BASE);
+      const out = renderPendingBundle({ siteData: r.pendingData, imageUrlMap: r.imageUrlMap, siteId: SLUG }, BASE);
       expect(out.pages.map((p) => p.html).join('\n')).toContain(MARK);
       for (const e of [PROPOSAL, { ...PROPOSAL, approval: 'auto' }]) {
         const x = validateWebSnapshot(shop({ svcCopy: { 'scalp massage': e } }));

@@ -6,6 +6,7 @@ import type { WebsiteData } from '../../types';
 import { guideIdForTitle, svcTitleKey, titledServices, THIN_DESCRIPTION_MIN, type Svc } from '../render/guides.js';
 import { nicheOf } from '../render/honest.js';
 import { aiTitle } from './titleGate.js';
+import { nonServiceTitle } from '../render/familyKeywords.js';
 import type { Facts } from './prompt.js';
 
 export type FactsResult =
@@ -25,6 +26,8 @@ export function serviceFacts(d: WebsiteData, titleKey: string): FactsResult {
   const subject = titledServices(d).find((s) => svcTitleKey(s.title) === titleKey);
   if (!subject) return { ok: false, reason: 'no_such_service' };
   if (guideIdForTitle(subject.title) !== null) return { ok: false, reason: 'has_library_text' };
+  // A product, gift card or tattoo-like title is not a service: no model text is ever written for it.
+  if (nonServiceTitle(subject.title)) return { ok: false, reason: 'title_not_usable' };
   const desc = Array.from(String((Array.isArray(d.services) ? d.services : [])[subject.index]?.description ?? '').trim()).length;
   if (desc >= THIN_DESCRIPTION_MIN) return { ok: false, reason: 'has_description' };
   const title = aiTitle(subject.title);

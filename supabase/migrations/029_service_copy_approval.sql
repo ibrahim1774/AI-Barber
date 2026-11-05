@@ -3,7 +3,8 @@ set local lock_timeout = '5s';
 -- Additive, idempotent. NOT applied by the build agent: apply and test it (after 028) before turning SERVICE_COPY_AI on.
 -- MANDATORY, not optional (review 6c NIT 5): the store selects the approval column on every read, so with 028 applied and 029 not, every mode
 -- (classify included) answers 503. Apply 028 and 029 together. Also set SERVICE_COPY_SIGNING_SECRET (16+ chars, server only) before use:
--- without it nothing can be approved and no model text prints (fail closed). The signature itself needs no column (it is recomputed).
+-- without it the service-text endpoint answers 404 (feature off), nothing can be approved and no model text prints (fail closed). The signature itself
+-- needs no column (it is recomputed); it binds account, draft/site, service key, niche, text and issue time (approval.ts).
 --
 -- 1. approval: the owner-approval state of a finished text row (Mode B "Write it for me").
 --      null     a PROPOSAL: stored, shown to the barber, never rendered or indexed

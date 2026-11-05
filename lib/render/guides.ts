@@ -17,7 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
-import { familyAllowed } from './familyKeywords.js';
+import { familyAllowed, libraryGuideOverruled } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -47,10 +47,15 @@ export function guideIdForTitle(title: unknown): GuideId | null {
 // Haircut-type = a service that cuts hair; beard-type = one that works on a beard or the face (plan 1c).
 const HAIRCUT_TYPE: ReadonlySet<GuideId> = new Set(['cut-beard', 'fade', 'taper', 'kids-cut', 'haircut']);
 const PRICE_TYPE: ReadonlySet<GuideId> = new Set(['fade', 'taper', 'haircut']);
-export const isHaircutTitle = (title: unknown): boolean => { const g = guideIdForTitle(title); return !!g && HAIRCUT_TYPE.has(g); };
-/** A real beard service: a cut-and-beard, a beard trim or a shave that is not a head shave (never a line-up). */
-export const isBeardTitle = (title: unknown): boolean => {
+/** The library guide of a title on THIS site: on a web-created site a product or non-service the library pattern wrongly matched resolves to none (familyKeywords.ts). Other sites: guideIdForTitle. */
+export function libraryGuideFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>> | undefined, title: unknown): GuideId | null {
   const g = guideIdForTitle(title);
+  return g !== null && d && isWebCreated(d as never) && libraryGuideOverruled(plain(title), g) ? null : g;
+}
+export const isHaircutTitle = (title: unknown, d?: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>): boolean => { const g = libraryGuideFor(d, title); return !!g && HAIRCUT_TYPE.has(g); };
+/** A real beard service: a cut-and-beard, a beard trim or a shave that is not a head shave (never a line-up). */
+export const isBeardTitle = (title: unknown, d?: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>): boolean => {
+  const g = libraryGuideFor(d, title);
   return g === 'cut-beard' || g === 'beard-trim' || (g === 'shave' && !/\bhead\b/i.test(plain(title)));
 };
 export const isKidsTitle = (title: unknown): boolean => guideIdForTitle(title) === 'kids-cut';
@@ -90,7 +95,9 @@ export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>
 
 /** The guide a service title gets on this site: the library match first, else the family the barber (or the classifier, approved by the barber) assigned. */
 export function guideForTitle(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
-  return guideIdForTitle(title) ?? familyFor(d, title);
+  const lib = guideIdForTitle(title);
+  // A title the library matched stays the library's (never a family); on a web site a product the pattern wrongly matched resolves to none.
+  return lib !== null ? libraryGuideFor(d, title) : familyFor(d, title);
 }
 
 /**
@@ -581,7 +588,7 @@ export function howOftenRows(env: CopyEnv): OftenRow[] {
 }
 
 /** The listed services of the beard-type, with prices, for Beard care. */
-export const beardServices = (d: Pick<WebsiteData, 'services'>): Svc[] => titledServices(d).filter((s) => isBeardTitle(s.title)).slice(0, 12);
+export const beardServices = (d: Pick<WebsiteData, 'services'> & Partial<Pick<WebsiteData, 'extraPages' | 'source'>>): Svc[] => titledServices(d).filter((s) => isBeardTitle(s.title, d)).slice(0, 12);
 
 // ── For the editor ──────────────────────────────────────────────────────────────────────────────
 

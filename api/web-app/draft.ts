@@ -5,7 +5,7 @@ import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/
 import { seoProblem, seoSanitize } from '../../lib/render/seoText.js';
 import { serviceKeys, svcCopySanitize } from '../../lib/serviceCopy/prune.js';
 import { serviceCopyAutoPublish } from '../../lib/serviceCopy/flags.js';
-import { signingSecret } from '../../lib/serviceCopy/approval.js';
+import { draftRef, signingSecret, siteRef } from '../../lib/serviceCopy/approval.js';
 import { serviceCopyEnabled } from '../../lib/serviceCopy/handler.js';
 import { tableCopyStore } from '../../lib/serviceCopy/store.js';
 
@@ -48,7 +48,12 @@ export default async function handler(req: any, res: any) {
     const { siteData: cleaned, problems: seoProblems } = seoSanitize(site_data);
     // Deployment URLs are server-owned. The browser cannot turn an arbitrary URL into a published account site.
     // AI service text (extraPages.svcCopy) and family choices (svcFamily) stay tied to real services: an entry of a removed or renamed service, or one that is not the stored shape, is dropped; so is model text with no owner approval.
-    const { siteData: pruned } = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: user.id });
+    // Model text must be approved to THIS account and bound to THIS draft (an id the client names, but the signature covers it) or to this
+    // account's own live site (a published site loaded back into the editor). The live slug is looked up only when there is text to check;
+    // a failed lookup keeps the draft ref alone (text bound to the live site then drops until the next save).
+    const hasModelText = (cleaned as any)?.extraPages?.svcCopy && typeof (cleaned as any).extraPages.svcCopy === 'object' && Object.keys((cleaned as any).extraPages.svcCopy).length > 0;
+    const liveForText = hasModelText ? await publishedBinding(user.id).catch(() => null) : null;
+    const { siteData: pruned } = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: user.id, refs: [draftRef(id), ...(liveForText ? [siteRef(liveForText.binding.slug)] : [])] });
     const content = { ...pruned, source: 'web-app' };
     if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: accountRow(previous), seoProblems });
     if ((previous?.revision ?? 0) !== expectedRevision) {

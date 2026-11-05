@@ -43,6 +43,10 @@ export interface SvcCopyEntry {
   approvalSig?: string;
   /** SERVER-STAMPED: opaque id of the owner the approval was issued to (part of the signed data). */
   approvalScope?: string;
+  /** SERVER-STAMPED (part of the signed data): what the approval is bound to, 'd:<draft id>' (draft stage, expires) or 's:<site slug>' (published site). */
+  approvalRef?: string;
+  /** SERVER-STAMPED (part of the signed data): epoch ms the approval was issued. */
+  approvalAt?: number;
 }
 
 export const LIMITS = {
@@ -54,7 +58,7 @@ export const MIN_SENTENCES = 4;
 /** Share of the written sentences that must survive. */
 export const MIN_SURVIVAL = 0.5;
 
-const KEYS = new Set(['v', 'aiGenerated', 'heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription', 'at', 'approval', 'approvalSig', 'approvalScope']);
+const KEYS = new Set(['v', 'aiGenerated', 'heading', 'intro', 'sections', 'faq', 'metaTitle', 'metaDescription', 'at', 'approval', 'approvalSig', 'approvalScope', 'approvalRef', 'approvalAt']);
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 // ── plain text only ─────────────────────────────────────────────────────────────────────────────
@@ -184,7 +188,9 @@ export function checkEntryShape(raw: unknown): { ok: true; entry: SvcCopyEntry }
   if (own(raw, 'metaDescription') && !str(raw.metaDescription, LIMITS.metaDescription)) return { ok: false, reason: 'metaDescription' };
   if (own(raw, 'at') && !str(raw.at, 40)) return { ok: false, reason: 'at' };
   if (own(raw, 'approval') && ((raw.approval !== 'owner' && raw.approval !== 'auto') || raw.aiGenerated !== true)) return { ok: false, reason: 'approval' };
-  if ((own(raw, 'approvalSig') || own(raw, 'approvalScope')) && (raw.aiGenerated !== true || !own(raw, 'approval') || typeof raw.approvalSig !== 'string' || !/^[0-9a-f]{64}$/.test(raw.approvalSig) || typeof raw.approvalScope !== 'string' || !/^[0-9a-f]{32}$/.test(raw.approvalScope))) return { ok: false, reason: 'approval signature' };
+  const hasSigField = own(raw, 'approvalSig') || own(raw, 'approvalScope') || own(raw, 'approvalRef') || own(raw, 'approvalAt');
+  if (hasSigField && (raw.aiGenerated !== true || !own(raw, 'approval') || typeof raw.approvalSig !== 'string' || !/^[0-9a-f]{64}$/.test(raw.approvalSig) || typeof raw.approvalScope !== 'string' || !/^[0-9a-f]{32}$/.test(raw.approvalScope)
+    || typeof raw.approvalRef !== 'string' || !/^[ds]:[A-Za-z0-9._-]{1,100}$/.test(raw.approvalRef) || typeof raw.approvalAt !== 'number' || !Number.isSafeInteger(raw.approvalAt) || raw.approvalAt < 0)) return { ok: false, reason: 'approval signature' };
   if (!Array.isArray(raw.sections) || raw.sections.length > LIMITS.sectionsMax) return { ok: false, reason: 'sections' };
   if (!Array.isArray(raw.faq) || raw.faq.length > LIMITS.faqMax) return { ok: false, reason: 'faq' };
   const sections: SvcSection[] = [];
@@ -203,7 +209,7 @@ export function checkEntryShape(raw: unknown): { ok: true; entry: SvcCopyEntry }
   if (own(raw, 'metaDescription')) entry.metaDescription = raw.metaDescription as string;
   if (own(raw, 'at')) entry.at = raw.at as string;
   if (own(raw, 'approval')) entry.approval = raw.approval as 'owner' | 'auto';
-  if (own(raw, 'approvalSig')) { entry.approvalSig = raw.approvalSig as string; entry.approvalScope = raw.approvalScope as string; }
+  if (own(raw, 'approvalSig')) { entry.approvalSig = raw.approvalSig as string; entry.approvalScope = raw.approvalScope as string; entry.approvalRef = raw.approvalRef as string; entry.approvalAt = raw.approvalAt as number; }
   const total = [entry.heading, entry.intro, entry.metaTitle, entry.metaDescription, ...sections.flatMap((s) => [s.h, s.p]), ...faq.flatMap((f) => [f.q, f.a])]
     .reduce((n, t) => n + (t ? Array.from(t).length : 0), 0);
   if (total > LIMITS.total) return { ok: false, reason: 'total length' };
@@ -278,7 +284,7 @@ export function lintEntry(e: SvcCopyEntry, allow: readonly VocabGroup[], cleared
   if (md && md.written === 1 && md.kept === 1) out.metaDescription = md.text; else if (md) problems.push(...md.problems);
   if (e.at) out.at = e.at;
   if (e.approval) out.approval = e.approval;
-  if (e.approvalSig) { out.approvalSig = e.approvalSig; out.approvalScope = e.approvalScope; }
+  if (e.approvalSig) { out.approvalSig = e.approvalSig; out.approvalScope = e.approvalScope; out.approvalRef = e.approvalRef; out.approvalAt = e.approvalAt; }
   const total = kept;
   if (!intro || total < MIN_SENTENCES || written === 0 || total / written < MIN_SURVIVAL) return { entry: null, written, kept, problems };
   return { entry: out, written, kept, problems };

@@ -1,25 +1,25 @@
 // Orphan protection: svcCopy follows the services on every web draft save and publish snapshot, and a removed service retires its cache.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const st = vi.hoisted(() => ({ previous: null as any, writes: [] as { path: string; init: any }[], enabled: false, failCache: false }));
+const st = vi.hoisted(() => ({ live: null as any, previous: null as any, writes: [] as { path: string; init: any }[], enabled: false, failCache: false }));
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   webAppCors: () => false, webAppCheckoutOn: () => true, webAppEntitlementsOn: () => true, APP_ORIGIN: () => 'https://app.test',
   callerFrom: async () => ({ id: '10000000-0000-0000-0000-000000000001', email: 't@example.com' }),
   sbRest: async (path: string, init: any = {}) => { st.writes.push({ path, init }); if (st.failCache && path.startsWith('ab_service_copy')) throw new Error('relation does not exist'); if ((init.method ?? 'GET') === 'PATCH') return [{ draft_id: 'd1', revision: 2, site_data: JSON.parse(JSON.stringify(init.body.site_data)), updated_at: 'now', deployed_url: null }]; return null; },
   readRawBody: async () => '',
 }));
-vi.mock('../../lib/webApp/reliability.js', async (orig) => ({ ...(await orig<any>()), reliabilityOn: () => true, modeOf: () => 'test', readDraft: async () => st.previous, publishedBinding: async () => null }));
+vi.mock('../../lib/webApp/reliability.js', async (orig) => ({ ...(await orig<any>()), reliabilityOn: () => true, modeOf: () => 'test', readDraft: async () => st.previous, publishedBinding: async () => st.live }));
 import draft from '../../api/web-app/draft';
 import { svcCopySanitize, serviceKeys } from '../../lib/serviceCopy/prune';
 import { validateWebSnapshot } from '../../lib/webApp/publishFlow';
 import { GOOD_JSON, site, TEST_SECRET, U1 } from './helpers';
-import { stampApproval } from '../../lib/serviceCopy/approval';
+import { draftRef, siteRef, stampApproval } from '../../lib/serviceCopy/approval';
 import { businessTypeOf } from '../../lib/serviceCopy/facts';
 
 const proposalOf = { v: 1, aiGenerated: true, ...GOOD_JSON };
-const signed = (mode: 'owner' | 'auto' = 'owner', key = 'scalp massage') => stampApproval(TEST_SECRET, { userId: U1 }, key, businessTypeOf(site() as any), proposalOf as any, mode) as any;
+const signed = (mode: 'owner' | 'auto' = 'owner', key = 'scalp massage') => stampApproval(TEST_SECRET, { userId: U1, draftId: 'd1' }, key, businessTypeOf(site() as any), proposalOf as any, mode) as any;
 const entry = signed();   // server-signed for 'scalp massage' and the signed-in test user
-const OPTS = { secret: TEST_SECRET, userId: U1 };
+const OPTS = { secret: TEST_SECRET, userId: U1, refs: [draftRef('d1')] };
 const withCopy = (titles: string[], svcCopy: any) => site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcCopy } }, titles);
 const response = () => { const r: any = { code: 0, body: null, setHeader: vi.fn() }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; return r; };
 
@@ -90,7 +90,7 @@ describe('draft save', () => {
     delete process.env.SERVICE_COPY_AUTO_PUBLISH;
     const edited = { ...signed(), intro: signed().intro.replace('Learn', 'Study') };
     const forged: any[] = [{ ...proposalOf, approval: 'owner' }, { ...proposalOf, approval: 'auto' }, { ...proposalOf, approval: 'owner', approvalSig: 'a'.repeat(64), approvalScope: 'b'.repeat(32) },
-      edited, signed('owner', 'eyebrow styling'), stampApproval(TEST_SECRET, { userId: '10000000-0000-0000-0000-000000000002' }, 'scalp massage', businessTypeOf(site() as any), proposalOf as any, 'owner'), { ...signed(), approval: 'auto' }, signed('auto')];
+      edited, signed('owner', 'eyebrow styling'), stampApproval(TEST_SECRET, { userId: '10000000-0000-0000-0000-000000000002', draftId: 'd1' }, 'scalp massage', businessTypeOf(site() as any), proposalOf as any, 'owner'), { ...signed(), approval: 'auto' }, signed('auto')];
     for (const e of forged) {
       const r = await put(withCopy(['Scalp Massage'], { 'scalp massage': e }));
       expect(r.code).toBe(200);
@@ -100,6 +100,22 @@ describe('draft save', () => {
     // a family without a keyword in the title is dropped on the same save
     const fam = await put(site({ extraPages: { on: ['faq'], serviceGuides: true, seed: 7, svcFamily: { 'scalp massage': 'shave' } } }, ['Scalp Massage']));
     expect(fam.body.draft.site_data.extraPages.svcFamily).toBeUndefined();
+  });
+  it('draft save binds model text to THIS draft or to the account\'s own live site: a stamp of another draft, another site or another account is dropped', async () => {
+    st.previous = prev(withCopy(['Scalp Massage'], undefined));
+    delete process.env.SERVICE_COPY_AUTO_PUBLISH;
+    const bind = (who: any) => stampApproval(TEST_SECRET, who, 'scalp massage', businessTypeOf(site() as any), proposalOf as any, 'owner') as any;
+    for (const e of [bind({ userId: U1, draftId: 'other-draft' }), bind({ userId: U1, slug: 'some-site' })]) {
+      st.live = null;
+      expect((await put(withCopy(['Scalp Massage'], { 'scalp massage': e }))).body.draft.site_data.extraPages.svcCopy).toBeUndefined();
+    }
+    // the account's own live site (a published site loaded back into the editor): its site stamp is accepted; any other slug, or another account's, is not
+    st.live = { deployedUrl: 'https://x.example.com', binding: { slug: 'my-live-site', transactionId: 't', publishedRevision: null } };
+    expect(Object.keys((await put(withCopy(['Scalp Massage'], { 'scalp massage': bind({ userId: U1, slug: 'my-live-site' }) }))).body.draft.site_data.extraPages.svcCopy)).toEqual(['scalp massage']);
+    for (const e of [bind({ userId: U1, slug: 'some-site' }), bind({ userId: '10000000-0000-0000-0000-000000000002', slug: 'my-live-site' })]) {
+      expect((await put(withCopy(['Scalp Massage'], { 'scalp massage': e }))).body.draft.site_data.extraPages.svcCopy).toBeUndefined();
+    }
+    st.live = null;
   });
   it('removing a service retires its cached text (only when the feature is on); no cleanup call otherwise', async () => {
     st.previous = prev(withCopy(['Scalp Massage'], { 'scalp massage': entry }));

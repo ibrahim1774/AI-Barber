@@ -136,7 +136,7 @@ export function liveJobDeps(): JobDeps {
         return { id: user.id, email: user.email ?? null };
       };
       deps.assertCurrent = guard;
-      return runWebPublish({ siteData: job.snapshot, baseVersion: job.base_version }, deps);
+      return runWebPublish({ siteData: job.snapshot, baseVersion: job.base_version }, deps, { draftId: typeof job.draft_id === 'string' ? job.draft_id : undefined });
     },
     async finish(job, token, status, result) {
       // (status/result may be rewritten below when a job gives up)

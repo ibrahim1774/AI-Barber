@@ -9,7 +9,7 @@ import { GUIDE_IDS } from '../../lib/render/copyLibrary';
 import { accountCounterKey, DAY_MS, siteCounterKey } from '../../lib/serviceCopy/limits';
 import { ModelError } from '../../lib/serviceCopy/model';
 import { LEASE_MS } from '../../lib/serviceCopy/store';
-import { blockNetwork, GOOD_JSON, PII, rig, scriptedModel, site, U1, U2 } from './helpers';
+import { blockNetwork, GOOD_JSON, PII, publishedAs, rig, scriptedModel, site, U1, U2 } from './helpers';
 import { BENIGN, HOSTILE, obfuscatedHostile } from './corpus';
 
 let net: ReturnType<typeof blockNetwork>;
@@ -311,9 +311,10 @@ describe('MODE B with SERVICE_COPY_AUTO_PUBLISH ON (Ibrahim\'s original no-appro
     // the pure renderer never prints 'auto' itself: only the server's deploy render (renderPendingBundle), while the flag is on, turns a verified 'auto' into printable text
     expect(aiPageFor(lenientEnv(d), scalp(d))).toBeNull();
     process.env.SERVICE_COPY_AUTO_PUBLISH = '1';
-    try { expect(renderPendingBundle({ siteData: d, imageUrlMap: {} }, BASE).sitemap).toContain('/services/scalp-massage/'); }
+    const published = publishedAs(d);   // publish re-stamps verified text to the site's slug; the deploy render then verifies it against that slug
+    try { expect(renderPendingBundle({ siteData: published, imageUrlMap: {}, siteId: 'fresh-site' }, BASE).sitemap).toContain('/services/scalp-massage/'); }
     finally { delete process.env.SERVICE_COPY_AUTO_PUBLISH; }
-    expect(renderPendingBundle({ siteData: d, imageUrlMap: {} }, BASE).sitemap).not.toContain('/services/scalp-massage/'); // flag off: the same stored text is dropped
+    expect(renderPendingBundle({ siteData: published, imageUrlMap: {}, siteId: 'fresh-site' }, BASE).sitemap).not.toContain('/services/scalp-massage/'); // flag off: the same stored text is dropped
   });
   it('the text rules are the same with the flag on: the deny layer drops the claims even when the claim checker clears everything', async () => {
     const claims = 'Our team is licensed. Backed by 20 years of experience.';
