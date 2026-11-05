@@ -72,7 +72,7 @@ beforeEach(() => {
 describe('the first tracked publish records the paths and ships no redirect', () => {
   it('stores / and every page path; nothing to redirect', async () => {
     const { s, get } = fakeStore();
-    const arg = await go(['Fade', 'Beard Trim'], s);
+    const arg = await go(['Haircut', 'Fade', 'Beard Trim'], s);
     expect(arg.redirects).toBeUndefined();
     expect('redirects' in arg).toBe(false);
     expect(s.read).toHaveBeenCalledWith('fresh-cuts');

@@ -1,23 +1,7 @@
-// Which library family (a guide id) a CUSTOM service title may be assigned to. A family prints the library's own specific wording
-// ("A razor shave removes hair close to the skin ..."), so it may only be assigned when the title ITSELF says it is that kind of service.
-//
-//   familyCandidates(title)  []  = no family may be assigned (the page stays thin / noindex)
-//                            [f] = the only family a classifier may choose from (or the owner may pick), and the only one the
-//                                  renderer and the server will honour for this title
-//
-// Review 6e B1-r: keyword-CONTAINS matching failed twice (a title can hold a good word and still be something else: "Hairline Unit",
-// "Ombre Lips"). So matching is STRUCTURAL and closed. Rules (each pinned by tests/render/familyKeywords.test.ts):
-//   1. The title is folded (case, accents, invisible markers) and split into tokens. Any character outside letters, space, apostrophe,
-//      "&" and "+" (after "-", "/", "." and "," count as spaces) makes the title unmatched. Digits too: a number says nothing we can vouch for.
-//   2. A family is assigned only if EVERY token of the title is in that family's reviewed closed VOCABULARY: its core phrases (the words
-//      that say what the service is) plus a short list of harmless modifiers, and at least one core phrase is present. One unknown
-//      token anywhere = no family. Connector words (and, &, +, with, for, a, the) may not start or end the title or stack up.
-//   3. Cores are disjoint between families and no modifier lets a title reach two families. If two ever matched the answer is none.
-//   4. Only haircut, kids-cut and color have a vocabulary. shave, line-up, beard-trim and design have none (cut-beard, fade and taper
-//      never had one): every title for those that the library can describe truthfully is already matched by the library's own patterns,
-//      and the words that were added on top (hairline, temple, goatee, soul patch, bald head, head polish, freestyle, stencil) gave
-//      false wording ("Hairline Unit" -> line-up, "Ombre Lips" -> color), so they are gone.
-//   5. FAMILY_VETO (retail goods, other trades, tiers) still runs first as a second, independent layer; no vocabulary word is in it.
+// Which guide (a library guide id) a service title gets on a web-created site with service guides on, and which families a classifier may
+// choose. Review 6g: keyword-CONTAINS matching failed again and again (Clippers, Dog Haircut, Bang Cut, Childrens Haircut, combos,
+// memberships), so the assignment is STRUCTURAL and closed (structuralGuide below): every token of the folded title must be in the reviewed
+// vocabulary of ONE guide, a combo of families is none unless it is the explicit cut-beard rule, and color is never assigned.
 // Pure, no DOM, no imports from the page renderers (guides.ts imports this).
 import { GUIDE_IDS, type GuideId } from './copyRules.js';
 
@@ -66,23 +50,6 @@ const SOFT_SRC = [
 const SOFT_LAST = new RegExp('\\b(?:' + SOFT_SRC + ')\\s*$', 'i');
 const JOINER = /(?:\band\b|&|\+|\bwith\b|\bw\/|\bplus\b|,)/i;
 const SERVICE_WORD = /\b(?:hair)?cuts?\b|\b(?:trims?|shav\w*|fades?|tapers?|line[\s-]?ups?|edge[\s-]?ups?|shape[\s-]?ups?|designs?|colou?r\w*|dye\w*|highlights?|blend\w*|gr[ae]y)\b/i;
-// ── Which service may be quoted as "a haircut" in the FAQ (review 6f B2) ───────────────────────────────
-// The FAQ question "How much is a haircut?" prints one service's own price. On a web-created site with service guides on, only a service
-// that IS a plain haircut may answer it: never a partial or other cut (bangs, fringe, neck, nape, sideburns, edges), a kid's cut, a beard or
-// face service, or an animal, even when a library pattern ("cut", "fade") put it in a haircut-type guide.
-const NOT_A_PLAIN_CUT = /\b(?:bangs?|fringe|necks?|necklines?|napes?|sideburns?|edges?|nails?|dogs?|pets?|brows?|eyebrows?|lash(?:es)?|ears?|nose|m(?:ou|u)staches?|goatee|beard|wigs?|kids?|child(?:ren)?|boys?|girls?|juniors?|toddlers?|infants?|babys?|baby's|babies)\b/i;
-export const plainCutTitle = (title: unknown): boolean => { const t = fold(title); return !!t && !NOT_A_PLAIN_CUT.test(t); };
-
-/** Extra words that take a title out of ONE library guide on a web site (the library pattern matched a word that does not mean what the guide says). */
-const LIBRARY_EXCLUDE_WEB: Partial<Record<GuideId, RegExp>> = {
-  'beard-trim': /\b(?:bleach\w*|lighten\w*|tint\w*|perm\w*|relax\w*|extensions?|transplant\w*|growth|regrowth|restor\w*|implants?|filler|botox)\b/i,
-  design: /\b(?:nails?|nail\s?art|brows?|eyebrows?|lash\w*|makeup|make-up|logo|web\w*|graphic\w*|interior|invitation\w*|stencils?|removal)\b/i,
-  // Review 6e S1: the library pattern matched a word that does not make the service what the guide says.
-  'kids-cut': /\b(?:party|parties|packages?|braid\w*|cornrows?|locs?|twists?|nails?|mani\w*|pedi\w*|facials?|brows?|eyebrows?|lash\w*|thread\w*|waxing|lice|updos?|makeup|make-up)\b/i,
-  color: /\b(?:consultations?|contacts?|lens(?:es)?|nails?|brows?|eyebrows?|lash\w*|skin)\b/i,
-  fade: /\b(?:removal|stencils?)\b/i,
-};
-
 /** True when the title names something that is not a barber service (a product, a gift card, a tattoo ...). Used by the library guide lookup on web sites and by the AI text gate. */
 export function nonServiceTitle(title: unknown): boolean {
   const t = fold(title);
@@ -93,20 +60,24 @@ export function nonServiceTitle(title: unknown): boolean {
   if (!SOFT_LAST.test(t)) return false;
   return !SERVICE_WORD.test(t) || !JOINER.test(t);
 }
-/** True when a web-created site must NOT use the library guide `guide` for this title although the library pattern matched. */
-export function libraryGuideOverruled(title: unknown, guide: GuideId | null): boolean {
-  if (!guide) return false;
-  if (nonServiceTitle(title)) return true;
-  const extra = LIBRARY_EXCLUDE_WEB[guide];
-  return !!extra && extra.test(fold(title));
-}
 
+// ── The closed vocabulary (review 6g) ──────────────────────────────────────────────────────────────────
+// On a web-created site with service guides on (guides.ts serviceTextOn), the guide of EVERY service title (library guides and families
+// alike) comes from this matcher and from nothing else. A guide id is assigned only when
+//   - every token of the folded title is in that guide's reviewed vocabulary (cores + modifiers, tables in the 6g report) and at
+//     least one core is present, and
+//   - no other guide's vocabulary accepts the title (cores are disjoint; a title two guides accept is none), and
+//   - the title is not vetoed (FAMILY_VETO, nonServiceTitle), and
+//   - the only combination of two families is the explicit true combo rule cut-beard: ONE cut-type side + ONE beard side joined by
+//     exactly one of and, &, +, with. Every other combo (haircut and shave, fade and line up ...) is none.
+// There is NO color guide here: nothing about a color title guarantees "dye", "toner" or a method (6f B1), so every color title is none.
+// A title that is a membership, package, pass, subscription, voucher, gift, product, another trade, or holds any unknown word is none.
 type Vocab = {
   /** Phrases that say what the service is. At least one must be present. */
   cores: readonly string[];
   /** kids-cut only: phrases of which at least one must also be present (the hair work a child's service is). Their words are valid tokens. */
   needs?: readonly string[];
-  /** Single words that are harmless beside a core for this family's wording. Every entry is justified in the 6e report. */
+  /** Single words that are harmless beside a core for this guide's wording. Every entry is justified in the 6g report. */
   mods: readonly string[];
 };
 
@@ -115,25 +86,65 @@ const CUT_CORES = [
   'hair trim', 'hair trims', 'mohawk', 'mohawks', 'faux hawk', 'fauxhawk', 'faux hawks', 'fauxhawks',
   'mullet', 'mullets', 'flat top', 'flattop', 'flat tops', 'flattops', 'caesar', 'caesars', 'undercut', 'undercuts',
   'high and tight', 'high & tight',
+  'buzz cut', 'buzzcut', 'buzz cuts', 'buzzcuts', 'crew cut', 'crewcut', 'crew cuts', 'crewcuts',
 ] as const;
+/** The generic words for a haircut. */
+const PLAIN_CORES = ['haircut', 'haircuts', 'hair cut', 'hair cuts', 'cut', 'cuts'] as const;
+/** Who it is for. The guides say "suits anyone", so none of these changes what is true. */
+const DEMO = ["men's", 'mens', 'men', 'gentlemen', 'gentlemens', "gentlemen's", "women's", 'womens', 'women', 'ladies', 'adult', 'adults', 'senior', 'seniors'] as const;
+/** Plain descriptors that make no claim about the method. */
+const LEVEL = ['regular', 'standard', 'basic', 'classic'] as const;
 
 export const FAMILY_VOCAB: Partial<Record<GuideId, Vocab>> = {
-  // "A haircut shortens and shapes your hair ... the barber trims the hair with clippers, scissors or both ... suits anyone."
+  // "A haircut shortens and shapes your hair ... trims the hair with clippers, scissors or both ... suits anyone."
   haircut: {
-    cores: CUT_CORES,
-    mods: ["men's", 'mens', 'men', 'adult', 'adults', "women's", 'womens', 'women', 'ladies', 'gentlemen', 'gentlemens', "gentlemen's", 'regular', 'standard', 'basic', 'classic', 'senior', 'short', 'hair', 'trim', 'trims', 'and', '&', '+', 'with', 'for', 'a', 'the'],
+    cores: [...CUT_CORES, ...PLAIN_CORES],
+    mods: [...DEMO, ...LEVEL, 'short', 'long', 'hair', 'trim', 'trims', 'scissor', 'clipper', 'layered', 'textured', 'pompadour', 'for'],
   },
-  // "A kids' cut is a haircut made for a child." Needs an age word AND a named cut / hair trim ("Toddler Trim" alone could be nails).
+  // "A kids' cut is a haircut made for a child." An age word AND hair work that is a cut, a fade or a taper.
   'kids-cut': {
-    cores: ['toddler', 'toddlers'],
-    needs: CUT_CORES,
-    mods: ['first', 'trim', 'trims', 'and', '&', '+', 'with', 'for', 'a', 'the'],
+    cores: ['kid', 'kids', "kid's", 'child', "child's", 'children', "children's", 'childrens', 'boy', 'boys', "boy's", 'girl', 'girls', "girl's", 'junior', 'juniors', 'toddler', 'toddlers'],
+    needs: [...CUT_CORES, ...PLAIN_CORES, 'fade', 'fades', 'taper', 'tapers'],
+    mods: [...LEVEL, 'short', 'hair', 'trim', 'trims', 'for'],
   },
-  // No `color` family (review 6f B1): the only color-ish cores (bleach, balayage, frosted tips) do not guarantee "with dye", "toner" or any method.
-  // Every title that really is color (Hair Color, Highlights, Hair Dye, Gray Blending, Platinum Blonde) is answered by the library pattern.
+  // "A fade blends short hair into longer hair ... often down to the skin."
+  fade: {
+    cores: ['fade', 'fades'],
+    mods: [...DEMO, ...LEVEL, 'skin', 'bald', 'low', 'mid', 'high', 'drop', 'burst', 'temple', 'shadow', 'taper', 'haircut', 'cut', 'hair', 'short', 'for'],
+  },
+  // "A taper makes the hair gradually shorter toward the neckline and around the ears."
+  taper: {
+    cores: ['taper', 'tapers'],
+    mods: [...DEMO, ...LEVEL, 'low', 'mid', 'high', 'haircut', 'cut', 'hair', 'short', 'for'],
+  },
+  // "A line-up sharpens the hairline, the temples and the neckline."
+  'line-up': {
+    cores: ['line up', 'line ups', 'lineup', 'lineups', 'shape up', 'shape ups', 'shapeup', 'shapeups', 'edge up', 'edge ups', 'edgeup', 'edgeups'],
+    mods: [...DEMO, ...LEVEL, 'hair', 'for'],
+  },
+  // "A beard trim tidies the length and the outline of the beard."
+  'beard-trim': {
+    cores: ['beard trim', 'beard trims', 'beard shaping', 'beard shape', 'beard sculpt', 'beard sculpts', 'beard sculpting', 'beard cut', 'beard cuts'],
+    mods: [...DEMO, ...LEVEL, 'full', 'short', 'long', 'for'],
+  },
+  // "A razor shave removes hair close to the skin. Warm towels are often used first."
+  shave: {
+    cores: ['shave', 'shaves', 'shaving'],
+    mods: [...DEMO, ...LEVEL, 'hot', 'towel', 'straight', 'razor', 'wet', 'traditional', 'head', 'beard', 'for'],
+  },
+  // "A hair design is a pattern or line cut into short hair, usually with a trimmer."
+  design: {
+    cores: ['hair design', 'hair designs', 'hair art', 'haircut design', 'haircut designs', 'cut design', 'cut designs'],
+    mods: [...DEMO, ...LEVEL, 'custom', 'simple', 'for'],
+  },
+  // No `color` entry (6f B1, 6g): no title guarantees "dye", "toner" or a method.
 };
 
+/** A plain haircut, for the FAQ "How much is a haircut?": only the generic words and who it is for. Not a named cut, not a fade. */
+const PLAIN_HAIRCUT: Vocab = { cores: ['haircut', 'hair cut', 'cut'], mods: [...DEMO, ...LEVEL, 'for'] };
+
 const CONNECTORS: ReadonlySet<string> = new Set(['and', '&', '+', 'with', 'for', 'a', 'the']);
+const COMBO_JOINERS: ReadonlySet<string> = new Set(['and', '&', '+', 'with']);
 const ARTICLES: ReadonlySet<string> = new Set(['a', 'the']);
 
 /** Tokens of a folded title, or null when it holds a character we do not vouch for (digits, symbols, other scripts). */
@@ -154,6 +165,7 @@ function stripPhrases(joined: string, phrases: readonly string[], mark: string):
 }
 
 function matchesVocab(tokens: string[], v: Vocab): boolean {
+  if (!tokens.length) return false;
   const core = stripPhrases(` ${tokens.join(' ')} `, v.cores, '§');
   if (!core.hit) return false;
   let text = core.text;
@@ -163,7 +175,7 @@ function matchesVocab(tokens: string[], v: Vocab): boolean {
   for (let i = 0; i < rest.length; i++) {
     const w = rest[i];
     if (w === '§' || w === '¤') continue;
-    if (!mods.has(w)) return false;                       // one unknown token and the family is out
+    if (!mods.has(w)) return false;                       // one unknown token and the guide is out
     if (CONNECTORS.has(w)) {
       if (i === 0 || i === rest.length - 1) return false;  // a connector must sit between two things
       const prev = rest[i - 1];
@@ -173,19 +185,52 @@ function matchesVocab(tokens: string[], v: Vocab): boolean {
   return true;
 }
 
+const CUT_SIDE: readonly GuideId[] = ['haircut', 'fade', 'taper'];
+/** The one true combination: a cut-type side and a beard side around exactly one joiner, in either order ("Haircut & Beard Trim", "Beard and Fade"). */
+function isCutBeard(tokens: string[]): boolean {
+  const at = tokens.map((w, i) => (COMBO_JOINERS.has(w) ? i : -1)).filter((i) => i >= 0);
+  if (at.length !== 1) return false;
+  const i = at[0];
+  const left = tokens.slice(0, i);
+  let right = tokens.slice(i + 1);
+  if (right[0] === 'a') right = right.slice(1);
+  if (!left.length || !right.length) return false;
+  const beardSide = (side: string[]): boolean => (side.length === 1 && side[0] === 'beard') || matchesVocab(side, FAMILY_VOCAB['beard-trim']!);
+  const cutSide = (side: string[]): boolean => CUT_SIDE.some((g) => matchesVocab(side, FAMILY_VOCAB[g]!));
+  return (cutSide(left) && beardSide(right)) || (beardSide(left) && cutSide(right));
+}
+
 /**
- * The families this custom title may be assigned. Empty = none. At most one: a family needs a vocabulary match on EVERY token of the
- * title, never for a vetoed title, and a title that two families would claim is none.
+ * THE guide of a service title on a web-created site with service guides on: one of the closed set, or null. Null is the safe answer
+ * (the page stays thin and noindex, the FAQ names no price for it).
  */
-export function familyCandidates(title: unknown): GuideId[] {
+export function structuralGuide(title: unknown): GuideId | null {
   const t = fold(title).trim();
-  if (!t || t.length > 120) return [];
-  if (FAMILY_VETO.test(t)) return [];
+  if (!t || t.length > 120) return null;
+  if (FAMILY_VETO.test(t) || nonServiceTitle(t)) return null;
   const tokens = tokensOf(t);
-  if (!tokens || tokens.length > 8) return [];
+  if (!tokens || tokens.length > 8) return null;
   const hit: GuideId[] = [];
   for (const id of GUIDE_IDS) { const v = FAMILY_VOCAB[id]; if (v && matchesVocab(tokens, v)) hit.push(id); }
-  return hit.length === 1 ? hit : [];
+  if (isCutBeard(tokens)) hit.push('cut-beard');
+  return hit.length === 1 ? hit[0] : null;
+}
+
+/** True when the title is one plain haircut (generic word + who it is for), never a named cut, a fade, a kid's cut, a combo or a product. */
+export function plainHaircutTitle(title: unknown): boolean {
+  const t = fold(title).trim();
+  if (!t || t.length > 120 || FAMILY_VETO.test(t) || nonServiceTitle(t)) return false;
+  const tokens = tokensOf(t);
+  return !!tokens && tokens.length <= 6 && structuralGuide(title) === 'haircut' && matchesVocab(tokens, PLAIN_HAIRCUT);
+}
+
+/**
+ * The guides a custom title may be assigned as a family (what a classifier may choose from, what the owner may pick, what the renderer and
+ * the server honour). Empty = none. At most one.
+ */
+export function familyCandidates(title: unknown): GuideId[] {
+  const g = structuralGuide(title);
+  return g ? [g] : [];
 }
 
 /** True when `family` may be assigned to this title. */

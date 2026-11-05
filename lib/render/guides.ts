@@ -17,7 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
-import { familyAllowed, libraryGuideOverruled, plainCutTitle } from './familyKeywords.js';
+import { familyAllowed, plainHaircutTitle, structuralGuide } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -47,10 +47,14 @@ export function guideIdForTitle(title: unknown): GuideId | null {
 // Haircut-type = a service that cuts hair; beard-type = one that works on a beard or the face (plan 1c).
 const HAIRCUT_TYPE: ReadonlySet<GuideId> = new Set(['cut-beard', 'fade', 'taper', 'kids-cut', 'haircut']);
 const PRICE_TYPE: ReadonlySet<GuideId> = new Set(['fade', 'taper', 'haircut']);
-/** The library guide of a title on THIS site: on a web-created site a product or non-service the library pattern wrongly matched resolves to none (familyKeywords.ts). Other sites: guideIdForTitle. */
+/**
+ * The library guide of a title on THIS site. On a web-created site with service guides on (serviceTextOn) it is the closed-vocabulary guide
+ * (familyKeywords.ts structuralGuide) when the library pattern also matched, else none; every other site: guideIdForTitle, exactly as on main.
+ */
 export function libraryGuideFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>> | undefined, title: unknown): GuideId | null {
   const g = guideIdForTitle(title);
-  return g !== null && d && isWebCreated(d as never) && libraryGuideOverruled(plain(title), g) ? null : g;
+  if (g === null || !d || !serviceTextOn(d as Pick<WebsiteData, 'extraPages' | 'source'>)) return g;
+  return structuralGuide(plain(title));
 }
 export const isHaircutTitle = (title: unknown, d?: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>): boolean => { const g = libraryGuideFor(d, title); return !!g && HAIRCUT_TYPE.has(g); };
 /** A real beard service: a cut-and-beard, a beard trim or a shave that is not a head shave (never a line-up). */
@@ -93,11 +97,17 @@ export function familyFor(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>
   return isGuideId(g) && familyAllowed(title, g) ? g : null;
 }
 
-/** The guide a service title gets on this site: the library match first, else the family the barber (or the classifier, approved by the barber) assigned. */
+/**
+ * The guide a service title gets on this site. On a web-created site with service guides on (serviceTextOn) ONLY the closed vocabulary decides
+ * (structuralGuide): for a title the library pattern matches, that guide; for one it does not, the family the barber (or the classifier,
+ * approved by the barber) assigned, when the vocabulary allows it. Any other site: the library pattern, exactly as on main.
+ */
 export function guideForTitle(d: Partial<Pick<WebsiteData, 'extraPages' | 'source'>>, title: unknown): GuideId | null {
   const lib = guideIdForTitle(title);
-  // A title the library matched stays the library's (never a family); on a web site a product the pattern wrongly matched resolves to none.
-  return lib !== null ? libraryGuideFor(d, title) : familyFor(d, title);
+  if (!serviceTextOn(d as Pick<WebsiteData, 'extraPages' | 'source'>)) return lib;
+  const s = structuralGuide(plain(title));
+  if (s === null) return null;
+  return lib !== null ? s : familyFor(d, title);
 }
 
 /**
@@ -334,12 +344,18 @@ function serviceOfKey(d: WebsiteData, key: string): Svc | null {
 
 function subjectFor(env: CopyEnv, kind: NonNullable<Block['subject']>): Svc | null {
   const all = titledServices(env.d);
-  // Review 6f B2: on a web-created site with service guides on, only a plain haircut answers "How much is a haircut?" (never a bang trim, a kid's cut ...).
-  const gated = serviceTextOn(env.d);
-  const priceOk = (s: Svc): boolean => !!s.guide && PRICE_TYPE.has(s.guide) && (!gated || plainCutTitle(s.title));
-  if (kind === 'haircut') return all.find((s) => priceOk(s) && s.price) ?? null;
+  if (serviceTextOn(env.d)) {
+    // Review 6g: on a web-created site with service guides on a price, a time or "kids" is attributed ONLY to a service that is exactly
+    // what the question says: one plain haircut (generic word + who it is for), one kids' cut. Two candidates, a combo, a membership, a
+    // named cut, a fade or anything else answers nothing. A time is never borrowed from another service.
+    if (kind === 'kids') { const k = all.filter((s) => s.guide === 'kids-cut'); return k.length === 1 ? k[0] : null; }
+    const plainOnes = all.filter((s) => s.guide === 'haircut' && plainHaircutTitle(s.title));
+    const one = plainOnes.length === 1 ? plainOnes[0] : null;
+    return one && (kind === 'haircut' ? one.price : one.duration) ? one : null;
+  }
+  if (kind === 'haircut') return all.find((s) => !!s.guide && PRICE_TYPE.has(s.guide) && s.price) ?? null;
   if (kind === 'kids') return all.find((s) => s.guide === 'kids-cut') ?? null;
-  return all.find((s) => priceOk(s) && s.duration) ?? all.find((s) => s.duration) ?? null;
+  return all.find((s) => !!s.guide && PRICE_TYPE.has(s.guide) && s.duration) ?? all.find((s) => s.duration) ?? null;
 }
 
 const DAY_RE = /^(mon|tue|wed|thu|fri|sat|sun)(?:day|sday|nesday|rsday|urday|s)?\.?$/i;
@@ -501,9 +517,11 @@ function customItems(kind: BlockKind, text: string): Seg[][] {
 
 /** One block as the page prints it, or null when nothing of it can be said (or it is empty). */
 export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = null): ResolvedBlock | null {
-  let e = entryFor(key);
+  const altKey = /^svc\..+\.alt$/.test(key);
+  // On a gated site the alt text follows the service's own (closed-vocabulary) guide, never the library pattern's.
+  let e = altKey && serviceTextOn(env.d) ? undefined : entryFor(key);
   if (!e) {
-    // `svc.<titleKey>.alt` of a service that got its guide from a family (the title itself matches none).
+    // `svc.<titleKey>.alt` of a service that got its guide from the closed vocabulary or a family (the title itself matches none).
     const m = /^svc\.(.+)\.alt$/.exec(key);
     const fam = m && m[1] === svcTitleKey(m[1]) ? (subject && svcTitleKey(subject.title) === m[1] ? subject : serviceOfKey(env.d, key))?.guide ?? null : null;
     if (fam && key.length <= SVC_KEY_MAX + 12) e = { block: SERVICE_ALT[fam], allow: [...GUIDES[fam].allow], scope: fam, kind: 'service', strict: true };

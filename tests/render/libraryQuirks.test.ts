@@ -2,7 +2,7 @@
 // service's wording. On a WEB-created site such a title now resolves to NO guide (thin, noindex, no AI text). iOS and legacy output is unchanged.
 // Pure rendering; no model, no network.
 import { describe, expect, it } from 'vitest';
-import { nonServiceTitle, libraryGuideOverruled } from '../../lib/render/familyKeywords';
+import { nonServiceTitle } from '../../lib/render/familyKeywords';
 import { beardServices, guideForTitle, guideIdForTitle, isBeardTitle, isHaircutTitle, libraryGuideFor, serviceGuideFor, titledServices } from '../../lib/render/guides';
 import { renderSiteBundle } from '../../lib/render/site';
 import { serviceFacts } from '../../lib/serviceCopy/facts';
@@ -75,14 +75,24 @@ describe('iOS and legacy sites are untouched (same library, byte-for-byte)', () 
   it('no argument = the library as before', () => { expect(isBeardTitle('Beard Oil')).toBe(true); expect(libraryGuideFor(undefined, 'Beard Oil')).toBe('beard-trim'); });
 });
 
-describe('services stay services', () => {
+describe('services stay services (6g: the closed vocabulary keeps every plain barber service)', () => {
+  const KEEP = new Set(['Haircut', 'Skin Fade', 'Low Taper', 'Cut & Beard', 'Beard Trim', 'Beard Sculpt', 'Hot Towel Shave', 'Head Shave', 'Kids Haircut', 'Line Up', 'Hair Design', 'Buzz Cut', 'Straight Razor Shave']);
   for (const [t, g] of [...REAL, ...SERVICES_WITH_PRODUCT_WORD]) {
-    it(`${JSON.stringify(t)} keeps ${g} on a web site`, () => {
-      expect(nonServiceTitle(t)).toBe(false);
-      expect(guideIdForTitle(t)).toBe(g);
-      expect(guideForTitle(site([t]), t)).toBe(g);
-      expect(libraryGuideOverruled(t, g as never)).toBe(false);
-    });
+    if (KEEP.has(t)) {
+      it(`${JSON.stringify(t)} keeps ${g} on a web site`, () => {
+        expect(nonServiceTitle(t)).toBe(false);
+        expect(guideIdForTitle(t)).toBe(g);
+        expect(guideForTitle(site([t]), t)).toBe(g);
+      });
+    } else {
+      // Colour titles, combos of families, a service plus a product or "style" word: the vocabulary does not vouch for them, so the web page has no guide.
+      // The library (iOS, legacy, guides off) still matches them exactly as on main.
+      it(`${JSON.stringify(t)} is no longer guessed on a web site (none), the library still matches it elsewhere`, () => {
+        expect(guideIdForTitle(t)).toBe(g);
+        expect(guideForTitle(site([t]), t)).toBeNull();
+        expect(guideForTitle(site([t], 'ios'), t)).toBe(g);
+      });
+    }
   }
 });
 
