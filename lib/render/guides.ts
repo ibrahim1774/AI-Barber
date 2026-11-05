@@ -17,7 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
-import { familyAllowed, structuralGuide } from './familyKeywords.js';
+import { familyAllowed, familyTitleRank, structuralGuide } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -122,7 +122,7 @@ export function guideForTitle(d: Partial<Pick<WebsiteData, 'extraPages' | 'sourc
  * among `pagedIndexes`, the services that have a page) with that guide gets it. Empty unless the barber has service
  * guides switched on (extraPages.serviceGuides).
  */
-export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>, pagedIndexes: readonly number[]): Map<number, GuideId> {
+export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'> & Partial<Pick<WebsiteData, 'source'>>, pagedIndexes: readonly number[]): Map<number, GuideId> {
   const out = new Map<number, GuideId>();
   if (d.extraPages?.serviceGuides !== true) return out;
   const used = new Set<GuideId>();
@@ -130,11 +130,28 @@ export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>,
   // Two passes: a service the library pattern itself matches claims its guide first, wherever it sits in the barber's order. A title that
   // only resolves automatically (a custom Mohawk) must never take the guide from a library-matched Haircut listed after it, or that page
   // would turn thin and leave the sitemap. Off the gate guideForTitle is the library pattern, so the second pass adds nothing there.
+  // Among library-matched services of ONE family on a web-created site, the closest title takes the guide (familyTitleRank: "Haircut" beats
+  // "Mohawk Cut" even when Mohawk Cut is listed first); equal rank keeps the barber's order. Off the gate it stays the first one, as on main.
+  const ranked = serviceTextOn(d as Pick<WebsiteData, 'extraPages' | 'source'>);
+  const bestOf = new Map<GuideId, { index: number; rank: number }>();
+  if (ranked) {
+    for (const index of pagedIndexes) {
+      if (guideIdForTitle(services[index]?.title) === null) continue;
+      const g = guideForTitle(d, services[index]?.title);
+      if (!g) continue;
+      const rank = familyTitleRank(g, services[index]?.title);
+      const cur = bestOf.get(g);
+      if (!cur || rank < cur.rank) bestOf.set(g, { index, rank });
+    }
+  }
   for (const libPass of [true, false]) {
     for (const index of pagedIndexes) {
-      if (out.has(index) || (guideIdForTitle(services[index]?.title) !== null) !== libPass) continue;
+      const isLib = guideIdForTitle(services[index]?.title) !== null;
+      if (out.has(index) || isLib !== libPass) continue;
       const g = guideForTitle(d, services[index]?.title);
-      if (g && !used.has(g)) { used.add(g); out.set(index, g); }
+      if (!g || used.has(g)) continue;
+      if (libPass && ranked && bestOf.get(g)?.index !== index) continue;
+      used.add(g); out.set(index, g);
     }
   }
   return out;
@@ -169,7 +186,7 @@ export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number
       const g = guides.get(index);
       // Only a library-matched title's guide is text the page can stand on. The standard text a CUSTOM service gets (automatic or by the
       // barber's pick, familyFor) is shown but never makes the page indexable: the page stays noindex and out of the sitemap and JSON-LD until
-      // the owner writes text of their own (description or svcCopy). Rule of 2026-11-05: keeps every published site's search output as it was.
+      // the owner writes text of their own (description or svcCopy). Rule of 2026-11-05: search output is the same as a page with no standard text (the branch's thin rule; origin/main has none, so on live web sites thin service pages become noindex on their next publish).
       if (g && guideIdForTitle(subject.title) !== null && guideBlocks(env, g, subject).length > 0) unique = true;
       // Dedicated text of its own (written for the service, step 6) is real text. The lenient env has no place, so this is
       // the least the page prints (a sentence with {place} only adds to it): a page counted here as having text always does.

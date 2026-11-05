@@ -136,7 +136,7 @@ describe('MATRIX through the real renderer: every title gets exactly the expecte
       if (expected) {
         expect(shown, 'guide sentences on the service page').toEqual([expected]);
         // Ruling 2026-11-05: the guide of a title the library pattern matches stands the page up as indexable; the automatic guide of a custom
-        // title (Mohawk) is shown but the page stays noindex and out of the sitemap, as it is live today.
+        // title (Mohawk) is shown but the page stays noindex and out of the sitemap, same as a page with no standard text (the branch's thin rule; origin/main has none, so on live web sites thin service pages become noindex on their next publish).
         if (guideIdForTitle(title) !== null) {
           expect(html).not.toContain('name="robots" content="noindex');
           expect(b.sitemap ?? '').toContain('/services/');

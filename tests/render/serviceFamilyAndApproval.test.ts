@@ -51,7 +51,7 @@ const html = (d: WebsiteData, p = 'services/scalp-massage/index.html') => all(d)
 const everything = (d: WebsiteData) => { const b = all(d); return [b.sitemap, ...b.pages.map((p) => p.html)].join('\n'); };
 
 describe('Mode A: a family chosen by the classifier', () => {
-  it('LIVE IMPACT (2026-11-05, ruling): with no choice a title made only of reviewed words SHOWS the vocabulary guide but stays thin (noindex, not in the sitemap), exactly as live today; a title with an unknown word stays thin too', () => {
+  it('LIVE IMPACT (2026-11-05, ruling): with no choice a title made only of reviewed words SHOWS the vocabulary guide but stays thin (noindex, not in the sitemap), exactly as a page with no standard text (the thin rule of this branch; origin/main has none, so thin service pages of live web sites become noindex on their next publish); a title with an unknown word stays thin too', () => {
     const d = shopA();
     expect(htmlA(d)).toContain(NOINDEX);
     expect(htmlA(d)).toContain('About this service');

@@ -253,6 +253,23 @@ export function familyCandidates(title: unknown): GuideId[] {
   return g ? [g] : [];
 }
 
+/**
+ * How close a title is to the family it was assigned, lower = closer (0 = the family's own plain name). Used only to decide which of two
+ * services of one family takes the family's guide: "Haircut" (0) beats "Mohawk Cut" (2) wherever they sit in the list. A title made only of
+ * who-it-is-for / plain-level words beside ONE generic core of the guide ("Men's Haircut", "Classic Fade", "Hair Cut") is 0; a specialty core
+ * (mohawk, undercut, buzz cut ...) or any extra word counts one per remaining word, so the order is a total, deterministic ranking by name.
+ */
+export function familyTitleRank(guide: GuideId, title: unknown): number {
+  const tokens = tokensOf(dropQualifier(fold(title).trim())) ?? [];
+  const who: ReadonlySet<string> = new Set<string>([...DEMO, ...LEVEL, 'for', 'a', 'the']);
+  const core = tokens.filter((w) => !who.has(w)).join(' ');
+  const bare = tokens.filter((w) => !who.has(w) && w !== 'hair').join(' ');
+  const specialty: ReadonlySet<string> = new Set<string>(guide === 'haircut' ? CUT_CORES : []);
+  const generic = (FAMILY_VOCAB[guide]?.cores ?? []).filter((c) => !specialty.has(c));
+  if (generic.includes(core) || generic.includes(bare)) return 0;
+  return 1 + Math.max(1, tokens.filter((w) => !who.has(w) && w !== 'hair').length);
+}
+
 /** True when `family` may be assigned to this title. */
 export const familyAllowed = (title: unknown, family: unknown): boolean =>
   typeof family === 'string' && (familyCandidates(title) as readonly string[]).includes(family);

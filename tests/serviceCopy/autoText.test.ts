@@ -34,11 +34,13 @@ describe('automatic page text from the closed vocabulary (no model, no click)', 
     expect(thinServiceIndexes(d, [0]).has(0)).toBe(true);
     const ld = (bundle(d).pages[0].html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g) ?? []).join('\n');
     expect(ld).not.toContain('/services/mohawk');
-    // LIVE IMPACT parity pin: the search output (robots, sitemap, JSON-LD) is the one of a Mohawk page with no standard text at all, i.e. what is live today
+    // LIVE IMPACT parity pin: the search output (robots, sitemap, JSON-LD) is the one of a Mohawk page with no standard text at all, i.e. same as a page with no standard text (the branch's thin rule; origin/main has none, so on live web sites thin service pages become noindex on their next publish)
     const bare = shop(['Mohawk'], { svcFamily: { mohawk: 'none' } });
     expect(bundle(bare).sitemap).toBe(bundle(d).sitemap);
     expect(bundle(bare).pages[0].html.match(/ld\+json[\s\S]*?<\/script>/g)).toEqual(bundle(d).pages[0].html.match(/ld\+json[\s\S]*?<\/script>/g));
     expect(page(bare, 'mohawk')).toContain(NOINDEX);
+    expect(page(d, 'mohawk')).not.toMatch(/"@type":\s*"Service"/);
+    expect(page(d, 'mohawk')).not.toContain('application/ld+json');
   });
   it('the owner\'s OWN text makes the custom service indexable (existing thin rules): a long description, or text typed for the service', () => {
     const long = { description: 'A tall mohawk with the sides cut short and the centre left long, styled with a little product and finished at the neckline.' };
@@ -130,5 +132,47 @@ describe('Mode B (a model writing page text) is dormant: off by default, unreach
   it('with the flag on (tests only) the old behaviour is still there', async () => {
     const r = rig({ writeMode: true });
     expect((await r.call({ titleKey: 'scalp massage', mode: 'write' }, { raw: true })).code).toBe(200);
+  });
+});
+
+describe('which library-matched service of one family takes the guide (closest title, not list order)', () => {
+  const orders = [['Mohawk Cut', 'Haircut'], ['Haircut', 'Mohawk Cut']];
+  it('Haircut takes the haircut guide, is indexable and in the sitemap; Mohawk Cut gets the alt block only and stays noindex, in both orders', () => {
+    for (const order of orders) {
+      const d = shop(order);
+      const h = order.indexOf('Haircut'); const m = order.indexOf('Mohawk Cut');
+      expect(serviceGuideFor(d, [0, 1]).get(h), order.join()).toBe('haircut');
+      expect(serviceGuideFor(d, [0, 1]).has(m), order.join()).toBe(false);
+      expect(serviceAltFor(d, [0, 1]).get(m), order.join()).toBe('haircut');
+      expect(thinServiceIndexes(d, [0, 1]).has(h), order.join()).toBe(false);
+      expect(thinServiceIndexes(d, [0, 1]).has(m), order.join()).toBe(true);
+      expect(page(d, 'haircut'), order.join()).not.toContain(NOINDEX);
+      expect(page(d, 'haircut'), order.join()).toContain('About this service');
+      expect(bundle(d).sitemap, order.join()).toContain('/services/haircut/');
+      expect(page(d, 'mohawk-cut'), order.join()).toContain(NOINDEX);
+      expect(page(d, 'mohawk-cut'), order.join()).not.toContain(page(d, 'haircut').match(/<h2[^>]*>About this service<\/h2>(<div class="ab-copy ab-prose"><p>[^<]*)/)?.[1] ?? 'NOMATCH'); // not the guide text itself
+      expect(bundle(d).sitemap, order.join()).not.toContain('/services/mohawk-cut/');
+    }
+  });
+  it('the same holds with Mohawk, Fade, Beard Trim, Scalp Massage around them', () => {
+    const d = shop(['Mohawk Cut', 'Haircut', 'Fade', 'Beard Trim', 'Scalp Massage']);
+    expect(serviceGuideFor(d, [0, 1, 2, 3, 4]).get(1)).toBe('haircut');
+    expect(serviceGuideFor(d, [0, 1, 2, 3, 4]).has(0)).toBe(false);
+    expect(bundle(d).sitemap).toContain('/services/haircut/');
+  });
+  it('a looser title never beats an exact one of any family; equal titles keep the barber order; an owner-written Mohawk Cut is indexable with its own text', () => {
+    expect(serviceGuideFor(shop(['Skin Fade', 'Fade']), [0, 1]).get(1)).toBe('fade');
+    expect(serviceGuideFor(shop(["Men's Haircut", 'Haircut']), [0, 1]).get(0)).toBe('haircut');
+    expect(serviceGuideFor(shop(['Mohawk Cut', 'Undercut']), [0, 1]).get(0)).toBe('haircut');
+    const d = shop(['Mohawk Cut', 'Haircut']); (d.services[0] as any).description = 'x'.repeat(90);
+    expect(thinServiceIndexes(d, [0, 1]).has(0)).toBe(false);
+    expect(thinServiceIndexes(d, [0, 1]).has(1)).toBe(false);
+  });
+  it('legacy and iOS sites keep main behaviour: first library title in list order takes the guide', () => {
+    for (const extra of [{ source: 'ios' }, { source: undefined }]) {
+      const d = shop(['Mohawk Cut', 'Haircut'], {}, extra as any);
+      expect(serviceGuideFor(d, [0, 1]).get(0)).toBe('haircut');
+      expect(serviceGuideFor(d, [0, 1]).has(1)).toBe(false);
+    }
   });
 });
