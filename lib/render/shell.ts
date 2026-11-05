@@ -446,6 +446,8 @@ export interface ShellInput {
   description?: string;
   /** Absolute canonical URL (already built from a known base), or null/absent for none. */
   canonical?: string | null;
+  /** `noindex,follow` for a page that stays on the site but is not offered to search engines (a thin service page). */
+  robots?: 'noindex,follow';
   /** headerHtml(). */
   nav: string;
   /** The page body (markup built from escaped values). */
@@ -459,7 +461,7 @@ export interface ShellInput {
 const clean = (v: unknown): string => plainText(String(v ?? '')).replace(/\s+/g, ' ');
 
 function shellFor(template: TemplateId) {
-  return ({ title, description, canonical, nav, body, footer, themeStyle }: ShellInput): string => {
+  return ({ title, description, canonical, robots, nav, body, footer, themeStyle }: ShellInput): string => {
     const ttl = escapeAttr(clean(title));
     const desc = clean(description);
     return `<!DOCTYPE html>
@@ -472,7 +474,8 @@ function shellFor(template: TemplateId) {
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>${ttl}</title>
-  <meta name="description" content="${escapeAttr(desc)}">
+  <meta name="description" content="${escapeAttr(desc)}">${robots ? `
+  <meta name="robots" content="${robots}">` : ''}
   <meta property="og:title" content="${ttl}">
   <meta property="og:description" content="${escapeAttr(desc)}">${canonical ? `
   <link rel="canonical" href="${escapeAttr(canonical)}">` : ''}

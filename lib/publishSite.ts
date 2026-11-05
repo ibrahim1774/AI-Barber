@@ -393,7 +393,7 @@ export function renderPendingBundle(
   // The editor's invisible markers exist only in the app's preview render. A barber can paste one, so none may reach a published
   // page: the data is cleaned here, before the renderer (which keeps them for the preview) sees it. The sitemap is cleaned too.
   const out = renderSiteBundle(stripMarkersDeep(pending.siteData), { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: stripMarkersDeep(pending.imageUrlMap || {}) });
-  return { ...out, sitemap: out.sitemap === null ? null : stripMarkersText(out.sitemap) };
+  return { ...out, sitemap: out.sitemap === null ? null : stripMarkersText(out.sitemap), robots: out.robots === null ? null : stripMarkersText(out.robots) };
 }
 
 /**
@@ -582,7 +582,7 @@ export async function publishSite(
       const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages, { bookingsOn: subpages ? shop?.bookingsEnabled : undefined }) }, { siteBaseUrl });
       const html = rendered.pages[0].html;
       console.log(`[Publish] ${safe}: rendered ${rendered.pages.length} page${rendered.pages.length === 1 ? '' : 's'}, ${html.length} bytes of home (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
-      const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, imageUrls: current.imageUrlMap || {}, subpages });
+      const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, robots: rendered.robots, imageUrls: current.imageUrlMap || {}, subpages });
       deploymentUrl = out.deploymentUrl;
       projectName = out.projectName;
       if (round >= (opts.maxRedeploys ?? MAX_REDEPLOYS)) break;

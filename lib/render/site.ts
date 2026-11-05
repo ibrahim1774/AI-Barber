@@ -15,13 +15,14 @@
 import type { TemplateId, WebsiteData } from '../../types';
 import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './honest.js';
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
+import { thinServiceIndexes } from './guides.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2 } from '../pagesV2.js';
 import { printable } from './markers.js';
 import { capDataPaths } from './editPaths.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
-import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
+import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, robotsTxt, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
 import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
@@ -43,6 +44,8 @@ export interface RenderedSite {
   pages: SiteFile[];
   /** sitemap.xml, or null when no public base is known (no canonical links either). */
   sitemap: string | null;
+  /** robots.txt, shipped with the sitemap (multi-page sites with a known base); null otherwise. */
+  robots: string | null;
   set: PageSet;
 }
 
@@ -157,6 +160,15 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     pagesHeading: L('pgPages'), pages: footerPages,
   });
 
+  // Thin service pages (guides.ts thinServiceIndexes) stay on the site but are `noindex,follow` and not in the sitemap; robots.txt goes with the sitemap.
+  // Gated on pages v2 (an `extraPages` object), like the library text: a multi-page site from before it keeps its output as it was.
+  const seoV2 = hasFilePages(set) && hasPagesV2(d);
+  const thinHrefs = new Set<string>();
+  if (seoV2) {
+    const thin = thinServiceIndexes(d, set.services.map((c) => c.index));
+    for (const f of set.files) if (f.key === 'services' && f.child && thin.has(f.child.index)) thinHrefs.add(f.href);
+  }
+
   for (const file of set.files) {
     if (file.key === 'home') continue;
     const out = renderPageBody({ d, set, template, page }, file);
@@ -166,6 +178,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
         title: out.title ?? `${out.heading} · ${shop}`,
         description: out.description,
         canonical: base ? `${base}${file.href}` : null,
+        robots: thinHrefs.has(file.href) ? 'noindex,follow' : undefined,
         nav: headerFor(file),
         body: out.body,
         footer,
@@ -173,7 +186,8 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
       }),
     });
   }
-  return { pages, sitemap: sitemapXml(set, base), set };
+  const sitemap = sitemapXml(set, base, thinHrefs);
+  return { pages, sitemap, robots: seoV2 && sitemap ? robotsTxt(base) : null, set };
 }
 
 /** renderSite(data, template) -> SiteFile[]: index.html, then the other pages. */

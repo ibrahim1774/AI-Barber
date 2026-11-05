@@ -37,6 +37,8 @@ export interface DeployRenderedSiteInput {
   pages?: SiteFile[];
   /** sitemap.xml for a multi-page deploy; null or absent: none is shipped on this publish. */
   sitemap?: string | null;
+  /** robots.txt, shipped with the sitemap; null or absent: none. */
+  robots?: string | null;
   css?: string;
   /** Already-uploaded image URLs, keyed the same as the {{placeholders}}. */
   imageUrls?: Record<string, string>;
@@ -278,7 +280,7 @@ export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, str
 /**
  * The deployment's files: every page (`index.html`, `<page>/index.html`, `<group>/<slug>/index.html`),
  * its CSS, vercel.json (Cache-Control headers, plus the closed /book and /shop rewrite list for a site
- * with a shop), /ab-site.json (which shop the pages are) and, when given, sitemap.xml.
+ * with a shop), /ab-site.json (which shop the pages are) and, when given, sitemap.xml (and robots.txt, only with a sitemap).
  *
  * Every path is checked here, at the layer that writes files: exactly one index.html, no duplicates,
  * segments of [a-z0-9-], and no reserved top segment (a book/index.html would sit ahead of the /book
@@ -288,7 +290,7 @@ export function buildSiteFiles(
   pages: SiteFile[],
   css: string | undefined,
   subpages: SiteSubpages | null,
-  extra: { sitemap?: string | null } = {},
+  extra: { sitemap?: string | null; robots?: string | null } = {},
 ): VercelFile[] {
   if (!Array.isArray(pages) || pages.length === 0) throw new Error('a deploy needs at least the home page');
   const seen = new Set<string>();
@@ -310,6 +312,7 @@ export function buildSiteFiles(
     files.push({ file: SITE_CONFIG_FILE.replace(/^\//, ''), data: b64(siteConfigFile(subpages.shopSlug)), encoding: 'base64' });
   }
   if (typeof extra.sitemap === 'string' && extra.sitemap) files.push({ file: 'sitemap.xml', data: b64(stripMarkersText(extra.sitemap)), encoding: 'base64' });
+  if (typeof extra.robots === 'string' && extra.robots && typeof extra.sitemap === 'string' && extra.sitemap) files.push({ file: 'robots.txt', data: b64(stripMarkersText(extra.robots)), encoding: 'base64' });
   return files;
 }
 
@@ -374,7 +377,7 @@ export async function deployRenderedSite(
 
   // Step 5: build the file set. Cache-Control on the HTML so a republish is
   // visible immediately instead of being served stale from the CDN.
-  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap });
+  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap, robots: input.robots });
   const htmlBytes = finalPages.reduce((n, p) => n + Buffer.byteLength(p.html, 'utf-8'), 0);
   const cssBuffer = Buffer.from(cssContent, 'utf-8');
 

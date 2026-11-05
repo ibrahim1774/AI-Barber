@@ -518,15 +518,24 @@ export function canonicalBase(src: { customDomain?: string | null; siteBaseUrl?:
 
 const xmlEsc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
-/** sitemap.xml for the pages in the set (including the proxied /book and /shop), or null with no base. */
-export function sitemapXml(set: PageSet, base: string | null): string | null {
+/**
+ * sitemap.xml for the pages in the set (including the proxied /book and /shop), or null with no base. `skip` = hrefs left
+ * out (the thin service pages, which are `noindex`).
+ */
+export function sitemapXml(set: PageSet, base: string | null, skip?: ReadonlySet<string>): string | null {
   const origin = httpsOrigin(base);
   if (!origin) return null;
   const hrefs = [
-    ...set.files.map((f) => f.href),
+    ...set.files.map((f) => f.href).filter((h) => !skip?.has(h)),
     ...(set.nav.includes('book') ? [pageHref('book')] : []),
     ...(set.nav.includes('shop') && set.shopInternal ? [pageHref('shop')] : []),
   ];
   const urls = hrefs.map((h) => `  <url><loc>${xmlEsc(origin + h)}</loc></url>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}
+
+/** robots.txt, shipped only with a sitemap (so only on a multi-page site whose public base is known); null otherwise. */
+export function robotsTxt(base: string | null): string | null {
+  const origin = httpsOrigin(base);
+  return origin ? `User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n` : null;
 }

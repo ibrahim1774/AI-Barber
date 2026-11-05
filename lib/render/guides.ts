@@ -80,6 +80,40 @@ export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>,
   return out;
 }
 
+/** An owner description at least this long (plain characters) is real text of the service's own (step 2 thin-page rule). */
+export const THIN_DESCRIPTION_MIN = 80;
+
+/**
+ * Service pages that are still thin: no text of their own beyond the price, the time and the template "visit" block, which
+ * is the same on every service page and so does not count. A page is NOT thin when it prints at least one of
+ *   - the owner's description of THIN_DESCRIPTION_MIN characters or more,
+ *   - the library guide for its kind, or the `alt` block of a second service of that kind (pages v2, guide section shown),
+ * A section the barber hid does not count, since it is not printed. (Reviewed AI text joins this list in step 6.)
+ * Thin pages stay on the site and in the menu; they are `noindex,follow` and left out of the sitemap.
+ * Returns the indexes into services[] of the thin pages among `pagedIndexes`.
+ */
+export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number[]): Set<number> {
+  const out = new Set<number>();
+  const services = Array.isArray(d.services) ? d.services : [];
+  const sections = pageSectionsOf(d, 'service');
+  const shown = (id: string): boolean => !sections.find((x) => x.id === id)?.hidden;
+  const guides = serviceGuideFor(d, pagedIndexes);
+  const alts = serviceAltFor(d, pagedIndexes);
+  const env = lenientEnv(d);
+  for (const index of pagedIndexes) {
+    const title = plain(services[index]?.title);
+    const subject = titledServices(d).find((x) => x.index === index) ?? null;
+    let unique = shown('description') && plain(services[index]?.description).length >= THIN_DESCRIPTION_MIN;
+    if (!unique && shown('guide') && subject) {
+      const g = guides.get(index);
+      if (g && guideBlocks(env, g, subject).length > 0) unique = true;
+      else if (alts.has(index) && resolveBlock(env, svcCopyKey(title, 'alt'), subject)) unique = true;
+    }
+    if (!unique) out.add(index);
+  }
+  return out;
+}
+
 /** Do the sites' service pages carry library text at all? Pages v2 (an `extraPages` object) with service guides on. */
 export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true;
 

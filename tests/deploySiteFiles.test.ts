@@ -49,6 +49,19 @@ describe('buildSiteFiles', () => {
     expect(files.map((f) => f.file).slice(0, 2)).toEqual(['index.html', 'about/index.html']);
   });
 
+  it('robots.txt ships only together with a sitemap, after it, and never alone', () => {
+    const pages = [page('index.html'), page('about/index.html')];
+    const robots = 'User-agent: *\nAllow: /\nSitemap: https://x.com/sitemap.xml\n';
+    const both = buildSiteFiles(pages, undefined, null, { sitemap: '<urlset/>', robots });
+    expect(both.map((f) => f.file)).toEqual(['index.html', 'about/index.html', 'styles.css', 'vercel.json', 'sitemap.xml', 'robots.txt']);
+    expect(decode(both[5])).toBe(robots);
+    for (const sitemap of [undefined, null, '']) expect(buildSiteFiles(pages, undefined, null, { sitemap, robots }).map((f) => f.file)).not.toContain('robots.txt');
+    for (const r of [undefined, null, '']) expect(buildSiteFiles(pages, undefined, null, { sitemap: '<urlset/>', robots: r }).map((f) => f.file)).not.toContain('robots.txt');
+    expect(buildSiteFiles(pages, undefined, null, { sitemap: '<urlset/>' }).map((f) => f.file)).toEqual(['index.html', 'about/index.html', 'styles.css', 'vercel.json', 'sitemap.xml']);
+  });
+  it('a page can never be named robots.txt (reserved)', () => {
+    expect(() => buildSiteFiles([page('index.html'), page('robots.txt')], undefined, null)).toThrow();
+  });
   it('no sitemap file when none is given (no known base on this publish)', () => {
     for (const sitemap of [undefined, null, '']) {
       expect(buildSiteFiles([page('index.html'), page('about/index.html')], undefined, null, { sitemap }).map((f) => f.file)).not.toContain('sitemap.xml');

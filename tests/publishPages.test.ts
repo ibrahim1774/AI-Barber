@@ -107,6 +107,20 @@ describe('publishSite deploys every page', () => {
     expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
     expect(deployRenderedSite.mock.calls[0][0].pages.every((p: any) => !p.html.includes('rel="canonical"'))).toBe(true);
   });
+  it('robots.txt travels with the sitemap, for pages v2 sites only (step 2)', async () => {
+    await writePendingSite('fresh-cuts', pending());
+    await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps('https://freshcuts.com') });
+    expect(deployRenderedSite.mock.calls[0][0].sitemap).not.toBeNull();
+    expect(deployRenderedSite.mock.calls[0][0].robots).toBeNull(); // a multi-page site from before pages v2 keeps its output
+    deployRenderedSite.mockClear();
+    await writePendingSite('fresh-cuts', pending({ extraPages: { on: [], serviceGuides: true, seed: 3 } }));
+    await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps('https://freshcuts.com') });
+    expect(deployRenderedSite.mock.calls[0][0].robots).toBe('User-agent: *\nAllow: /\nSitemap: https://freshcuts.com/sitemap.xml\n');
+    deployRenderedSite.mockClear();
+    await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps(null) });
+    expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
+    expect(deployRenderedSite.mock.calls[0][0].robots).toBeNull(); // no base, no sitemap, no robots.txt
+  });
   it('canonical uses the base valid at deploy time, not the one stored by the previous publish (P3b review S3)', async () => {
     await writePendingSite('fresh-cuts', pending());
     const live = { ...deps('https://fresh-cuts.vercel.app'), projectDomains: vi.fn(async () => [{ name: 'fresh-cuts.vercel.app', verified: true }, { name: 'freshcuts.com', verified: true }]) } as any;
