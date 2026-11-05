@@ -36,6 +36,12 @@ function odeps(c: OrderNotifyContext) {
   };
 }
 
+const ORIG_MAIL_ENV = { r: process.env.WEB_APP_REPLY_TO, f: process.env.WEB_APP_EMAIL_FROM };
+beforeEach(() => { delete process.env.WEB_APP_REPLY_TO; delete process.env.WEB_APP_EMAIL_FROM; });
+afterEach(() => {
+  if (ORIG_MAIL_ENV.r === undefined) delete process.env.WEB_APP_REPLY_TO; else process.env.WEB_APP_REPLY_TO = ORIG_MAIL_ENV.r;
+  if (ORIG_MAIL_ENV.f === undefined) delete process.env.WEB_APP_EMAIL_FROM; else process.env.WEB_APP_EMAIL_FROM = ORIG_MAIL_ENV.f;
+});
 beforeEach(() => { vi.spyOn(console, 'warn').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 const flagOn = () => { vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_unit'); };
