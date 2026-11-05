@@ -43,6 +43,8 @@ export interface ExtraPagesModel {
   seed?: number;
   pick?: Record<string, number>;
   images?: Partial<Record<ExtraKey, string>>;
+  /** Old service page slug -> new slug, written by the web editor when a service is renamed. Read by lib/siteRedirects.ts (movedMap) only; never rendered. */
+  moved?: Record<string, string>;
 }
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */

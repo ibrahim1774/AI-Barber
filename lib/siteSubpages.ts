@@ -19,6 +19,7 @@ import { resolveAibTheme } from './render/luxe.js';
 import { resolvePrimeTheme } from './render/prime.js';
 import { resolveEuphoriaTheme } from './render/euphoria.js';
 import { isMissingSiteColumn } from './siteColumns.js';
+import { redirectRules, type SiteRedirect, type VercelRedirect } from './siteRedirects.js';
 
 /** Where the proxied pages and APIs live. Never the request's host. */
 export const AIBARBER_ORIGIN = 'https://www.aibarber.org';
@@ -94,7 +95,7 @@ export function subpageRewrites(sp: SiteSubpages): Rewrite[] {
 }
 
 type Header = { source: string; headers: { key: string; value: string }[] };
-export interface SiteVercelConfig { headers: Header[]; rewrites?: Rewrite[] }
+export interface SiteVercelConfig { headers: Header[]; rewrites?: Rewrite[]; redirects?: VercelRedirect[] }
 
 const REVALIDATE = [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }];
 // Projects created after 2026-04-06 cache external-rewrite responses by the upstream's headers.
@@ -109,7 +110,7 @@ const NO_REWRITE_CACHE = [{ key: 'x-vercel-enable-rewrite-caching', value: '0' }
  * (no cleanUrls, no trailingSlash, no rewrite for the pages: Vercel serves `/about` and `/about/` from
  * `about/index.html`).
  */
-export function siteVercelConfig(sp: SiteSubpages | null, opts: { nestedPages?: boolean } = {}): SiteVercelConfig {
+export function siteVercelConfig(sp: SiteSubpages | null, opts: { nestedPages?: boolean; redirects?: readonly SiteRedirect[] } = {}): SiteVercelConfig {
   const headers: Header[] = [
     { source: '/index.html', headers: REVALIDATE },
     { source: '/', headers: REVALIDATE },
@@ -117,11 +118,15 @@ export function siteVercelConfig(sp: SiteSubpages | null, opts: { nestedPages?: 
   if (opts.nestedPages) {
     headers.push({ source: '/(.*)/', headers: REVALIDATE }, { source: '/(.*)/index.html', headers: REVALIDATE });
   }
-  if (!sp) return { headers };
+  // Removed and renamed service pages (siteRedirects.ts): only on a multi-page deploy, only valid /services/<slug>/ paths. Absent
+  // (not an empty list) when there are none, so a site without redirects ships exactly the config it always did.
+  const rules = opts.nestedPages && opts.redirects ? redirectRules(opts.redirects) : [];
+  const redirects = rules.length ? { redirects: rules } : {};
+  if (!sp) return { headers, ...redirects };
   const rewrites = subpageRewrites(sp);
   for (const r of rewrites) if (r.source !== ASSETS) headers.push({ source: r.source, headers: NO_REWRITE_CACHE });
   if (sp.mode === 'full') headers.push({ source: SITE_CONFIG_FILE, headers: REVALIDATE });
-  return { headers, rewrites };
+  return { headers, rewrites, ...redirects };
 }
 
 /** /ab-site.json: which shop the site's pages are. Public on purpose (the slug is in the old URLs too). */

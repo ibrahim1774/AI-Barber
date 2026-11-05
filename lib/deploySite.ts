@@ -13,6 +13,7 @@
 import { Storage } from '@google-cloud/storage';
 import axios from 'axios';
 import { siteConfigFile, siteVercelConfig, SITE_CONFIG_FILE, type SiteSubpages } from './siteSubpages.js';
+import type { SiteRedirect } from './siteRedirects.js';
 import { stripMarkersText } from './render/markers.js';
 import { REPORT_SLUG_PLACEHOLDER } from './render/shell.js';
 import { assertSiteFilePath, type SiteFile } from './render/pages.js';
@@ -49,6 +50,11 @@ export interface DeployRenderedSiteInput {
    * or null: the deploy is exactly what it always was.
    */
   subpages?: SiteSubpages | null;
+  /**
+   * Removed and renamed service pages to redirect (lib/siteRedirects.ts), for a multi-page web deploy. Absent: none, and vercel.json is
+   * exactly what it always was.
+   */
+  redirects?: SiteRedirect[];
 }
 
 export interface DeployRenderedSiteResult {
@@ -290,7 +296,7 @@ export function buildSiteFiles(
   pages: SiteFile[],
   css: string | undefined,
   subpages: SiteSubpages | null,
-  extra: { sitemap?: string | null; robots?: string | null } = {},
+  extra: { sitemap?: string | null; robots?: string | null; redirects?: readonly SiteRedirect[] } = {},
 ): VercelFile[] {
   if (!Array.isArray(pages) || pages.length === 0) throw new Error('a deploy needs at least the home page');
   const seen = new Set<string>();
@@ -306,7 +312,7 @@ export function buildSiteFiles(
     { file: 'index.html', data: b64(home.html), encoding: 'base64' },
     ...pages.filter((p) => p !== home).map((p): VercelFile => ({ file: p.path, data: b64(p.html), encoding: 'base64' })),
     { file: 'styles.css', data: b64(css || '/* No custom styles */'), encoding: 'base64' },
-    { file: 'vercel.json', data: b64(JSON.stringify(siteVercelConfig(subpages, { nestedPages: pages.length > 1 }))), encoding: 'base64' },
+    { file: 'vercel.json', data: b64(JSON.stringify(siteVercelConfig(subpages, { nestedPages: pages.length > 1, redirects: extra.redirects }))), encoding: 'base64' },
   ];
   if (subpages?.mode === 'full') {
     files.push({ file: SITE_CONFIG_FILE.replace(/^\//, ''), data: b64(siteConfigFile(subpages.shopSlug)), encoding: 'base64' });
@@ -377,7 +383,7 @@ export async function deployRenderedSite(
 
   // Step 5: build the file set. Cache-Control on the HTML so a republish is
   // visible immediately instead of being served stale from the CDN.
-  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap, robots: input.robots });
+  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap, robots: input.robots, redirects: input.redirects });
   const htmlBytes = finalPages.reduce((n, p) => n + Buffer.byteLength(p.html, 'utf-8'), 0);
   const cssBuffer = Buffer.from(cssContent, 'utf-8');
 
