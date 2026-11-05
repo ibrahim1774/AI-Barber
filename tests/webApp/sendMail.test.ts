@@ -4,6 +4,12 @@ import { sendOwnerEmail } from '../../lib/webApp/ownerNotify.js';
 
 const mail = { subject: 's', html: '<p>x</p>', text: 'x' };
 const res = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+const ORIG_MAIL_ENV = { r: process.env.WEB_APP_REPLY_TO, f: process.env.WEB_APP_EMAIL_FROM };
+beforeEach(() => { delete process.env.WEB_APP_REPLY_TO; delete process.env.WEB_APP_EMAIL_FROM; });
+afterEach(() => {
+  if (ORIG_MAIL_ENV.r === undefined) delete process.env.WEB_APP_REPLY_TO; else process.env.WEB_APP_REPLY_TO = ORIG_MAIL_ENV.r;
+  if (ORIG_MAIL_ENV.f === undefined) delete process.env.WEB_APP_EMAIL_FROM; else process.env.WEB_APP_EMAIL_FROM = ORIG_MAIL_ENV.f;
+});
 beforeEach(() => { vi.stubEnv('RESEND_API_KEY', 'k'); vi.spyOn(console, 'info').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 

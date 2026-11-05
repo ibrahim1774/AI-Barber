@@ -69,7 +69,7 @@ ${l.note ? `<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:1
   return { subject: l.subject ?? l.headline, html, text };
 }
 
-function facts(i: EmailInput, bare = false): Layout['facts'] {
+function facts(i: EmailInput): Layout['facts'] {
   const f: Layout['facts'] = [];
   if (i.siteUrl) f.push(['Site', i.siteUrl, `<a href="${esc(i.siteUrl)}" style="color:${AMBER};text-decoration:none">${esc(i.siteUrl.replace(/^https?:\/\//, ''))}</a>`]);
   f.push(['Plan', TIER_NAME[i.tier] ?? i.tier]);
@@ -92,19 +92,35 @@ export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   });
 }
 
+/** Reply-To for customer and owner mail: WEB_APP_REPLY_TO when set, else support@davoxa.com. Read per call so tests and env changes apply. */
+export const replyToAddress = (): string => process.env.WEB_APP_REPLY_TO?.trim() || 'support@davoxa.com';
+
+/**
+ * Plain, light failed-payment mail: white page, dark text, ONE action link (the update-payment button), a text part
+ * that mirrors the HTML, no hidden preheader, no sign-in or reset links, a one-line reason for the email.
+ */
 export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   const reminder = (i.reminder ?? 0) > 0;
   const href = i.updateUrl || signInLink(origin);
-  return render({
-    subject: (reminder ? 'Reminder: ' : '') + (firstOf(i.firstName) ? `${firstOf(i.firstName)}, barber site plan card failed` : 'Barber site plan card failed'),
-    preheader: 'Your payment failed. Update your payment method to keep your site online.',
-    headline: reminder ? 'Your site is still at risk' : 'Your payment failed',
-    lead: `We couldn't charge your card for your barber website hosting. <b style="color:#fff">Update your payment method now or you're about to lose your site</b>: it will go offline and customers won't be able to find or book you.`,
-    facts: facts(i, true),
-    cta: { label: 'Update payment method', href },
-    note: `You can also <a href="${signInLink(origin)}" style="color:#c9ccd4">sign in</a> and open Settings, then Manage plan. We keep retrying your card for about two weeks, and we'll remind you every 2 days until it's fixed.`,
-    origin,
-  });
+  const first = firstOf(i.firstName);
+  const subject = (reminder ? 'Reminder: ' : '') + (first ? `${first}, your payment didn't go through` : "Your payment didn't go through");
+  const headline = reminder ? "Your payment still hasn't gone through" : "Your payment didn't go through";
+  const planName = PLAN[i.tier] ?? 'barber site hosting';
+  const lead = `We couldn't charge your card for your ${planName}. Update your card to keep your site online.`;
+  const rows: Array<[string, string]> = [];
+  if (i.siteUrl) rows.push(['Site', i.siteUrl.replace(/^https?:\/\//, '')]);
+  rows.push(['Plan', TIER_NAME[i.tier] ?? i.tier]);
+  const footer = 'You are getting this because you have a Prime Barber plan. Questions? Reply to this email.';
+  const factRows = rows.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">${esc(k)}</td><td style="padding:4px 0;color:#111;font-size:14px">${esc(v)}</td></tr>`).join('');
+  const html = `<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">${esc(headline)}</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">${esc(lead)}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px">${factRows}</table>
+<p style="margin:0 0 16px;font-size:15px"><a href="${esc(href)}" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">${esc(footer)}</p>
+</body></html>`;
+  const text = [headline, '', lead, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', `Update payment method: ${href}`, '', footer].join('\n');
+  return { subject, html, text, replyTo: replyToAddress() };
 }
 
 export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch = fetch, idempotencyKey: string = randomUUID()): Promise<string> {

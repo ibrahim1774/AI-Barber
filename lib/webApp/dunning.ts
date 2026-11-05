@@ -81,7 +81,8 @@ export async function sendFailedPaymentIfDue(subId: string, mode: 'live' | 'test
     const { email, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
     if (!email) throw new Error('no email address');
     const updateUrl = await updateUrlFor(sub, eventInvoiceUrl);
-    await sendMail(email, failedPaymentEmail({ email, firstName, siteUrl: await siteUrlOf(row.site_slug), tier: row.tier, updateUrl, reminder: count }));
+    const messageId = await sendMail(email, failedPaymentEmail({ email, firstName, siteUrl: await siteUrlOf(row.site_slug), tier: row.tier, updateUrl, reminder: count }));
+    console.log('[web-app dunning] sent', messageId);
     return true;
   } catch (e: any) {
     console.error('[web-app dunning]', e?.message || e);
