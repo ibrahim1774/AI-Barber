@@ -135,6 +135,12 @@ describe('the renderer', () => {
       expect(h, JSON.stringify(bad).slice(0, 30)).toContain('noindex');
     }
   });
+  it('stored model text is linted again at render: sentences only the AI rules catch are dropped', () => {
+    const e = { ...GOOD, intro: 'A calm visit for the head. The barber is insured and bonded. Tell your barber what you prefer. The finest and smoothest feeling around. Plan some extra time. Ask your barber about other options.' };
+    const html = page(shop({}, { 'scalp massage': e }));
+    expect(html).toContain('Tell your barber what you prefer.');
+    expect(html).not.toContain('insured'); expect(html).not.toContain('smoothest');
+  });
   it('a sentence whose token has no usable value is dropped, not repaired', () => {
     const e = { ...GOOD, intro: 'A calm visit for the head. Ask about {service} when you book. Wear a loose top. Plan some extra time.' };
     const d = shop({}, { 'scalp massage': e });
