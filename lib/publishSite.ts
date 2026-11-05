@@ -21,6 +21,8 @@ import { deployRenderedSite } from './deploySite.js';
 import { stripMarkersDeep, stripMarkersText } from './render/markers.js';
 import { renderSiteBundle, type RenderedSite, type RenderSiteOptions } from './render/site.js';
 import { isMultiPage, type SiteFile } from './render/pages.js';
+import { movedMap, pagePathsOf, planPublishedPaths, redirectsApply, type PublishedPaths, type SiteRedirect } from './siteRedirects.js';
+import { defaultPathsStore, type PathsStore } from './publishedPathsStore.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
 import { vercelProjectExists } from './ios/slug.js';
 import type { SiteOwnerStore } from './siteOwners.js';
@@ -473,6 +475,11 @@ export async function publishSite(
     sessionId?: string | null;
     /** Internal: a followed pay-first move is never followed again. */
     noFollow?: boolean;
+    /**
+     * Where a web-created pages-v2 site's published paths and redirects are kept (lib/publishedPathsStore.ts). Default: the live store when
+     * the service role is configured. `null`: tracking off. Never touched for any other site.
+     */
+    pathsStore?: PathsStore | null;
   } = {},
 ): Promise<PublishOutcome> {
   const safe = slugify(siteId);
@@ -575,6 +582,11 @@ export async function publishSite(
     let current: PendingSite = pending;
     let deploymentUrl = '';
     let projectName: string | undefined;
+    // Removed and renamed service pages (siteRedirects.ts): only for a web-created pages-v2 site. The record of the previous publish is read
+    // once; each round computes its redirects and the record to store from it, and the last round's record is written after the deploy.
+    let pathsStore: PathsStore | null = null;
+    let prevPaths: Promise<{ ok: true; prev: PublishedPaths | null } | { ok: false }> | null = null;
+    let nextPaths: PublishedPaths | null = null;
     for (let round = 0; ; round++) {
       const csd = current.siteData;
       // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
@@ -582,7 +594,24 @@ export async function publishSite(
       const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages, { bookingsOn: subpages ? shop?.bookingsEnabled : undefined }) }, { siteBaseUrl });
       const html = rendered.pages[0].html;
       console.log(`[Publish] ${safe}: rendered ${rendered.pages.length} page${rendered.pages.length === 1 ? '' : 's'}, ${html.length} bytes of home (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
-      const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, robots: rendered.robots, imageUrls: current.imageUrlMap || {}, subpages });
+      let redirects: SiteRedirect[] | undefined;
+      nextPaths = null;
+      if (redirectsApply(csd, rendered.pages)) {
+        pathsStore ??= opts.pathsStore === undefined ? defaultPathsStore() : opts.pathsStore;
+        const store = pathsStore;
+        if (store) {
+          const prev = await (prevPaths ??= store.read(safe).then((p) => ({ ok: true as const, prev: p }), (e: any) => {
+            console.warn(`[Publish] ${safe}: reading the published paths failed (${e?.message || e}); no redirects this time, the stored record is kept`);
+            return { ok: false as const };
+          }));
+          if (prev.ok) {
+            nextPaths = planPublishedPaths(prev.prev, pagePathsOf(rendered.pages), movedMap(csd));
+            if (nextPaths.redirects.length) redirects = nextPaths.redirects;
+            if (JSON.stringify(nextPaths) === JSON.stringify(prev.prev)) nextPaths = null; // nothing new to record
+          }
+        }
+      }
+      const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, robots: rendered.robots, imageUrls: current.imageUrlMap || {}, subpages, ...(redirects ? { redirects } : {}) });
       deploymentUrl = out.deploymentUrl;
       projectName = out.projectName;
       if (round >= (opts.maxRedeploys ?? MAX_REDEPLOYS)) break;
@@ -599,6 +628,10 @@ export async function publishSite(
     await stampDeployedUrl(safe, current, deploymentUrl).catch((e) =>
       console.warn(`[Publish] ${safe}: deployed but stamping the backup failed:`, e?.message),
     );
+    if (nextPaths && pathsStore) {
+      await pathsStore.write(safe, nextPaths).catch((e) =>
+        console.warn(`[Publish] ${safe}: live, but recording the published paths failed (${e?.message || e}); the next publish compares against the older record`));
+    }
     if (shop) {
       // Customer-facing URLs (Stripe returns, emails) follow the site's domain from now on.
       // Best effort: the site is live; until this lands they keep the previous base.
