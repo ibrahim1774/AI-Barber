@@ -138,7 +138,8 @@ export function parsePublishedPaths(raw: unknown): PublishedPaths | null {
  *    a page that has itself disappeared is pointed at that page's redirect target (no chains);
  *  - the oldest beyond REDIRECT_CAP are dropped;
  *  - last, every rule is checked again: source not live, target live, both valid, no duplicate source.
- * No previous record (first publish, or the store could not be read): nothing can be told to be gone, so there are no redirects.
+ * No previous record (first publish, or the store could not be read): nothing can be told to be gone, so there are no service or guide redirects.
+ * The one exception is the old /faq/: planning only runs for web pages-v2 sites, which never have it, so it is always redirected (a live site may have published it before the record existed).
  */
 export function planPublishedPaths(prev: PublishedPaths | null, newPaths: readonly string[], moved: ReadonlyMap<string, string> = new Map()): PublishedPaths {
   const paths = [...new Set(newPaths.filter(isPagePath))].sort().slice(0, PATHS_CAP);
@@ -170,8 +171,8 @@ export function planPublishedPaths(prev: PublishedPaths | null, newPaths: readon
   // A guide page that was published and is gone while the hub is live: to the hub. With the hub gone too, nothing (a plain 404).
   if (live.has(HUB)) for (const p of [...before].filter(isGuidePagePath).sort()) if (!live.has(p)) fresh.set(p, HUB);
 
-  // The FAQ page web sites no longer publish: if it was live before and is not now, to the hub when live, else to /services/, else a plain 404.
-  if (before.has(FAQ_PATH) && !live.has(FAQ_PATH)) { if (live.has(HUB)) fresh.set(FAQ_PATH, HUB); else if (hasServices) fresh.set(FAQ_PATH, '/services/'); }
+  // The FAQ page web sites no longer publish. Sites that are live today have no stored record (it is new), so with NO record at all (prev null) it is redirected too (the record then keeps the rule on later publishes); with a record it follows `before`: when this publish has no /faq/, to the hub when live, else to /services/, else a plain 404.
+  if (!live.has(FAQ_PATH) && (prev === null || before.has(FAQ_PATH))) { if (live.has(HUB)) fresh.set(FAQ_PATH, HUB); else if (hasServices) fresh.set(FAQ_PATH, '/services/'); }
 
   const out: SiteRedirect[] = [];
   for (const r of prev?.redirects ?? []) {

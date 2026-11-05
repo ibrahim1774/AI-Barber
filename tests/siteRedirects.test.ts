@@ -14,6 +14,9 @@ const state = (slugs: string[], redirects: SiteRedirect[] = []): PublishedPaths 
 const paths = (slugs: string[], extra: string[] = BASE) => [...extra, ...svc(...slugs)];
 const R = (from: string, to: string): SiteRedirect => ({ from: `/services/${from}/`, to: to === '' ? '/services/' : `/services/${to}/` });
 
+// The record of an earlier tracked publish of paths: without the one-off /faq/ rule a first publish adds (these tests are about service redirects).
+const tracked = (p: string[]): PublishedPaths => ({ ...planPublishedPaths(null, p), redirects: [] });
+
 describe('a removed service redirects to /services/', () => {
   it('only the service that disappeared, to the group page', () => {
     const r = planPublishedPaths(state(['fade', 'beard-trim', 'kids-cut']), paths(['fade', 'kids-cut']));
@@ -48,7 +51,7 @@ describe('a removed service redirects to /services/', () => {
     expect(r.redirects).toEqual([]);
   });
   it('no previous record (first tracked publish, or unreadable): nothing can be told to be gone', () => {
-    expect(planPublishedPaths(null, paths(['fade'])).redirects).toEqual([]);
+    expect(planPublishedPaths(null, paths(['fade'])).redirects).toEqual([{ from: '/faq/', to: '/services/' }]); // only the old FAQ page (see guideRedirects.test.ts): no service redirects
     expect(planPublishedPaths(null, paths(['fade'])).paths).toEqual([...BASE, ...svc('fade')].sort());
   });
 });
@@ -277,7 +280,7 @@ describe('invariants over random publish histories', () => {
           expect(r.from, tag).not.toBe(r.to);
           expect(froms.has(r.from), tag + ' duplicate').toBe(false);
           froms.add(r.from);
-          expect(isServicePath(r.from) && isRedirectTarget(r.to), tag).toBe(true);
+          expect((isServicePath(r.from) || r.from === '/faq/') && isRedirectTarget(r.to), tag).toBe(true);
         }
         for (const r of st.redirects) expect(froms.has(r.to), `chain ${r.from}->${r.to}`).toBe(false);
         expect(st.redirects.length).toBeLessThanOrEqual(REDIRECT_CAP);
@@ -349,7 +352,7 @@ describe('with the real page set: the 12 service page cap and hostile titles', (
   });
   it('removing the 3rd of 13: it redirects to /services/ and the 13th (which now gets a page) is not what it points at', () => {
     const titles = Array.from({ length: 13 }, (_, i) => `Service ${i + 1}`);
-    const before = planPublishedPaths(null, pathsOf(titles));
+    const before = tracked(pathsOf(titles));
     const after = planPublishedPaths(before, pathsOf(titles.filter((_, i) => i !== 2)));
     expect(after.paths).toContain('/services/service-13/');
     expect(after.redirects).toEqual([R('service-3', '')]);
@@ -359,7 +362,7 @@ describe('with the real page set: the 12 service page cap and hostile titles', (
     const p = pathsOf(titles).filter(isServicePath);
     expect(p).toHaveLength(titles.length);
     for (const h of pathsOf(titles)) expect(isPagePath(h), h).toBe(true);
-    const before = planPublishedPaths(null, pathsOf(titles));
+    const before = tracked(pathsOf(titles));
     const after = planPublishedPaths(before, pathsOf(titles.slice(0, 1)));
     expect(after.redirects).toHaveLength(titles.length - 1);
     const rules = redirectRules(after.redirects);
@@ -367,7 +370,7 @@ describe('with the real page set: the 12 service page cap and hostile titles', (
     for (const r of rules) expect(r.source).toMatch(/^\/services\/[a-z0-9]+(-[a-z0-9]+)*(\/|\/index\.html)?$/);
   });
   it('the sitemap-facing path set of the new publish never contains a redirected page', () => {
-    const before = planPublishedPaths(null, pathsOf(['Fade', 'Beard Trim', 'Kids Cut']));
+    const before = tracked(pathsOf(['Fade', 'Beard Trim', 'Kids Cut']));
     const after = planPublishedPaths(before, pathsOf(['Fade', 'Kids Cut']));
     expect(after.redirects.map((r) => r.from)).toEqual(['/services/beard-trim/']);
     expect(after.paths).not.toContain('/services/beard-trim/');

@@ -22,7 +22,8 @@
 // switch the whole feature off (`extraPages.guidesOff`) or hide single guides (`extraPages.guidesHidden`).
 //
 // STORAGE (all additive, nothing is required):
-//   extraPages.guidesSel     optional, the guide ids in the order they are offered (the "stored selection"). Absent = the library order.
+//   extraPages.guidesSel     optional, the guide ids in the order they are offered (the "stored selection"). Absent = the library order. Ids it does not
+//                            list follow it in library order (it is an order, not a whitelist; hiding is guidesHidden).
 //   extraPages.guidesHidden  guide ids the owner removed. A hidden guide keeps its slot (it is not backfilled): the owner's choice wins over the floor.
 //   extraPages.guidesOff     true = no guides.
 //   extraPages.pick["guides.<id>.<block>"]  the wording (0..2) the owner chose; else variantIndex() from the stored seed, so a page reads the same on
@@ -100,7 +101,10 @@ function serviceGuideIds(d: Pick<WebsiteData, 'services'>): Set<string> {
 }
 
 /** Is this guide offered to this site? A general guide always; a conditional one only when the closed vocabulary finds a matching service. */
-export function guideEligible(d: Pick<WebsiteData, 'services'>, id: GuidePageId, seen: Set<string> = serviceGuideIds(d)): boolean {
+export function guideEligible(d: Pick<WebsiteData, 'services'>, id: GuidePageId, seen: Set<string> = serviceGuideIds(d), set?: PageSet): boolean {
+  // A real page on the same topic is never repeated by a guide: first visit -> prepare-your-visit, hair care -> hair-care-basics, beard care -> beard-care-basics.
+  const covered = id === 'prepare-your-visit' ? 'first-visit' : id === 'hair-care-basics' ? 'hair-care' : id === 'beard-care-basics' ? 'beard-care' : null;
+  if (covered && set?.files.some((f) => f.key === covered)) return false;
   const when = GUIDE_LIBRARY[id].when;
   if (!when) return true;
   if (when === 'fade-or-taper') return seen.has('fade') || seen.has('taper');
@@ -132,8 +136,10 @@ export function planGuides(d: WebsiteData, set: PageSet): GuidePlan | null {
   const want = Math.max(1, added - 1);
   const st = guideSettings(d);
   const seen = serviceGuideIds(d);
-  const order = st.sel ?? GUIDE_PAGE_IDS;
-  const slots = order.filter((id) => guideEligible(d, id, seen)).slice(0, want);
+  // A stored selection is an ORDER, not a whitelist: ids it does not list (a partial list, or guides added to the library later) follow it in library
+  // order, so a site never ends under the floor because of a short list. Removing a guide is `guidesHidden`, which stays hidden either way.
+  const order = st.sel ? [...st.sel, ...GUIDE_PAGE_IDS.filter((id) => !st.sel!.includes(id))] : GUIDE_PAGE_IDS;
+  const slots = order.filter((id) => guideEligible(d, id, seen, set)).slice(0, want);
   const shown = slots.filter((id) => !st.hidden.has(id));
   if (!shown.length) return null;
   return { real, added, slots, shown };
@@ -278,6 +284,26 @@ function libraryBlock(d: Pick<WebsiteData, 'extraPages'>, id: GuidePageId, block
   return { sentences: [], styles: null };
 }
 
+/**
+ * Hairstyle ideas for a shop that really offers cuts of this list: when 2 or more styles match the titles of the shop's service pages (styleMatchesTitle),
+ * only those styles are described, using the matching sentence of every wording (deduped, library order). Fewer than 2 matches: null, and the picked general wording shows.
+ * Never claims the shop offers a style: the words only describe the style.
+ */
+function shopStyles(d: Pick<WebsiteData, 'extraPages'>, id: GuidePageId, titles: readonly string[]): { sentences: string[]; styles: StyleId[] | null } | null {
+  const def = GUIDE_LIBRARY[id];
+  const block = def.blocks.find((b) => b.id === 'points')!;
+  if (!block.styleOf) return null;
+  const hit = new Map<StyleId, boolean>();
+  const matches = (st: StyleId): boolean => { let v = hit.get(st); if (v === undefined) { v = titles.some((t) => styleMatchesTitle(st, t)); hit.set(st, v); } return v; };
+  const sentences: string[] = [];
+  const styles: StyleId[] = [];
+  for (let v = 0; v < 3; v++) block.variants[v].forEach((s, j) => {
+    const st = block.styleOf![v][j];
+    if (matches(st) && !sentences.includes(s) && sentenceOk(s, def)) { sentences.push(s); styles.push(st); }
+  });
+  return new Set(styles).size >= 2 ? { sentences, styles } : null;
+}
+
 const paragraphs = (text: string): string[] => text.split(/\n\s*\n/).map((p) => p.replace(/\n/g, ' ').trim()).filter(Boolean);
 const lines = (text: string): string[] => text.split('\n').map((l) => l.trim()).filter(Boolean);
 
@@ -294,14 +320,14 @@ export interface GuideView {
 }
 
 /** The text of one guide as the page prints it: the owner's words where they wrote some, else the picked library wording. */
-export function resolveGuide(d: Pick<WebsiteData, 'extraPages' | 'copy'>, id: GuidePageId): GuideView {
+export function resolveGuide(d: Pick<WebsiteData, 'extraPages' | 'copy'>, id: GuidePageId, shopTitles?: readonly string[]): GuideView {
   const def = GUIDE_LIBRARY[id];
   const ov = guideOverrides(d);
   const lib = (b: 'intro' | 'points' | 'tip') => libraryBlock(d, id, b);
   const intro = ov.get(`guides.${id}.intro`);
   const pts = ov.get(`guides.${id}.points`);
   const tip = ov.get(`guides.${id}.tip`);
-  const pl = pts === undefined ? lib('points') : null;
+  const pl = pts === undefined ? (id === 'hairstyle-ideas' && shopTitles ? shopStyles(d, id, shopTitles) ?? lib('points') : lib('points')) : null;
   return {
     id,
     title: ov.get(`guides.${id}.title`) ?? def.title,
@@ -438,7 +464,9 @@ export function renderHubBody(ctx: GuideRenderCtx): GuideBody {
 
 /** One guide page body. */
 export function renderGuideBody(ctx: GuideRenderCtx, id: GuidePageId): GuideBody {
-  const v = resolveGuide(ctx.d, id);
+  const withPage = new Set(ctx.set.services.map((c) => c.index));
+  const titles = (Array.isArray(ctx.d.services) ? ctx.d.services : []).flatMap((x, i) => (withPage.has(i) ? [plainText(x?.title)] : [])).filter(Boolean);
+  const v = resolveGuide(ctx.d, id, titles);
   const related = relatedLinks(ctx.d, ctx.set, v);
   const relatedHtml = related.length
     ? `<h3 class="ab-copy-h">${esc(GUIDE_UI.onThisSite)}</h3><ul class="ab-copy">${related.map((r) => `<li><a href="${esc(r.href)}">${esc(r.label)}</a></li>`).join('')}</ul>`

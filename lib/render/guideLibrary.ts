@@ -93,17 +93,17 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
           [
             'A crew cut is a short style with tapered sides and a little more length in the upper hair.',
             'A buzz cut is a short style that keeps the hair at one even length.',
-            'A fade is a cut that blends short hair into the long hair above it, with no hard line between them.',
+            'A fade is a cut that blends short hair into the hair above it, with no hard line between them.',
             'A taper is a cut where the hair shortens gradually toward the neckline and around the ears.',
             'A side part is a style where the hair is combed to one side along a clear parting line.',
             'A pompadour is a style where the hair is swept up and back from the forehead to add height.',
           ],
           [
-            'An undercut is a style with short sides and back and a sudden change in length where the long hair begins.',
+            'An undercut is a style with short sides and back and a sudden change in length where the upper hair begins.',
             'A quiff is a style where the front hair is brushed up and back to create volume.',
             'A slick back is a style where the hair is combed straight back from the forehead.',
             'A comb over is a style where the hair is combed across from a side part.',
-            'A fade is a cut that blends short hair into the long hair above it, with no hard line between them.',
+            'A fade is a cut that blends short hair into the hair above it, with no hard line between them.',
             'A taper is a cut where the hair shortens gradually toward the neckline and around the ears.',
           ],
           [
@@ -112,7 +112,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
             'A mullet is a style that is short at the front and sides and long at the back.',
             'A caesar is a short style with an even length and a short fringe brushed forward.',
             'A buzz cut is a short style that keeps the hair at one even length.',
-            'A fade is a cut that blends short hair into the long hair above it, with no hard line between them.',
+            'A fade is a cut that blends short hair into the hair above it, with no hard line between them.',
           ],
         ],
         styleOf: [
@@ -147,7 +147,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       ]),
       tip([
         ['Tell your barber how you part and style the upper hair, because the fade frames it.', 'Ask what upkeep the cut needs.'],
-        ['Remember that a fade changes shape as the hair lengthens.', 'Ask your barber when to return for a touch up.'],
+        ['Remember that a fade changes shape as the hair lengthens.', 'Ask your barber when to return for a touch-up.'],
         ['If you wear a hat or helmet a lot, mention it.', 'Bring a photo that shows the height of the fade you want.'],
       ]),
     ],
@@ -166,7 +166,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       points('Questions to ask', [
         ['Ask your barber how the cut would suit your hair type.', 'Ask about the neckline and the edges, because small details change the finish.', 'Say what you did not like about your previous cut.', 'Mention any hair habits that affect the cut, such as a cowlick or a strong part.'],
         ['Share a photo and ask what changes the cut would need for your hair.', 'Ask which tools are used for each part of the cut.', 'Say if you want a light change or a bold one.', 'Ask for advice on keeping the shape between visits.'],
-        ['Consider advice about what suits your face and your hair.', 'Decide together how much to change in one visit.', 'Point out any part of the hair you want left alone.', 'Ask questions at any point during the cut.'],
+        ['Ask what suits your face and your hair.', 'Decide together how much to change in one visit.', 'Point out any part of the hair you want left alone.', 'Ask questions at any point during the cut.'],
       ]),
       tip([
         ['Keep the conversation specific.', 'Share clear feedback after each visit, so the next one fits you more closely.'],
@@ -177,7 +177,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
   },
 
   'gap-between-haircuts': {
-    title: 'Choosing the gap between your haircuts',
+    title: 'When to get a haircut',
     blurb: 'Learn what shapes the gap between haircuts.',
     allow: [],
     blocks: [
@@ -187,9 +187,9 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
         ['Remember that tidy edges and short sides lose their shape sooner, while long layers hold theirs.', 'Ask your barber what suits your style.'],
       ]),
       points('Things to weigh', [
-        ['If your style has tidy edges, plan for touch ups sooner.', 'If your style is long or layered, the shape tends to hold for a while.', 'If you have a big event coming up, ask about timing the cut beforehand.', 'If your hair is wavy or curly, ask how it behaves as the length builds.'],
+        ['If your style has tidy edges, plan for touch-ups sooner.', 'If your style is long or layered, the shape tends to hold for a while.', 'If you have a big event coming up, ask about timing the cut beforehand.', 'If your hair is wavy or curly, ask how it behaves as the length builds.'],
         ['Look for the point where your style starts to lose its shape.', 'Pick a rhythm that fits your routine, then adjust it.', 'Keep a note of the date of each cut.', 'Ask your barber to suggest a return time at the end of each visit.'],
-        ['When the edges look uneven, a touch up may be due.', 'When the hair sits differently, it may be time for a trim.', 'Before an important event, consider a trim.', 'After a haircut, note when you start to dislike the shape.'],
+        ['When the edges look uneven, a touch-up may be due.', 'When the hair sits differently, it may be time for a trim.', 'Before an important event, consider a trim.', 'After a haircut, note when you start to dislike the shape.'],
       ]),
       tip([
         ['Avoid letting the style get hard to manage.', 'Ask your barber what to do between visits.'],
@@ -210,7 +210,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
         ['Plan ahead so the visit is simple.', 'Start with the points below.'],
       ]),
       points('A short checklist', [
-        ['Arrive with your hair styled the way you wear it.', 'Bring a photo of the cut you want.', 'Wear something with a loose neckline.', 'Plan to arrive a little early.', 'Bring a hat or hair tie if you use one.'],
+        ['Arrive with your hair styled the way you wear it.', 'Bring a photo of the cut you want.', 'Wear something with a loose neckline.', 'Plan to arrive a little early.', 'Bring a hat if you wear one, so you know how it sits afterward.'],
         ['Think about how you want to style the cut at home.', 'Make a list of questions to ask.', 'Save any photos in one place so they are easy to find.', 'Check the time before you head out.'],
         ['If you have a strong part or a cowlick, plan to mention it.', 'If you wear a hat or helmet a lot, mention that too.', 'If you have an event coming up, say so.', 'If you have questions, write them down first.'],
       ]),
@@ -235,7 +235,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       ]),
       points('Ideas for parents', [
         ['Choose a time when the child is rested and fed.', 'Show the child a photo of the style you both like.', 'Let the child sit on a parent\'s lap if the barber allows it.', 'Bring a small distraction, such as a toy or a snack.'],
-        ['Keep the first visit short and simple.', 'Ask the barber to go slowly and explain each step.', 'Tell the child they did well afterward.', 'Bring a snack for afterward.'],
+        ['Keep the first visit short and simple.', 'Ask the barber to go slowly and explain each step.', 'Tell the child they did well when it is over.', 'Bring a snack for afterward.'],
         ['If the child is wary of the sound of the tools, ask the barber to show them first.', 'If the child fidgets, take a short break.', 'If the child prefers, let them hold a mirror.', 'Once the cut is done, tell the child it went well.'],
       ]),
       tip([
@@ -258,7 +258,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       ]),
       points('Common shapes', [
         ['An oval face is one where the forehead and jaw are similar in width.', 'A round face is one with similar width and length and a rounded jaw.', 'A heart shaped face is one with a broad forehead that narrows toward the chin.', 'A long face is one that is narrow for its length.', 'A diamond face is one with wide cheekbones and a narrower forehead and jaw.'],
-        ['If you have a round face, you may like height in the upper hair and tidy sides.', 'If you have a long face, you may like some length at the sides and a fringe.', 'If you have an oval face, many styles can suit you.', 'If you have a heart shaped face, you may like a fringe or length around the chin.', 'If you have a diamond face, you may like volume at the forehead and jaw.'],
+        ['If you have a round face, you may like height in the upper hair and tidy sides.', 'If you have a long face, you may like some length at the sides and a fringe.', 'If you have an oval face, many styles can suit you.', 'If you have a heart-shaped face, you may like a fringe or length around the chin.', 'If you have a diamond face, you may like volume at the forehead and jaw.'],
         ['Find the widest part of your face in a mirror.', 'Think about where you want more or less volume.', 'Ask your barber for an opinion on which styles suit your face.', 'Try a style for a while before you decide if it suits you.'],
       ]),
       tip([
@@ -346,7 +346,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
     blocks: [
       intro([
         ['A wet shave is a shave done with water and lather.', 'Ask your barber to explain the steps before you start.'],
-        ['A hot towel shave is one that begins with a warm towel on the face.', 'Tell your barber if you would like to skip that step.'],
+        ['A hot towel shave is one that begins with a warm towel on the face.', 'If a shave starts with a warm towel, say so if you would rather skip that step.'],
         ['This guide covers common shave terms and questions.', 'Use it to prepare for the visit.'],
       ]),
       points('Terms and questions', [
@@ -373,14 +373,14 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
         ['If a term is unfamiliar, ask about it.', 'This list covers some common ones.'],
       ]),
       points('Terms to know', [
-        ['A fade is a cut where the hair shortens in steps until it is cropped short.', 'A taper is a cut where the hair shortens gradually by the neckline and the ears.', 'Ask for a line-up if you want the hairline, the temples and the neckline tidied.', 'A blend is a spot where short and long hair meet without a hard line.', 'A guard is an attachment that sets the length left behind by the tool.'],
+        ['A fade is a cut where the hair shortens in steps until it is cropped short.', 'A taper is a cut where the hair shortens gradually by the neckline and the ears.', 'Ask for a line-up if you want the hairline, the temples and the neckline tidied.', 'A blend is a spot where short and long hair meet without a hard line.', 'A guard is an attachment that sets how much length remains.'],
         ['The neckline is the edge of the hair at the back of the neck.', 'The hairline is the edge of the hair along the forehead and temples.', 'A cowlick is a patch of hair that sits in a different direction from the rest.', 'A part is the line where the hair is divided to fall to either side.'],
         ['A textured cut is one with layers that add movement.', 'A cropped cut is one kept short around the whole head.', 'A trim is a small cut that keeps the current shape.', 'Ask whether a shape-up and a line-up mean the same thing.'],
       ]),
       tip([
         ['Remember that terms can differ from one barber to the next.', 'Use a photo to clear up any confusion.'],
         ['Ask your barber to explain a term in plain words.', 'Write it down for next time.'],
-        ['Write down terms you like and use them at your next visit.', 'Keep the list in a handy place for your next visit.'],
+        ['Write down terms you like and use them at your next visit.', 'Keep the list in a handy place.'],
       ]),
     ],
   },
@@ -419,7 +419,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
         ['If you want to style your hair at home, plan a few simple steps.', 'Use the points below as a guide.'],
       ]),
       points('Simple steps', [
-        ['Start with towel dried hair unless your barber suggests otherwise.', 'Use only a small amount of whatever you style with at first.', 'Use your fingers or a comb to work it through.', 'Use your comb to set the hair in the direction you want.'],
+        ['Start with towel-dried hair unless your barber suggests otherwise.', 'Use only a small amount of whatever you style with at first.', 'Use your fingers or a comb to work it through.', 'Comb the hair in the direction you want.'],
         ['Comb the hair in the direction of the part.', 'Use more only if you need it.', 'Keep any heat tool on a low setting.', 'Ask your barber to demonstrate the steps.'],
         ['If the hair sits flat, try a little more volume at the roots.', 'If the style falls out of shape, check how much you used.', 'When you finish, check the shape in a mirror from the side.', 'Once you find a routine you like, write it down.'],
       ]),
@@ -442,9 +442,9 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
         ['If you want to keep a cut tidy, small habits help.', 'Read the ideas below.'],
       ]),
       points('Small habits', [
-        ['Comb or brush the hair into shape when you style it.', 'Check the neckline in a mirror from time to time.', 'Ask your barber which parts of the cut need a touch up first.', 'Avoid cutting the hair yourself unless you were shown how.'],
-        ['Use a comb to keep the part in place.', 'Use a mirror to check the back with another mirror.', 'Take off hats and helmets when you can, to let the hair settle.', 'Ask about a short touch up between full cuts.'],
-        ['If the edges look uneven, arrange a touch up.', 'If the hair sits differently, adjust how you style it.', 'When you notice stray hairs, ask your barber about them.', 'Before you try a new routine, ask your barber.'],
+        ['Comb or brush the hair into shape when you style it.', 'Check the neckline in a mirror from time to time.', 'Ask your barber which parts of the cut need a touch-up first.', 'Avoid cutting the hair yourself unless you were shown how.'],
+        ['Use a comb to keep the part in place.', 'Use a hand mirror to check the back in a wall mirror.', 'Take off hats and helmets when you can, to let the hair settle.', 'Ask about a short touch-up between full cuts.'],
+        ['If the edges look uneven, arrange a touch-up.', 'If the hair sits differently, adjust how you style it.', 'When you notice stray hairs, ask your barber about them.', 'Before you try a new routine, ask your barber.'],
       ]),
       tip([
         ['Remember that small habits can add up over time.', 'Keep the routine simple.'],

@@ -82,6 +82,10 @@ describe('the old /faq/ of a web site', () => {
     const plan = planPublishedPaths({ v: 1, paths: [...live, '/faq/'], redirects: [] }, live);
     expect(plan.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
     expect(redirectRules(plan.redirects).map((r) => r.source)).toEqual(['/faq', '/faq/', '/faq/index.html']);
+    // No record at all (every live site today): the same redirect, to the hub or /services/.
+    expect(planPublishedPaths(null, live).redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    // A record that never listed /faq/ adds nothing.
+    expect(planPublishedPaths({ v: 1, paths: ['/'], redirects: [] }, live).redirects).toEqual([]);
     const rich = pathsOf(shop(['Haircut', 'Skin Fade', 'Beard Trim', 'Kids Haircut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Mohawk', 'Buzz Cut', 'Crew Cut', 'Undercut', 'Mullet'], { bookingUrl: '/book', shopUrl: '/shop', about: { heading: 'About', description: ['We cut hair here.'], imageUrl: '' } }));
     expect(planPublishedPaths({ v: 1, paths: [...rich, '/faq/'], redirects: [] }, rich).redirects).toEqual([{ from: '/faq/', to: '/services/' }]);
   });
@@ -158,13 +162,13 @@ describe('through publishSite', () => {
     const { s, get } = fakeStore();
     const first = await go(THREE, s);
     expect(guideOnly(get()!.paths)).toHaveLength(12);
-    expect(first.redirects).toBeUndefined();
+    expect(first.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]); // no record yet: the old /faq/ is redirected from the first publish
     expect(first.pages.filter((p: any) => p.path.startsWith('guides/'))).toHaveLength(12);
     expect(first.sitemap).not.toContain('guides');
     expect(first.pages.filter((p: any) => p.path.startsWith('guides/')).every((p: any) => p.html.includes('<meta name="robots" content="noindex,follow">'))).toBe(true);
     const second = await go(THREE, s, { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, guidesHidden: ['hair-types'] } });
-    expect(second.redirects).toEqual([{ from: '/guides/hair-types/', to: '/guides/' }]);
-    expect(get()!.redirects).toEqual([{ from: '/guides/hair-types/', to: '/guides/' }]);
+    expect(second.redirects).toEqual([{ from: '/faq/', to: '/guides/' }, { from: '/guides/hair-types/', to: '/guides/' }]);
+    expect(get()!.redirects).toEqual([{ from: '/faq/', to: '/guides/' }, { from: '/guides/hair-types/', to: '/guides/' }]);
   });
   it('an iOS-made site never touches the store and ships no guide page', async () => {
     const { s } = fakeStore();

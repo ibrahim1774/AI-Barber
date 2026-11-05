@@ -44,6 +44,8 @@ const pending = (titles: string[], extra: Record<string, unknown> = {}): any => 
 const siteBase = (base: string | null) => ({ projectDomains: vi.fn(async () => (base ? [{ name: new URL(base).host, verified: true }] : [])), domainServing: vi.fn(async () => true), updateShop: vi.fn(async () => {}), readBase: vi.fn(async () => base) });
 const BASE = 'https://freshcuts.com';
 
+// A record from an earlier tracked publish (no /faq/ in it): these tests are about service redirects, not the one-off /faq/ rule.
+const TRACKED: PublishedPaths = { v: 1, paths: ['/'], redirects: [] };
 function fakeStore(initial: PublishedPaths | null = null) {
   let value: PublishedPaths | null = initial;
   const s = {
@@ -69,25 +71,27 @@ beforeEach(() => {
   process.env.GCS_CREDENTIALS = JSON.stringify({ project_id: 'p' });
 });
 
-describe('the first tracked publish records the paths and ships no redirect', () => {
-  it('stores / and every page path; nothing to redirect', async () => {
+describe('the first tracked publish records the paths and redirects the old /faq/', () => {
+  it('stores / and every page path; a live site has no record yet, so its possibly-indexed /faq/ is redirected from the first publish and kept after', async () => {
     const { s, get } = fakeStore();
     const arg = await go(['Haircut', 'Fade', 'Beard Trim'], s);
-    expect(arg.redirects).toBeUndefined();
-    expect('redirects' in arg).toBe(false);
+    expect(arg.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(vercelJson(arg).redirects.map((r: any) => r.source)).toEqual(['/faq', '/faq/', '/faq/index.html']);
     expect(s.read).toHaveBeenCalledWith('fresh-cuts');
     expect(s.write).toHaveBeenCalledTimes(1);
     expect(get()!.v).toBe(1);
     expect(get()!.paths).toEqual(expect.arrayContaining(['/', '/services/', '/services/fade/', '/services/beard-trim/', '/first-visit/']));
     expect(get()!.paths).not.toContain('/faq/'); // web sites have no FAQ page
     expect(get()!.paths).toEqual([...get()!.paths].sort());
-    expect(get()!.redirects).toEqual([]);
+    expect(get()!.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    // The rule survives later publishes.
+    expect((await go(['Haircut', 'Fade', 'Beard Trim'], s)).redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
   });
 });
 
 describe('remove, rename, re-add, chains', () => {
   it('a removed service redirects to /services/, the deploy carries the 308 rules, the sitemap and every page leave it out', async () => {
-    const { s, get } = fakeStore();
+    const { s, get } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim', 'Kids Cut'], s);
     const arg = await go(['Fade', 'Kids Cut'], s);
     expect(arg.redirects).toEqual([R('beard-trim', '')]);
@@ -101,7 +105,7 @@ describe('remove, rename, re-add, chains', () => {
     for (const p of arg.pages) { expect(p.html, p.path).not.toContain('/services/beard-trim'); expect(p.path).not.toContain('beard-trim'); }
   });
   it('a rename with the editor\'s moved map redirects to the new page; JSON-LD and the sitemap list only the new one', async () => {
-    const { s, get } = fakeStore();
+    const { s, get } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     const arg = await go(['Skin Fade', 'Beard Trim'], s, { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, moved: { fade: 'skin-fade' } } });
     expect(arg.redirects).toEqual([R('fade', 'skin-fade')]);
@@ -112,12 +116,12 @@ describe('remove, rename, re-add, chains', () => {
     for (const p of arg.pages) expect(p.html, p.path).not.toMatch(/\/services\/fade\//);
   });
   it('a rename without that map is a removal (never guessed)', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     expect((await go(['Skin Fade', 'Beard Trim'], s)).redirects).toEqual([R('fade', '')]);
   });
   it('re-adding the service drops its redirect and the rules', async () => {
-    const { s, get } = fakeStore();
+    const { s, get } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     expect((await go(['Fade'], s)).redirects).toEqual([R('beard-trim', '')]);
     const arg = await go(['Fade', 'Beard Trim'], s);
@@ -127,7 +131,7 @@ describe('remove, rename, re-add, chains', () => {
     expect(arg.sitemap).toContain('/services/beard-trim/');
   });
   it('remove, then rename another: both redirects, each one hop', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim', 'Kids Cut'], s);
     await go(['Fade', 'Kids Cut'], s);
     const arg = await go(['Fade', 'Junior Cut'], s, { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, moved: { 'kids-cut': 'junior-cut' } } });
@@ -136,7 +140,7 @@ describe('remove, rename, re-add, chains', () => {
     for (const r of arg.redirects) { expect(live.has(`${r.from.slice(1)}index.html`)).toBe(false); expect(live.has(`${r.to.slice(1)}index.html`) || r.to === '/services/').toBe(true); }
   });
   it('the 13th service has no page; removing the 3rd redirects to /services/', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     const titles = Array.from({ length: 13 }, (_, i) => `Service ${i + 1}`);
     const first = await go(titles, s);
     expect(first.pages.filter((p: any) => /^services\/[^/]+\/index\.html$/.test(p.path))).toHaveLength(12);
@@ -145,7 +149,7 @@ describe('remove, rename, re-add, chains', () => {
     expect(arg.pages.map((p: any) => p.path)).toContain('services/service-13/index.html');
   });
   it('hidden services group: no /services/ page, so no redirect (a plain 404, never a redirect to a page that is not there)', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     const arg = await go(['Fade', 'Beard Trim'], s, { pages: { order: [], hidden: ['services'] } });
     expect(arg.pages.map((p: any) => p.path)).not.toContain('services/index.html');
@@ -155,7 +159,7 @@ describe('remove, rename, re-add, chains', () => {
 
 describe('republishing', () => {
   it('is idempotent: the same redirects and vercel.json, and nothing is written again', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     const a = await go(['Fade'], s);
     expect(s.write).toHaveBeenCalledTimes(2);
@@ -174,7 +178,7 @@ describe('failures never fail the publish', () => {
     return publishSite('fresh-cuts', { force: true, findShop: async () => null, siteBase: siteBase(BASE) as any, pathsStore: ps, ...opts });
   };
   it('a read that fails once is retried and the publish keeps its redirects', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     s.read.mockRejectedValueOnce(new Error('blip'));
     deployRenderedSite.mockClear();
@@ -183,7 +187,7 @@ describe('failures never fail the publish', () => {
     expect(arg.redirects).toEqual([R('beard-trim', '')]);
   });
   it('a read that keeps failing FAILS the publish before any deploy: live redirects are never shrunk, the record is kept, the next publish works', async () => {
-    const { s, get } = fakeStore();
+    const { s, get } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     await go(['Fade'], s); // the redirect is live and recorded
     const before = JSON.stringify(get());
@@ -198,7 +202,7 @@ describe('failures never fail the publish', () => {
     expect((await go(['Fade'], s)).redirects).toEqual([R('beard-trim', '')]);
   });
   it('a hanging read is cut off by the timeout (twice), the publish fails retryably, nothing is deployed', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     s.read.mockImplementation(() => new Promise(() => {}));
     const t0 = Date.now();
     const out = await publishWith(['Fade'], s, { pathsTimeoutMs: 25 });
@@ -209,7 +213,7 @@ describe('failures never fail the publish', () => {
     expect(deployRenderedSite).not.toHaveBeenCalled();
   });
   it('a slow read that finishes inside the limit is fine', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     const real = s.read.getMockImplementation()!;
     s.read.mockImplementation(async (slug: string) => { await new Promise((r) => setTimeout(r, 20)); return real(slug); });
@@ -218,7 +222,7 @@ describe('failures never fail the publish', () => {
     expect(deployRenderedSite.mock.calls[0][0].redirects).toEqual([R('beard-trim', '')]);
   });
   it('a hanging write is cut off: the publish that is already live still succeeds', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     s.write.mockImplementation(() => new Promise(() => {}));
     const t0 = Date.now();
@@ -228,7 +232,7 @@ describe('failures never fail the publish', () => {
     expect(deployRenderedSite).toHaveBeenCalledTimes(1);
   });
   it('a write that updates no row (false) is logged, and the publish is ok', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     s.write.mockResolvedValueOnce(false as any);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect((await publishWith(['Fade'], s)).ok).toBe(true);
@@ -243,7 +247,7 @@ describe('failures never fail the publish', () => {
     expect(s.write.mock.calls[1][2]).toMatchObject({ v: 1 });
   });
   it('a redeploy round that no longer qualifies (the stored copy turned pages v1) does not record round 0\'s paths', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     deployRenderedSite.mockClear();
     await writePendingSite('fresh-cuts', { ...pending(['Fade', 'Beard Trim']), version: 1, timestamp: 1 });
     deployRenderedSite.mockImplementationOnce(async () => {
@@ -257,13 +261,13 @@ describe('failures never fail the publish', () => {
     expect(s.write).not.toHaveBeenCalled();
   });
   it('a rename onto a service page that already existed (a merge) redirects to /services/ (decision: moved can be stale)', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     const arg = await go(['Fade'], s, { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, moved: { 'beard-trim': 'fade' } } });
     expect(arg.redirects).toEqual([R('beard-trim', '')]);
   });
   it('a failed write is logged; the publish is ok and the next one recomputes from the older record', async () => {
-    const { s, get } = fakeStore();
+    const { s, get } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     s.write.mockRejectedValueOnce(new Error('db down'));
     expect((await go(['Fade'], s)).redirects).toEqual([R('beard-trim', '')]);
@@ -272,7 +276,7 @@ describe('failures never fail the publish', () => {
     expect(get()!.redirects).toEqual([R('beard-trim', '')]);
   });
   it('a failed deploy writes nothing', async () => {
-    const { s } = fakeStore();
+    const { s } = fakeStore(TRACKED);
     await go(['Fade', 'Beard Trim'], s);
     deployRenderedSite.mockRejectedValueOnce(new Error('vercel'));
     await writePendingSite('fresh-cuts', pending(['Fade']));

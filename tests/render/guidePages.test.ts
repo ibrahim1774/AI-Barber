@@ -326,11 +326,34 @@ describe('the gate: guides only for web-created pages-v2 multi-page barber sites
     expect(guidePaths(b)).toEqual([]);
     expect(b.pages.some((p) => p.html.includes('/guides/') || p.html.includes('data-guides-line'))).toBe(false);
   });
-  it('a stored selection limits and orders the guides; a hidden guide keeps its slot', () => {
+  it('a stored selection is an ORDER, not a whitelist: its ids come first, the rest follow in library order, and a hidden guide keeps its slot', () => {
     const sel = shop({ extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 7, guidesSel: ['hair-types', 'new-barber', 'face-shape'] } });
-    expect(guidePaths(bundle(sel)).sort()).toEqual(['guides/face-shape/index.html', 'guides/hair-types/index.html', 'guides/index.html', 'guides/new-barber/index.html']);
+    const plan = planGuides(sel, buildPageSet(sel))!;
+    expect(plan.slots.slice(0, 3)).toEqual(['hair-types', 'new-barber', 'face-shape']);
+    expect(plan.slots).toHaveLength(11); // 9 real pages: hub + 11 guides = 21, never under the floor because of a short list
+    expect(plan.slots.slice(3)).toEqual(GUIDE_PAGE_IDS.filter((id) => !['hair-types', 'new-barber', 'face-shape'].includes(id) && plan.slots.includes(id)));
+    expect(guidePaths(bundle(sel))).toHaveLength(12);
+    expect(total(sel)).toBe(21);
+    // an owner-hidden guide stays hidden even though the list does not name it
+    const hid = shop({ extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 7, guidesSel: ['hair-types'], guidesHidden: ['ask-for-the-cut'] } });
+    expect(guidePaths(bundle(hid))).not.toContain('guides/ask-for-the-cut/index.html');
     const junk = guideSettings({ extraPages: { on: [], guidesSel: ['nope', 'face-shape', 'face-shape', 7], guidesHidden: ['x', 'hair-types'], guidesOff: 'yes' } } as unknown as WebsiteData);
     expect([junk.sel, [...junk.hidden], junk.off]).toEqual([['face-shape'], ['hair-types'], false]);
+  });
+  it('a guide never repeats a real extra page on the same topic (first visit, hair care, beard care)', () => {
+    const first = ['prepare-your-visit', 'hair-care-basics', 'beard-care-basics', 'ask-for-the-cut'];
+    const slotsOf = (on: string[]) => { const d = shop({ extraPages: { on, serviceGuides: true, seed: 7, guidesSel: first } as WebsiteData['extraPages'] }); return planGuides(d, buildPageSet(d))!.slots.slice(0, 4); };
+    expect(slotsOf(['faq'])).toEqual(first); // none of the three real pages: all three guides are offered
+    expect(slotsOf(['faq', 'first-visit'])).toEqual(['hair-care-basics', 'beard-care-basics', 'ask-for-the-cut', expect.any(String)]);
+    expect(slotsOf(['faq', 'hair-care'])).not.toContain('hair-care-basics');
+    expect(slotsOf(['faq', 'hair-care'])).toContain('prepare-your-visit');
+    expect(slotsOf(['faq', 'beard-care'])).not.toContain('beard-care-basics');
+    expect(slotsOf(['faq', 'beard-care'])).toContain('hair-care-basics');
+    // the real pages exist in those sets
+    const d = shop({ extraPages: { on: ['faq', 'first-visit', 'hair-care', 'beard-care'], serviceGuides: true, seed: 7 } });
+    const paths2 = guidePaths(bundle(d));
+    for (const id of ['prepare-your-visit', 'hair-care-basics', 'beard-care-basics']) expect(paths2).not.toContain(`guides/${id}/index.html`);
+    expect(total(d)).toBeGreaterThanOrEqual(21);
   });
   it('conditional guides need a service the closed vocabulary finds', () => {
     const ids = (d: WebsiteData) => guidePaths(bundle(d)).map((p) => p.split('/')[1]);
@@ -549,6 +572,44 @@ describe('links to the shop\'s own service pages: closed vocabulary only', () =>
     const h = mainOf(html(bundle(d), 'guides/hairstyle-ideas/index.html'));
     expect(h).not.toContain('On this site');
     expect(h).not.toContain('/services/');
+  });
+  it('hairstyle ideas describe only the styles the shop offers when 2 or more match, else the general list', () => {
+    const view = (titles: string[], w: 0 | 1 | 2) => { const d = withIdeas(titles.map((t) => svc(t)), w); const set = buildPageSet(d); return resolveGuide(d, 'hairstyle-ideas', titles.filter((_t, i) => set.services.some((c) => c.index === i))); };
+    for (const w of [0, 1, 2] as const) {
+      const v = view(['Skin Fade', 'Buzz Cut', 'Haircut'], w);
+      expect(v.styles).toEqual(['buzz-cut', 'fade']);
+      expect(v.points).toEqual([
+        'A buzz cut is a short style that keeps the hair at one even length.',
+        'A fade is a cut that blends short hair into the hair above it, with no hard line between them.',
+      ]);
+    }
+    // library order across the three wordings, deduped (the fade sentence is in all three)
+    expect(view(['Fade', 'Mohawk', 'Crew Cut', 'Mullet'], 0).styles).toEqual(['crew-cut', 'fade', 'mohawk', 'mullet']);
+    // one match is not enough: the picked general wording (wording 1 here) with its mixed list
+    const one = view(['Skin Fade', 'Haircut'], 1);
+    expect(one.points).toEqual(GUIDE_LIBRARY['hairstyle-ideas'].blocks[1].variants[1].map((x) => x));
+    expect(view(['Haircut', 'Beard Trim'], 0).styles).toEqual(['crew-cut', 'buzz-cut', 'fade', 'taper', 'side-part', 'pompadour']);
+    // through a full render: a fade + buzz cut shop prints no mohawk or mullet, and the links are still there
+    const h = mainOf(html(bundle(withIdeas([svc('Skin Fade'), svc('Buzz Cut'), svc('Haircut')], 2)), 'guides/hairstyle-ideas/index.html'));
+    expect(h).not.toMatch(/mohawk|mullet|pompadour|caesar/i);
+    expect(h).toContain('<li><a href="/services/buzz-cut/">Buzz Cut</a></li>');
+    // an owner's own list is never filtered
+    const own = shop({ services: [svc('Skin Fade'), svc('Buzz Cut')], copy: { 'guides.hairstyle-ideas.points': 'My own line' } as WebsiteData['copy'], extraPages: { on: ['faq'], serviceGuides: true, seed: 7, guidesSel: ['hairstyle-ideas'] } });
+    expect(resolveGuide(own, 'hairstyle-ideas', ['Skin Fade', 'Buzz Cut']).points).toEqual(['My own line']);
+  });
+  it('a title the vocabulary accepts but the name whitelist refuses gets no link at all (never an empty or repaired <a>)', () => {
+    // "Skin Fade." is a fade for the vocabulary; spliceable('name') refuses a sentence end, so there is no label to print.
+    expect(styleMatchesTitle('fade', 'Skin Fade.')).toBe(true);
+    const d = withIdeas([svc('Skin Fade.'), svc('Buzz Cut'), svc('Mullet')], 0);
+    expect(buildPageSet(d).services.map((c) => c.slug)).toContain('skin-fade');
+    const h = mainOf(html(bundle(d), 'guides/hairstyle-ideas/index.html'));
+    expect(h).toContain('<li><a href="/services/buzz-cut/">Buzz Cut</a></li>');
+    expect(h).not.toContain('/services/skin-fade/');
+    expect(h).not.toMatch(/<a [^>]*><\/a>/);
+    const f = shop({ services: [svc('Skin Fade.'), svc('Kids Haircut')], extraPages: { on: ['faq'], serviceGuides: true, seed: 7, guidesSel: ['fade-and-taper'] } });
+    const fh = mainOf(html(bundle(f), 'guides/fade-and-taper/index.html'));
+    expect(fh).not.toContain('On this site');
+    expect(fh).not.toMatch(/<a [^>]*><\/a>/);
   });
   it('a service without a page (past the cap of 12) is never linked; a hostile title is omitted, not repaired', () => {
     const many = [...Array.from({ length: 12 }, (_x, i) => svc(`Cut Number ${i}`)), svc('Mullet')];
