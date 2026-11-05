@@ -15,7 +15,8 @@
 import type { TemplateId, WebsiteData } from '../../types';
 import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './honest.js';
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
-import { thinServiceIndexes } from './guides.js';
+import { thinServiceIndexes, svcTitleKey } from './guides.js';
+import { seoKey, seoOverride, seoSvcKey, type SeoEntry } from './seoText.js';
 import { jsonLdHtml, type JsonLdContext } from './jsonLd.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
@@ -48,6 +49,8 @@ export interface RenderedSite {
   /** robots.txt, shipped with the sitemap (multi-page sites with a known base); null otherwise. */
   robots: string | null;
   set: PageSet;
+  /** The title and description each page ends up with (override or default), for the editor's duplicate warning. Empty unless the site gets the Phase 1 SEO rules (web-created pages v2). */
+  seo: SeoEntry[];
 }
 
 /** Placeholder key -> URL for every image slot that holds one (the keys the renderers print as {{key}}). */
@@ -94,6 +97,17 @@ export function forRender(sd: WebsiteData, map: Record<string, string>): Website
     craftImages: (sd.craftImages || []).map((_: string, i: number) => (map[`craft${i}`] ? 'has-image' : '')),
     staff: (sd.staff || []).map((s: any, i: number) => ({ ...s, photo: map[`staff${i}`] ? 'has-image' : '' })),
   };
+}
+
+const decodeEntities = (s: string): string => s.replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+/** The home page head with its title and description replaced (the design wrote them) and the og tags the other pages carry. */
+function withSeoHead(html: string, title: string, description: string): string {
+  const t = escapeAttr(title);
+  const desc = escapeAttr(description);
+  return html
+    .replace(/<title>[^<]*<\/title>/, () => `<title>${t}</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, () => `<meta name="description" content="${desc}">\n  <meta property="og:title" content="${t}">\n  <meta property="og:description" content="${desc}">`);
 }
 
 const known = (t0: unknown): TemplateId => (t0 === 'prime' || t0 === 'euphoria' ? t0 : 'luxe');
@@ -178,14 +192,63 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
   const homeLd = ld ? jsonLdHtml(ld, set.files.find((f) => f.key === 'home')!) : '';
   if (homeLd) pages[0] = { path: 'index.html', html: home.replace('</head>', () => `  ${homeLd}\n</head>`) };
 
+  // Editable SEO text (seoText.ts): a valid owner title / description replaces the generated one, on the same gate. The generated
+  // defaults are made unique per page (a second page with the same default gets "(2)" or its page name in front), the owner's
+  // own wording is printed as written and a duplicate is reported by seoDuplicates.
+  const seo: SeoEntry[] = [];
+  const seenTitles = new Set<string>();
+  const seenDescriptions = new Set<string>();
+  const seoTexts = (raw: string): string => raw.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (seoV2) {
+    const text = (re: RegExp): string => decodeEntities(re.exec(pages[0].html)?.[1] ?? '');
+    const title0 = text(/<title>([^<]*)<\/title>/);
+    const desc0 = text(/<meta name="description" content="([^"]*)"/);
+    const ot = seoOverride(d, seoKey('home', 'title'));
+    const od = seoOverride(d, seoKey('home', 'description'));
+    if (ot !== null || od !== null) {
+      const t1 = ot ?? title0;
+      const d1 = od ?? desc0;
+      pages[0] = { path: 'index.html', html: withSeoHead(pages[0].html, t1, d1) };
+      seo.push({ id: 'home', title: t1, description: d1 });
+    } else seo.push({ id: 'home', title: title0, description: desc0 });
+    seenTitles.add(seoTexts(seo[0].title));
+    seenDescriptions.add(seoTexts(seo[0].description));
+  }
+  const firstSvcOf = new Map<string, number>(); // service title key -> index of the first service with it (its page owns the seo.svc key)
+  (Array.isArray(d.services) ? d.services : []).forEach((s, i) => {
+    const k = svcTitleKey(s?.title);
+    if (k && !firstSvcOf.has(k)) { firstSvcOf.set(k, i); }
+  });
+  const unique = (base: string, prefix: string, seen: Set<string>): string => {
+    let out = base;
+    if (seen.has(seoTexts(out)) && prefix) out = `${prefix}: ${base}`;
+    for (let n = 2; seen.has(seoTexts(out)); n++) out = `${base} (${n})`;
+    return out;
+  };
+
   for (const file of set.files) {
     if (file.key === 'home') continue;
     const out = renderPageBody({ d, set, template, page }, file);
+    let title = out.title ?? `${out.heading} · ${shop}`;
+    let description = out.description;
+    if (seoV2) {
+      const idx = file.child && file.key === 'services' ? file.child.index : -1;
+      const usable = !file.child || (idx >= 0 && firstSvcOf.get(svcTitleKey(d.services?.[idx]?.title)) === idx);
+      const tk = !usable ? null : file.child ? seoSvcKey(d.services?.[idx]?.title, 'title') : seoKey(file.key, 'title');
+      const dk = !usable ? null : file.child ? seoSvcKey(d.services?.[idx]?.title, 'description') : seoKey(file.key, 'description');
+      const ot = tk ? seoOverride(d, tk) : null;
+      const od = dk ? seoOverride(d, dk) : null;
+      title = ot ?? unique(title, '', seenTitles);
+      description = od ?? unique(description, out.heading, seenDescriptions);
+      seenTitles.add(seoTexts(title));
+      seenDescriptions.add(seoTexts(description));
+      seo.push({ id: file.child ? `${file.key}:${file.child.slug}` : file.key, title, description });
+    }
     pages.push({
       path: file.path,
       html: SHELLS[template]({
-        title: out.title ?? `${out.heading} · ${shop}`,
-        description: out.description,
+        title,
+        description,
         canonical: base ? `${base}${file.href}` : null,
         robots: thinHrefs.has(file.href) ? 'noindex,follow' : undefined,
         jsonLd: ld ? jsonLdHtml(ld, file) || undefined : undefined,
@@ -197,7 +260,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     });
   }
   const sitemap = sitemapXml(set, base, thinHrefs);
-  return { pages, sitemap, robots: seoV2 && sitemap ? robotsTxt(base) : null, set };
+  return { pages, sitemap, robots: seoV2 && sitemap ? robotsTxt(base) : null, set, seo };
 }
 
 /** renderSite(data, template) -> SiteFile[]: index.html, then the other pages. */
