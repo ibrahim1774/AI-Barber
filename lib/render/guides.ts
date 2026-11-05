@@ -17,7 +17,7 @@ import type { WebsiteData } from '../../types';
 import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block, type BlockKind, type ExtraId, type GuideId } from './copyLibrary.js';
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
-import { familyAllowed, libraryGuideOverruled } from './familyKeywords.js';
+import { familyAllowed, libraryGuideOverruled, plainCutTitle } from './familyKeywords.js';
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
@@ -334,9 +334,12 @@ function serviceOfKey(d: WebsiteData, key: string): Svc | null {
 
 function subjectFor(env: CopyEnv, kind: NonNullable<Block['subject']>): Svc | null {
   const all = titledServices(env.d);
-  if (kind === 'haircut') return all.find((s) => s.guide && PRICE_TYPE.has(s.guide) && s.price) ?? null;
+  // Review 6f B2: on a web-created site with service guides on, only a plain haircut answers "How much is a haircut?" (never a bang trim, a kid's cut ...).
+  const gated = serviceTextOn(env.d);
+  const priceOk = (s: Svc): boolean => !!s.guide && PRICE_TYPE.has(s.guide) && (!gated || plainCutTitle(s.title));
+  if (kind === 'haircut') return all.find((s) => priceOk(s) && s.price) ?? null;
   if (kind === 'kids') return all.find((s) => s.guide === 'kids-cut') ?? null;
-  return all.find((s) => s.guide && PRICE_TYPE.has(s.guide) && s.duration) ?? all.find((s) => s.duration) ?? null;
+  return all.find((s) => priceOk(s) && s.duration) ?? all.find((s) => s.duration) ?? null;
 }
 
 const DAY_RE = /^(mon|tue|wed|thu|fri|sat|sun)(?:day|sday|nesday|rsday|urday|s)?\.?$/i;

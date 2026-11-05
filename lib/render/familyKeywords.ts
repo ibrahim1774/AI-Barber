@@ -66,10 +66,21 @@ const SOFT_SRC = [
 const SOFT_LAST = new RegExp('\\b(?:' + SOFT_SRC + ')\\s*$', 'i');
 const JOINER = /(?:\band\b|&|\+|\bwith\b|\bw\/|\bplus\b|,)/i;
 const SERVICE_WORD = /\b(?:hair)?cuts?\b|\b(?:trims?|shav\w*|fades?|tapers?|line[\s-]?ups?|edge[\s-]?ups?|shape[\s-]?ups?|designs?|colou?r\w*|dye\w*|highlights?|blend\w*|gr[ae]y)\b/i;
+// ── Which service may be quoted as "a haircut" in the FAQ (review 6f B2) ───────────────────────────────
+// The FAQ question "How much is a haircut?" prints one service's own price. On a web-created site with service guides on, only a service
+// that IS a plain haircut may answer it: never a partial or other cut (bangs, fringe, neck, nape, sideburns, edges), a kid's cut, a beard or
+// face service, or an animal, even when a library pattern ("cut", "fade") put it in a haircut-type guide.
+const NOT_A_PLAIN_CUT = /\b(?:bangs?|fringe|necks?|necklines?|napes?|sideburns?|edges?|nails?|dogs?|pets?|brows?|eyebrows?|lash(?:es)?|ears?|nose|m(?:ou|u)staches?|goatee|beard|wigs?|kids?|child(?:ren)?|boys?|girls?|juniors?|toddlers?|infants?|babys?|baby's|babies)\b/i;
+export const plainCutTitle = (title: unknown): boolean => { const t = fold(title); return !!t && !NOT_A_PLAIN_CUT.test(t); };
+
 /** Extra words that take a title out of ONE library guide on a web site (the library pattern matched a word that does not mean what the guide says). */
 const LIBRARY_EXCLUDE_WEB: Partial<Record<GuideId, RegExp>> = {
   'beard-trim': /\b(?:bleach\w*|lighten\w*|tint\w*|perm\w*|relax\w*|extensions?|transplant\w*|growth|regrowth|restor\w*|implants?|filler|botox)\b/i,
-  design: /\b(?:nails?|nail\s?art|brows?|eyebrows?|lash\w*|makeup|make-up|logo|web\w*|graphic\w*|interior|invitation\w*)\b/i,
+  design: /\b(?:nails?|nail\s?art|brows?|eyebrows?|lash\w*|makeup|make-up|logo|web\w*|graphic\w*|interior|invitation\w*|stencils?|removal)\b/i,
+  // Review 6e S1: the library pattern matched a word that does not make the service what the guide says.
+  'kids-cut': /\b(?:party|parties|packages?|braid\w*|cornrows?|locs?|twists?|nails?|mani\w*|pedi\w*|facials?|brows?|eyebrows?|lash\w*|thread\w*|waxing|lice|updos?|makeup|make-up)\b/i,
+  color: /\b(?:consultations?|contacts?|lens(?:es)?|nails?|brows?|eyebrows?|lash\w*|skin)\b/i,
+  fade: /\b(?:removal|stencils?)\b/i,
 };
 
 /** True when the title names something that is not a barber service (a product, a gift card, a tattoo ...). Used by the library guide lookup on web sites and by the AI text gate. */
@@ -101,8 +112,8 @@ type Vocab = {
 
 // Hair work that is a cut, by name or by "hair trim". The haircut guide ("A haircut shortens and shapes your hair") is true for each.
 const CUT_CORES = [
-  'hair trim', 'hair trims', 'bang trim', 'bangs trim', 'fringe trim', 'mohawk', 'mohawks', 'faux hawk', 'fauxhawk', 'faux hawks', 'fauxhawks',
-  'mullet', 'mullets', 'flat top', 'flattop', 'flat tops', 'flattops', 'caesar', 'caesars', 'pompadour', 'pompadours', 'undercut', 'undercuts',
+  'hair trim', 'hair trims', 'mohawk', 'mohawks', 'faux hawk', 'fauxhawk', 'faux hawks', 'fauxhawks',
+  'mullet', 'mullets', 'flat top', 'flattop', 'flat tops', 'flattops', 'caesar', 'caesars', 'undercut', 'undercuts',
   'high and tight', 'high & tight',
 ] as const;
 
@@ -110,19 +121,16 @@ export const FAMILY_VOCAB: Partial<Record<GuideId, Vocab>> = {
   // "A haircut shortens and shapes your hair ... the barber trims the hair with clippers, scissors or both ... suits anyone."
   haircut: {
     cores: CUT_CORES,
-    mods: ["men's", 'mens', 'men', 'adult', 'adults', 'regular', 'standard', 'basic', 'classic', 'senior', 'short', 'hair', 'trim', 'trims', 'and', '&', '+', 'with', 'for', 'a', 'the'],
+    mods: ["men's", 'mens', 'men', 'adult', 'adults', "women's", 'womens', 'women', 'ladies', 'gentlemen', 'gentlemens', "gentlemen's", 'regular', 'standard', 'basic', 'classic', 'senior', 'short', 'hair', 'trim', 'trims', 'and', '&', '+', 'with', 'for', 'a', 'the'],
   },
   // "A kids' cut is a haircut made for a child." Needs an age word AND a named cut / hair trim ("Toddler Trim" alone could be nails).
   'kids-cut': {
-    cores: ['toddler', 'toddlers', 'infant', 'infants', "baby's first", 'babys first', 'babies first'],
+    cores: ['toddler', 'toddlers'],
     needs: CUT_CORES,
     mods: ['first', 'trim', 'trims', 'and', '&', '+', 'with', 'for', 'a', 'the'],
   },
-  // "A color service changes the shade of the hair with dye." Bleach lightens the shade; balayage and frosted tips are colour techniques.
-  color: {
-    cores: ['bleach', 'bleaching', 'bleached', 'balayage', 'frosted tip', 'frosted tips'],
-    mods: ["men's", 'mens', 'men', 'adult', 'adults', 'hair', 'full', 'partial', 'root', 'roots', 'tip', 'tips', 'tone', 'toner', 'toning', 'and', '&', '+', 'with', 'a', 'the'],
-  },
+  // No `color` family (review 6f B1): the only color-ish cores (bleach, balayage, frosted tips) do not guarantee "with dye", "toner" or any method.
+  // Every title that really is color (Hair Color, Highlights, Hair Dye, Gray Blending, Platinum Blonde) is answered by the library pattern.
 };
 
 const CONNECTORS: ReadonlySet<string> = new Set(['and', '&', '+', 'with', 'for', 'a', 'the']);
