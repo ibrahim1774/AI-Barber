@@ -6,6 +6,11 @@ import { DOMAIN_STATES, SITE_HOLDING_STATES } from '../../lib/ios/domainsRepo.js
 // Static checks on 012_custom_domains.sql (written, not applied).
 const s = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/012_custom_domains.sql'), 'utf8');
 const code = s.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+// 030 widens the state check and the site index (additive); the code's lists must equal 012 plus 030's additions.
+const s030 = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/030_ios_domains_manual_states.sql'), 'utf8');
+const code030 = s030.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+const names = (m: RegExpMatchArray) => m[1].match(/'([a-z_]+)'/g)!.map((x) => x.replace(/'/g, ''));
+const union = (a: string[], b: string[]) => [...a, ...b.filter((x) => !a.includes(x))];
 
 describe('012_custom_domains.sql', () => {
   it('creates ios_domains only, nothing else touched', () => {
@@ -37,15 +42,15 @@ describe('012_custom_domains.sql', () => {
   });
 
   it('the state check lists exactly the states the code uses', () => {
-    const m = code.match(/state in \(([^)]*)\)\)/);
-    const states = m![1].match(/'([a-z]+)'/g)!.map((x) => x.replace(/'/g, ''));
+    const states = union(names(code.match(/state in \(([^)]*)\)\)/)!), names(code030.match(/check \(state in \(([^)]*)\)\)/)!));
     expect(states).toEqual([...DOMAIN_STATES]);
   });
 
   it('domain unique among non-failed REAL rows (Sandbox rows never squat a name); one holding row per site', () => {
     expect(code).toMatch(/create unique index if not exists ios_domains_domain_key on public\.ios_domains \(domain\) where state <> 'failed' and not simulated;/);
     const site = code.match(/ios_domains_site_key[\s\S]*?where state in \(([^)]*)\)/)!;
-    expect(site[1].match(/'([a-z]+)'/g)!.map((x) => x.replace(/'/g, ''))).toEqual([...SITE_HOLDING_STATES]);
+    const site030 = code030.match(/ios_domains_site_key[\s\S]*?where state in \(([^)]*)\)/)!;
+    expect(union(names(site), names(site030))).toEqual([...SITE_HOLDING_STATES]);
   });
 
   it('the subscription key is the primary key (one subscription, one slot: single use)', () => {
