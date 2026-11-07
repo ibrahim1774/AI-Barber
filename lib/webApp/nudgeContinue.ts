@@ -42,13 +42,17 @@ export interface ContinueDeps {
   consume(tokenHash: string): Promise<{ refreshToken: string; userId: string | null }>;
 }
 
-export type PageState = 'form' | 'expired' | 'used' | 'gone' | 'unavailable';
+export type PageState = 'form' | 'missing' | 'expired' | 'used' | 'gone' | 'unavailable';
 export type ContinueOutcome =
   | { kind: 'page'; state: PageState }
   | { kind: 'redirect'; location: string; cookies: string[] };
 
 /** GET: no DB, no Supabase. A valid, unexpired token for this mode shows the button; anything else shows "expired". */
+/** No token at all (e.g. a refresh after the address bar was cleaned). */
+export const noToken = (t: unknown) => t === undefined || t === null || t === '';
+
 export function previewContinue(token: unknown, deps: Pick<ContinueDeps, 'mode' | 'secret' | 'now'>): { state: PageState; hint: string | null } {
+  if (noToken(token)) return { state: 'missing', hint: null };
   const t = verifyContinueToken(token, { now: deps.now(), secret: deps.secret, mode: deps.mode });
   return t.ok ? { state: 'form', hint: t.hint } : { state: 'expired', hint: null };
 }
@@ -56,6 +60,7 @@ export function previewContinue(token: unknown, deps: Pick<ContinueDeps, 'mode' 
 const NO_AUTO_SIGN_IN = new Set(['paid', 'not_web', 'live']);
 
 export async function performContinue(token: unknown, deps: ContinueDeps): Promise<ContinueOutcome> {
+  if (noToken(token)) return { kind: 'page', state: 'missing' };
   const t = verifyContinueToken(token, { now: deps.now(), secret: deps.secret, mode: deps.mode });
   if (!t.ok) return { kind: 'page', state: 'expired' };
   const { userId, step } = t;
@@ -111,6 +116,7 @@ export function continuePage(state: PageState, token?: string, hint?: string | n
       // Strip ?t= from the address bar; the token stays only in the form's hidden input. The page works without JS.
       script: "try{history.replaceState(null,'',location.pathname)}catch(e){}",
     });
+    case 'missing': return mailPage({ heading: 'Open the link from your email again', body: 'Please open the link from your email again. Or sign in to open your website.', button: signIn });
     case 'used': return mailPage({ heading: 'This link was already used', body: 'For your security each link works once. Sign in to open your website.', button: signIn });
     case 'gone': return mailPage({ heading: 'We could not find this account', body: 'The account for this link no longer exists.', button: signIn });
     case 'unavailable': return mailPage({ heading: "We couldn't sign you in right now", body: 'Please try the link again in a minute, or sign in the usual way.', button: signIn });

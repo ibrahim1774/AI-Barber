@@ -39,7 +39,7 @@ describe('previewContinue (GET): no DB, no Supabase', () => {
     expect(previewContinue(tok(), p).state).toBe('form');
     expect(previewContinue(tok(1, 'test', U, NOW - 8 * 24 * 3600_000), p).state).toBe('expired');
     expect(previewContinue(tok() + 'x', p).state).toBe('expired');
-    expect(previewContinue(undefined, p).state).toBe('expired');
+    expect(previewContinue(undefined, p).state).toBe('missing'); expect(previewContinue('', p).state).toBe('missing'); expect(previewContinue('junk', p).state).toBe('expired');
     expect(previewContinue(tok(1, 'live'), p).state).toBe('expired');
   });
 });
@@ -81,6 +81,10 @@ describe('performContinue (POST)', () => {
     const gen = vi.fn(async (_e: string) => 'H');
     await performContinue(tok(), deps({ gen }).d);
     expect(gen).toHaveBeenCalledWith('jake@gmail.com');
+  });
+  it('no token at all -> the missing page, nothing read', async () => {
+    const { d, calls } = deps();
+    expect(await performContinue(undefined, d)).toEqual({ kind: 'page', state: 'missing' }); expect(calls).toEqual([]);
   });
   it('expired / tampered / wrong-mode token: friendly page, nothing read', async () => {
     const { d, calls } = deps({ now: NOW + 8 * 24 * 3600_000 });
@@ -200,6 +204,16 @@ describe('/api/web-app/continue handler', () => {
     const r = await call({ method: 'GET', query: { t } });
     expect(r.body).toContain('Continue as j••e@gmail.com'); expect(r.body).toContain('Not you? Sign in'); expect(r.body).toContain('href="/app/sign-in"');
     expect(r.body).not.toContain('jake@gmail.com');
+  });
+  it('GET and POST with no token at all ask to open the link again; a bad or expired token keeps the expired wording', async () => {
+    const f = stubFetch();
+    for (const r of [await call({ method: 'GET', query: {} }), await call({ method: 'GET', query: { t: '' } }), await call({ method: 'POST', headers: { origin: ORIGIN, 'x-real-ip': `10.1.0.${n}` }, body: {} })]) {
+      expect(r.body).toContain('Please open the link from your email again.'); expect(r.body).toContain('href="/app/sign-in"'); expect(r.body).not.toContain('has expired');
+    }
+    const old = signContinueToken(U, 1, 'test', Date.now() - 8 * 24 * 3600_000, S);
+    expect((await call({ method: 'GET', query: { t: old } })).body).toContain('This link has expired');
+    expect((await call({ method: 'GET', query: { t: 'junk' } })).body).toContain('This link has expired');
+    expect(f).not.toHaveBeenCalled();
   });
   it('GET with a bad token says the link expired, still no network', async () => {
     const f = stubFetch();

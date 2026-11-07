@@ -1,7 +1,7 @@
 // Sign-up reminder link target. GET shows a Continue page and changes nothing (mail scanners GET links);
 // POST (the button) signs the user in server-side and redirects. See lib/webApp/nudgeContinue.ts.
 import { clientIp, memoryStore } from '../../lib/bookings/rateLimit.js';
-import { continuePage, liveContinueDeps, performContinue, previewContinue } from '../../lib/webApp/nudgeContinue.js';
+import { continuePage, liveContinueDeps, noToken, performContinue, previewContinue } from '../../lib/webApp/nudgeContinue.js';
 import { webAppOriginAllowed } from '../../lib/webApp/webAppServer.js';
 import { modeOf } from '../../lib/webApp/reliability.js';
 
@@ -27,7 +27,7 @@ export default async function handler(req: any, res: any) {
   const secret = process.env.WEB_APP_NUDGE_SECRET || '';
   let mode: 'live' | 'test';
   try { mode = modeOf(); } catch { return html(res, 200, continuePage('expired')); }
-  if (!secret) return html(res, 200, continuePage('expired'));
+  if (!secret) return html(res, 200, continuePage(noToken(tokenFrom(req)) ? 'missing' : 'expired'));
 
   if (req.method === 'GET') {
     const token = tokenFrom(req);
