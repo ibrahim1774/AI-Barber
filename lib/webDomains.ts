@@ -110,8 +110,39 @@ export interface CheckoutDeps {
   createStripeSession(params: URLSearchParams): Promise<{ ok: boolean; status: number; data: any }>;
 }
 
-/** { domain, siteId } → { url } of a $39/year Stripe subscription Checkout. Site owner only. */
-export async function createDomainCheckout(body: any, origin: string, authorization: unknown, deps: CheckoutDeps): Promise<WebResult> {
+/**
+ * The site-and-name checks both purchase routes share (hosted Checkout and one-click), run BEFORE
+ * any Stripe write: the site must not already hold a domain, the name must be available (or be
+ * this site's own detached name) at a standard price. null = fine to sell.
+ */
+export async function domainSaleRefusal(flow: Pick<DomainFlowDeps, 'vercel' | 'repo'>, slug: string, domain: string): Promise<WebResult | null> {
+  try {
+    if (await flow.repo.holdingSite(slug)) return { status: 409, body: { error: 'This site already has a custom domain' } };
+    const pre = await precheckDomain(flow, domain);
+    // The same site may buy back its OWN detached name (still registered to us).
+    if (pre === 'domain-taken' && !(await ownDetached(flow, slug, domain))) return { status: 409, body: { error: 'Domain is not available' } };
+    if (pre && pre !== 'domain-taken') return { status: 409, body: { error: 'Domain is not available at a standard price' } };
+  } catch (e: any) {
+    console.error('[CreateDomainCheckout] lookup failed:', e?.code || e?.message || e);
+    return { status: 503, body: { error: 'Could not check the domain right now' } };
+  }
+  return null;
+}
+
+export interface WebCheckoutOptions {
+  /** The web app's own return page base (WEB_APP_ORIGIN); set = the request asked for the web app's flow (`app: 'web'`). */
+  returnBase?: string;
+  /** The plan's Stripe customer, so the domain subscription lands next to the plan. Web app only. */
+  customerOf?(userId: string): Promise<string | null>;
+}
+
+/**
+ * { domain, siteId } → { url } of a $39/year Stripe subscription Checkout. Site owner only.
+ * `web` (api/web-app/domain, or api/create-domain-checkout for `app: 'web'`): return to the web
+ * app's /app/domain page and reuse the plan's customer. Without it the form is exactly the old
+ * site's (the legacy dashboard keeps `${origin}?domain_payment=...`).
+ */
+export async function createDomainCheckout(body: any, origin: string, authorization: unknown, deps: CheckoutDeps, web?: WebCheckoutOptions): Promise<WebResult> {
   const domain = typeof body?.domain === 'string' ? body.domain.trim().toLowerCase() : '';
   if (!isComDomain(domain) || typeof body?.siteId !== 'string' || !body.siteId.trim()) {
     return { status: 400, body: { error: 'Missing or invalid fields: domain (.com), siteId' } };
@@ -126,23 +157,28 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
   const auth = await deps.authorize(body.siteId, authorization);
   if (!auth.ok || !auth.target) return denied(auth);
   const slug = auth.target;
+  const webFlow = body?.app === 'web' && !!web?.returnBase;
+  // An iOS site buys its domain in the app.
+  if (webFlow && auth.actor === 'app-owner') return { status: 403, body: { error: 'app-site' } };
 
-  try {
-    if (await deps.flow.repo.holdingSite(slug)) return { status: 409, body: { error: 'This site already has a custom domain' } };
-    const pre = await precheckDomain(deps.flow, domain);
-    // The same site may buy back its OWN detached name (still registered to us).
-    if (pre === 'domain-taken' && !(await ownDetached(deps.flow, slug, domain))) return { status: 409, body: { error: 'Domain is not available' } };
-    if (pre && pre !== 'domain-taken') return { status: 409, body: { error: 'Domain is not available at a standard price' } };
-  } catch (e: any) {
-    console.error('[CreateDomainCheckout] lookup failed:', e?.code || e?.message || e);
-    return { status: 503, body: { error: 'Could not check the domain right now' } };
+  const refusal = await domainSaleRefusal(deps.flow, slug, domain);
+  if (refusal) return refusal;
+
+  let customer: string | null = null;
+  if (webFlow && web?.customerOf && auth.userId && auth.actor === 'web-user') {
+    try { customer = await web.customerOf(auth.userId); } catch { customer = null; } // no customer: Checkout asks for the card
   }
 
   const sig = domainSig(deps.secret, domain, slug);
   const params = new URLSearchParams();
   params.append('mode', 'subscription');
-  params.append('success_url', `${origin}?domain_payment=success&session_id={CHECKOUT_SESSION_ID}`);
-  params.append('cancel_url', `${origin}?domain_payment=cancelled`);
+  if (webFlow) {
+    params.append('success_url', `${web!.returnBase}/app/domain?domain_payment=success&session_id={CHECKOUT_SESSION_ID}`);
+    params.append('cancel_url', `${web!.returnBase}/app/domain?domain_payment=cancelled`);
+  } else {
+    params.append('success_url', `${origin}?domain_payment=success&session_id={CHECKOUT_SESSION_ID}`);
+    params.append('cancel_url', `${origin}?domain_payment=cancelled`);
+  }
   if (deps.priceId) {
     params.append('line_items[0][price]', deps.priceId);
   } else {
@@ -162,7 +198,13 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
     params.append(`${prefix}[sig]`, sig);
   }
 
-  const r = await deps.createStripeSession(params);
+  if (customer) params.append('customer', customer);
+  let r = await deps.createStripeSession(params);
+  if (!r.ok && customer && r.data?.error?.code === 'resource_missing') {
+    // The plan's customer is not known to this Stripe account: Checkout without it (asks for the card).
+    params.delete('customer');
+    r = await deps.createStripeSession(params);
+  }
   if (!r.ok) {
     console.error('[CreateDomainCheckout] Stripe error:', r.status, r.data?.error?.type || '');
     return { status: 400, body: { error: 'Failed to create checkout session' } };
@@ -187,10 +229,19 @@ export interface WebDomainDeps {
   cancelAndRefund(subscriptionId: string): Promise<void>;
   /** Email support@davoxa.com (domain, site, amount only). Best effort. */
   notifySupport?(subject: string, text: string): Promise<void>;
+  /**
+   * Staging only (env DOMAINS_TEST_REAL_SUBS, honoured only with DOMAINS_BUY_DISABLED=1 off production):
+   * test-mode subscription ids that run the real attach/link path instead of the simulation.
+   */
+  testRealSubs?: ReadonlySet<string>;
 }
 
 /** Stripe test mode, from Stripe's own livemode flag (never the key prefix). */
-const isTestMode = (...objs: any[]) => objs.some((o) => o && o.livemode === false);
+export const isTestMode = (...objs: any[]) => objs.some((o) => o && o.livemode === false);
+
+/** A test-mode subscription is simulated (Vercel never called) unless it is on the staging list. */
+const simulatedSub = (subId: string, deps: Pick<WebDomainDeps, 'testRealSubs'>, ...objs: any[]) =>
+  isTestMode(...objs) && !(deps.testRealSubs?.has(subId) ?? false);
 
 const badSession: WebResult = { status: 400, body: { error: 'Invalid checkout session' } };
 
@@ -227,10 +278,23 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   }
   const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
   if (!v || v.slug !== md.slug || v.domain !== md.domain) return { status: 400, body: { error: 'Not a paid domain purchase' } };
+  return claimDomainSubscription(sub, v, simulatedSub(v.subscriptionId, deps, session, sub), deps);
+}
+
+/**
+ * A verified, paid domain subscription → its slot (reserve, then advance): the claim every route
+ * shares (Checkout return, one-click). Refusals after payment are refunded, never left paid
+ * without a domain. 200 live, 202 in progress, 409 failed / refunded, 503 try again.
+ */
+export async function claimDomainSubscription(
+  sub: any,
+  v: { domain: string; slug: string; subscriptionId: string },
+  simulated: boolean,
+  deps: Pick<WebDomainDeps, 'flow' | 'cancelAndRefund' | 'notifySupport'>,
+): Promise<WebResult> {
   const payer = stripePayerStatus(sub, deps.flow.now());
   if (!payer.active) return { status: 402, body: { error: 'subscription-inactive' } };
-  const testMode = isTestMode(session, sub);
-  if (!testMode && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
+  if (!simulated && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
   const existing = await deps.flow.repo.get(`stripe:${v.subscriptionId}`);
   if (existing?.refunded_at) return refundedResult(existing.domain, existing.failure_reason);
   if (existing && existing.state === 'failed' && !existing.vercel_bought_at && REFUND_REASONS.has(existing.failure_reason || '')) {
@@ -238,7 +302,7 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   }
 
   const c = {
-    key: `stripe:${v.subscriptionId}`, source: 'stripe' as const, environment: 'Production' as const, simulated: testMode,
+    key: `stripe:${v.subscriptionId}`, source: 'stripe' as const, environment: 'Production' as const, simulated,
     slug: v.slug, domain: v.domain, payer,
   };
   let reserved;
@@ -270,7 +334,7 @@ const REFUSAL_REASON: Record<string, string> = {
 };
 const REFUND_REASONS = WEB_REFUND_REASONS;
 
-function refundedResult(domain: string, reason?: string | null): WebResult {
+export function refundedResult(domain: string, reason?: string | null): WebResult {
   const why = !reason || ['taken', 'price', 'refused', 'site-has-domain'].includes(reason)
     ? `${domain} was taken just before your payment went through.`
     : `We could not register ${domain}.`;
@@ -296,7 +360,7 @@ function finishRefund(row: { original_transaction_id: string; domain: string; si
  * checkout and payment, or a second checkout for a site that already has a domain): persist it
  * as a FAILED row (admin-visible), then cancel the subscription and refund it in full.
  */
-async function recordRefusedPaidSlot(
+export async function recordRefusedPaidSlot(
   c: { key: string; slug: string; domain: string; simulated: boolean },
   result: { body: unknown },
   deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>,
@@ -331,6 +395,8 @@ export interface DomainEventResult {
   background?: () => Promise<unknown>;
   /** A paid, verified domain checkout: report its Purchase like a site checkout. */
   purchase?: boolean;
+  /** One-click sales have no Checkout session: the object to report instead (id = the subscription, amount, currency). */
+  purchaseObject?: { id: string; amount_total: number; currency: string };
 }
 
 const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.paid']);
@@ -375,6 +441,11 @@ export async function handleDomainStripeEvent(
     // A completed, paid checkout for a verified domain subscription is a sale (Meta dedupes on the session id).
     const purchase = event.type === 'checkout.session.completed' && obj.payment_status === 'paid'
       && (!!existing || !!verifyDomainSubscription(sub, deps.secret, deps.priceId));
+    // A one-click sale (a server-created subscription, paid at creation) has no Checkout session:
+    // its created event is the sale, reported once per subscription (the id is Meta's event id).
+    const oneClickSale = event.type === 'customer.subscription.created' && sub?.metadata?.oneclick === '1' && sub?.status === 'active'
+      && (!!existing || !!verifyDomainSubscription(sub, deps.secret, deps.priceId));
+    const sale = oneClickSale ? { purchase: true, purchaseObject: { id: subId, amount_total: WEB_DOMAIN_PRICE_CENTS, currency: 'usd' } } : { purchase };
     if (existing) {
       // A refused paid slot whose refund did not go through yet: finish it.
       if (existing.state === 'failed' && !existing.refunded_at && !existing.vercel_bought_at && REFUND_REASONS.has(existing.failure_reason || '')) {
@@ -386,7 +457,7 @@ export async function handleDomainStripeEvent(
       if (!sub) throw new Error('subscription not found at Stripe');
       const payer = stripePayerStatus(sub, deps.flow.now());
       await applyPayerEvent(key, event.type, { ...deps.flow, payer: async () => payer });
-      return { handled: true, status: 200, body: { received: true, domain: true }, purchase };
+      return { handled: true, status: 200, body: { received: true, domain: true }, ...sale };
     }
     const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
     if (!v) {
@@ -412,7 +483,7 @@ export async function handleDomainStripeEvent(
     }
     const payer = stripePayerStatus(sub, deps.flow.now());
     if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
-    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: isTestMode(obj, sub), slug: v.slug, domain: v.domain, payer };
+    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: simulatedSub(subId, deps, obj, sub), slug: v.slug, domain: v.domain, payer };
     const reserved = await reserveSlot(c, deps.flow);
     if (reserved.result) {
       const refused = await recordRefusedPaidSlot(c, reserved.result, deps);
@@ -422,7 +493,7 @@ export async function handleDomainStripeEvent(
       return { handled: true, status: 200, body: { received: true, domain: false, refused: refused.code, refunded: true }, purchase };
     }
     return {
-      handled: true, status: 200, body: { received: true, domain: true }, purchase,
+      handled: true, status: 200, body: { received: true, domain: true }, ...sale,
       background: () => advanceSlot(key, payer, deps.flow),
     };
   } catch (e: any) {

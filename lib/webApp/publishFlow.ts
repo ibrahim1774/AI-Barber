@@ -87,13 +87,30 @@ export interface WebSiteBody {
   customDomain?: WebCustomDomain | null;
 }
 
-export interface WebCustomDomain { domain: string; state: string; url: string | null; paidUntil: string | null; autoRenew: boolean }
+export interface WebCustomDomain {
+  domain: string; state: string; url: string | null; paidUntil: string | null; autoRenew: boolean;
+  /** A simulated (Stripe test mode) domain: nobody registered it; `url` is null and the client must not switch to it. */
+  sandbox?: true;
+  /** True only when the domain is live AND its DNS was verified (the domain row's dns_ready_at). The client switches its links only then (or when the status probe says ssl 'ready'). */
+  ready: boolean;
+}
 
-/** A domain status (lib/ios/domainFlow statusBody) as the site body's customDomain; null while there is no usable domain. */
-export function customDomainOf(b: { domain: string | null; state: string; url?: string; paidUntil?: string | null; autoRenew?: boolean } | null): WebCustomDomain | null {
+/**
+ * A domain status (lib/ios/domainFlow statusBody) + its row's readiness as the site body's customDomain;
+ * null while there is no usable domain. Without the row nothing is ever `ready`.
+ */
+export function customDomainOf(
+  b: { domain: string | null; state: string; url?: string; paidUntil?: string | null; autoRenew?: boolean; sandbox?: boolean } | null,
+  row?: { simulated?: boolean; dns_ready_at?: string | null } | null,
+): WebCustomDomain | null {
   if (!b?.domain) return null;
   if (!/^(registering|linking|live|cancelled-until:)/.test(b.state)) return null; // none, failed:*, expired, transferred
-  return { domain: b.domain, state: b.state, url: b.url ?? null, paidUntil: b.paidUntil ?? null, autoRenew: b.autoRenew === true };
+  const sandbox = b.sandbox === true || row?.simulated === true;
+  return {
+    domain: b.domain, state: b.state, url: sandbox ? null : b.url ?? null, paidUntil: b.paidUntil ?? null, autoRenew: b.autoRenew === true,
+    ...(sandbox ? { sandbox: true as const } : {}),
+    ready: !sandbox && b.state === 'live' && !!row?.dns_ready_at,
+  };
 }
 
 export type WebPublishResult = { status: number; body: unknown };
@@ -374,6 +391,13 @@ export function liveWebPublishDeps(): WebPublishDeps {
   };
 }
 
+/** A slow domain lookup must not stall the app's site load (the body just omits customDomain). */
+export const DOMAIN_LOOKUP_MS = 3000;
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([p, new Promise<never>((_, rej) => { t = setTimeout(() => rej(new Error('domain lookup timed out')), ms); })]).finally(() => clearTimeout(t));
+}
+
 /**
  * The caller's web-app site (the web twin of /api/ios/site): { siteId, deployedUrl, siteData, active, version... }.
  * 404 no-site when nothing is bound (or it was removed); `active` is false once the subscription is not entitled
@@ -397,7 +421,7 @@ export async function runWebSiteLookup(
     const pending = await deps.readPending(site.slug);
     let domain: WebCustomDomain | null | undefined;
     if (deps.domainOf) {
-      try { domain = await deps.domainOf(site.slug); } catch (e) { console.error('[web-app/site] domain lookup failed:', (e as Error)?.message || e); domain = undefined; }
+      try { domain = await withDeadline(deps.domainOf(site.slug), DOMAIN_LOOKUP_MS); } catch (e) { console.error('[web-app/site] domain lookup failed:', (e as Error)?.message || e); domain = undefined; }
     }
     return { status: 200, body: siteBody(site.slug, pending, active, domain) };
   } catch (e) {

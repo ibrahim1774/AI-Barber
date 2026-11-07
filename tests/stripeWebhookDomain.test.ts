@@ -57,6 +57,18 @@ describe('stripe webhook: domain checkout Purchase', () => {
     expect(publishSite).not.toHaveBeenCalled();
   });
 
+  it('a one-click sale (no Checkout session): the Purchase is keyed on the subscription id, $39, once', async () => {
+    const purchaseObject = { id: 'sub_oneclick1', amount_total: 3900, currency: 'usd' };
+    handleDomainStripeEvent.mockResolvedValueOnce({ handled: true, status: 200, body: { received: true, domain: true }, purchase: true, purchaseObject });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ events_received: 1 }) } as any);
+    const res = mkRes();
+    await handler(req({ type: 'customer.subscription.created', data: { object: { id: 'sub_oneclick1', metadata: { type: 'domain_purchase' } } } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const body = JSON.parse((fetchSpy.mock.calls[0] as any[])[1].body);
+    expect(body.data[0]).toMatchObject({ event_name: 'Purchase', event_id: 'sub_oneclick1', custom_data: { value: 39, currency: 'USD', content_ids: ['aibarber-custom-domain-yearly'] } });
+    expect(pushOrderToTripleWhale).toHaveBeenCalledWith(purchaseObject);
+  });
+
   it('a Meta failure → 500 so Stripe retries (the domain part is idempotent)', async () => {
     handleDomainStripeEvent.mockResolvedValueOnce({ handled: true, status: 200, purchase: true });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, json: async () => ({ error: { message: 'bad' } }) } as any);

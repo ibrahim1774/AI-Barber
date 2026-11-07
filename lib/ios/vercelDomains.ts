@@ -281,9 +281,49 @@ export function makeVercelDomains(opts: { token: string; teamId?: string; fetch:
   };
 }
 
+/**
+ * Staging gate: DOMAINS_BUY_DISABLED=1 makes the live registrar refuse every purchase without
+ * calling Vercel, so a staging run can exercise attach/link/republish on a name the team already
+ * owns with zero registrar spend. NEVER honoured in production (VERCEL_ENV === 'production').
+ */
+export function domainsBuyDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.DOMAINS_BUY_DISABLED === '1' && env.VERCEL_ENV !== 'production';
+}
+
+/** Staging only: the price shown for a name the team already owns when Vercel quotes none (inside the standard-price cap). */
+const STAGING_OWNED_PRICE = 10;
+
+/**
+ * The same registrar with `buy` answering a definite refusal (no network call), and a name the
+ * team ALREADY OWNS reported as available at a standard price: the purchase flow's precheck would
+ * otherwise refuse an owned name as taken, and staging could never reach the owned-name path
+ * (reserved → bought with no purchase → attach → link) that proves the switch with zero spend.
+ */
+export function withBuyDisabled(api: VercelDomains): VercelDomains {
+  return {
+    ...api,
+    async availability(domains) {
+      const out = await api.availability(domains);
+      for (const d of domains) if (out.get(d) !== true && (await api.owned(d))) out.set(d, true);
+      return out;
+    },
+    async prices(domains) {
+      let out = new Map<string, DomainPrice>();
+      try { out = await api.prices(domains); } catch { /* a taken name may not be quotable: owned names get the staging price below */ }
+      for (const d of domains) if (!out.has(d) && (await api.owned(d))) out.set(d, { purchasePrice: STAGING_OWNED_PRICE, renewalPrice: STAGING_OWNED_PRICE });
+      return out;
+    },
+    async buy() {
+      console.error('[domains] DOMAINS_BUY_DISABLED: purchase refused (no registrar call)');
+      return { ok: false, code: 'buy-disabled', status: 400, definite: true };
+    },
+  };
+}
+
 /** The live client: VERCEL_TOKEN (needs registrar scope on the team), optional VERCEL_DOMAINS_TEAM_ID. */
-export function liveVercelDomains(): VercelDomains | null {
-  const token = process.env.VERCEL_TOKEN;
+export function liveVercelDomains(env: Record<string, string | undefined> = process.env, fetchFn: Fetch = fetch as unknown as Fetch): VercelDomains | null {
+  const token = env.VERCEL_TOKEN;
   if (!token) return null;
-  return makeVercelDomains({ token, teamId: process.env.VERCEL_DOMAINS_TEAM_ID || undefined, fetch: fetch as unknown as Fetch });
+  const api = makeVercelDomains({ token, teamId: env.VERCEL_DOMAINS_TEAM_ID || undefined, fetch: fetchFn });
+  return domainsBuyDisabled(env) ? withBuyDisabled(api) : api;
 }

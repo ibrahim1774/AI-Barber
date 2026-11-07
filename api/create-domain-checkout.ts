@@ -5,6 +5,8 @@ import { liveVercelDomains, registrantContact } from '../lib/ios/vercelDomains.j
 import { supabaseDomains } from '../lib/ios/domainsRepo.js';
 import { serviceClient } from '../lib/bookings/repo.js';
 import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
+import { APP_ORIGIN, webAppCheckoutOn } from '../lib/webApp/webAppServer.js';
+import { webPlanOf } from '../lib/webApp/domainOneClickLive.js';
 
 // POST { domain, siteId } + Authorization: Bearer <Supabase access token of the site's owner>
 // → { url } of a $39/year Stripe subscription Checkout for the domain (lib/webDomains.ts).
@@ -37,7 +39,8 @@ export default async function handler(req: any, res: any) {
         });
         return { ok: response.ok, status: response.status, data: await response.json().catch(() => ({})) };
       },
-    });
+    }, // The web app's own flow (`app: 'web'`, only with the web app on): its return page and the plan's customer. The old site never sends `app`.
+    webAppCheckoutOn() ? { returnBase: APP_ORIGIN(), customerOf: async (userId) => (await webPlanOf(userId))?.customer ?? null } : undefined);
     return res.status(r.status).json(r.body);
   } catch (error: any) {
     console.error('[CreateDomainCheckout] Error:', error?.message || error);

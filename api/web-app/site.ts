@@ -21,7 +21,10 @@ export default async function handler(req: any, res: any) {
         return rows.find((r) => isEntitledStatus(r.status)) ?? rows[0] ?? null;
       },
       // The site's website-bought domain (plain status, no probe: the dashboard's status call carries the probe).
-      domainOf: async (slug) => customDomainOf(statusBody(await webRowFor(slug, { flow: { repo: supabaseDomains(serviceClient()) } }))),
+      domainOf: async (slug) => {
+        const row = await webRowFor(slug, { flow: { repo: supabaseDomains(serviceClient()) } });
+        return customDomainOf(statusBody(row), row);
+      },
     }, { authorization: req.headers?.authorization });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(r.status).json(r.body);

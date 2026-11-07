@@ -7,7 +7,7 @@ import {
 } from '../lib/webDomains.js';
 import { STALL_ALERT_MS, runDomainSearch, sweepDomains, type DomainFlowDeps } from '../lib/ios/domainFlow.js';
 import { makePayer } from '../lib/ios/domainLive.js';
-import { diagnoseRegistrantContact, registrantContact } from '../lib/ios/vercelDomains.js';
+import { diagnoseRegistrantContact, registrantContact, withBuyDisabled } from '../lib/ios/vercelDomains.js';
 import { authorizeSiteOwner } from '../lib/deployAuth.js';
 import type { SiteOwnerRow, SiteOwnerStore } from '../lib/siteOwners.js';
 import { fakeRegistrar } from './ios/fakeRegistrar.js';
@@ -68,6 +68,32 @@ function world(opts: { contact?: any } = {}) {
 }
 const row = (w: ReturnType<typeof world>) => w.repo.rows.get('stripe:sub_dom1')!;
 const completed = { id: SID, subscription: 'sub_dom1', payment_status: 'paid', metadata: signedMd() };
+
+describe('DOMAINS_BUY_DISABLED on a Stripe row (staging gate)', () => {
+  it('a name NOT owned: the refusal is definite, the row fails as registrar and the payment is refunded; the registrar was never asked to buy', async () => {
+    quiet();
+    const w = world();
+    w.flow.vercel = withBuyDisabled(w.reg.api);
+    const r = await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    expect(r).toMatchObject({ status: 409, body: { refunded: true } });
+    expect(row(w)).toMatchObject({ state: 'failed', failure_reason: 'registrar', last_error: expect.stringMatching(/buy-disabled/) });
+    expect(w.cancelAndRefund).toHaveBeenCalledWith('sub_dom1');
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+    expect(w.reg.charges).toHaveLength(0);
+  });
+  it('a name the team already owns goes through attach and link with no buy and no charge', async () => {
+    const w = world();
+    w.flow.vercel = withBuyDisabled(w.reg.api);
+    w.reg.seed('freshcuts.com', 1, false);
+    const r = await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    expect(r.status).toBe(200);
+    expect(row(w)).toMatchObject({ state: 'live' });
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+    expect(w.reg.projects.size).toBe(1);
+    expect((w.flow.hooks.onDomainLinked as any)).toHaveBeenCalled();
+    expect(w.reg.charges).toHaveLength(1); // the seeded registration only: nothing bought by the flow
+  });
+});
 
 describe('B1: a web purchase that fails never keeps billing silently', () => {
   it('the registrar fails the order (ordered → failed:registrar): refunded at once, row marked, support emailed, no further Stripe event needed', async () => {

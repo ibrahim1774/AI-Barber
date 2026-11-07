@@ -279,7 +279,7 @@ describe('site body customDomain (additive)', () => {
   it('siteBody without customDomain has no such key; with it (or null) the key is present', () => {
     expect('customDomain' in siteBody('s', null, true)).toBe(false);
     expect(siteBody('s', null, true, null).customDomain).toBeNull();
-    const d = { domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: null, autoRenew: true };
+    const d = { domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: null, autoRenew: true, ready: true };
     expect(siteBody('s', null, true, d).customDomain).toEqual(d);
   });
   it('customDomainOf maps usable states only', () => {
@@ -290,6 +290,34 @@ describe('site body customDomain (additive)', () => {
     expect(customDomainOf({ domain: 'a.com', state: 'registering', autoRenew: true })).toMatchObject({ state: 'registering', url: null, autoRenew: true });
     expect(customDomainOf({ domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: '2027-01-01T00:00:00.000Z', autoRenew: true })!.url).toBe('https://a.com');
   });
+  it('customDomainOf readiness: ready only when live AND the row has dns_ready_at; a simulated (sandbox) domain has no url and is never ready', () => {
+    const live = { domain: 'a.com', state: 'live', url: 'https://a.com' };
+    expect(customDomainOf(live)!.ready).toBe(false); // no row: never ready
+    expect(customDomainOf(live, { dns_ready_at: null })!.ready).toBe(false);
+    expect(customDomainOf(live, { dns_ready_at: '2026-11-06T00:00:00.000Z' })).toMatchObject({ ready: true, url: 'https://a.com' });
+    expect(customDomainOf({ domain: 'a.com', state: 'linking' }, { dns_ready_at: '2026-11-06T00:00:00.000Z' })!.ready).toBe(false);
+    const sim = customDomainOf({ ...live, sandbox: true }, { simulated: true, dns_ready_at: '2026-11-06T00:00:00.000Z' })!;
+    expect(sim).toMatchObject({ sandbox: true, url: null, ready: false, domain: 'a.com' });
+    expect(customDomainOf(live, { simulated: true, dns_ready_at: 'x' })).toMatchObject({ sandbox: true, url: null, ready: false });
+    expect('sandbox' in customDomainOf(live, { dns_ready_at: 'x' })!).toBe(false);
+  });
+  it('lookup: a domainOf that never answers is dropped after the deadline, the lookup still answers 200', async () => {
+    vi.useFakeTimers();
+    try {
+      const base: any = {
+        environment: 'test', userOf: async () => ({ id: 'u1' }),
+        sites: { byUser: async () => ({ slug: 's', removed_at: null, taken_down_at: null }) },
+        readPending: async () => null, subscriptionOf: async () => ({ status: 'active' }),
+      };
+      const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const p = runWebSiteLookup({ ...base, domainOf: () => new Promise(() => {}) }, { authorization: 'Bearer x' });
+      await vi.advanceTimersByTimeAsync(3100);
+      const out: any = await p;
+      expect(out.status).toBe(200);
+      expect('customDomain' in out.body).toBe(false);
+      quiet.mockRestore();
+    } finally { vi.useRealTimers(); }
+  });
   it('lookup: body carries customDomain only when domainOf is wired; a domainOf failure is ignored', async () => {
     const base: any = {
       environment: 'test', userOf: async () => ({ id: 'u1' }),
@@ -297,7 +325,7 @@ describe('site body customDomain (additive)', () => {
       readPending: async () => null, subscriptionOf: async () => ({ status: 'active' }),
     };
     expect('customDomain' in (await runWebSiteLookup(base, { authorization: 'Bearer x' }) as any).body).toBe(false);
-    const d = { domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: null, autoRenew: true };
+    const d = { domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: null, autoRenew: true, ready: true };
     expect(((await runWebSiteLookup({ ...base, domainOf: async () => d }, { authorization: 'Bearer x' })) as any).body.customDomain).toEqual(d);
     const failed: any = await runWebSiteLookup({ ...base, domainOf: async () => { throw new Error('db'); } }, { authorization: 'Bearer x' });
     expect(failed.status).toBe(200);

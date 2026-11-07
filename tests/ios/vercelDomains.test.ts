@@ -156,3 +156,58 @@ describe('registrantContact (env VERCEL_REGISTRANT_CONTACT)', () => {
     [JSON.stringify({ ...CONTACT, country: 'usa' })], [JSON.stringify({ ...CONTACT, phone: '+1555' })], [JSON.stringify({ ...CONTACT, zip: '' })], [JSON.stringify({ ...CONTACT, email: 'nope' })],
   ])('rejects %s', (raw) => expect(registrantContact(raw as any)).toBeNull());
 });
+
+import { domainsBuyDisabled, liveVercelDomains, withBuyDisabled } from '../../lib/ios/vercelDomains.js';
+
+describe('DOMAINS_BUY_DISABLED staging gate', () => {
+  const env = (over: Record<string, string>) => ({ VERCEL_TOKEN: 'tok', ...over });
+
+  it('on (non-production): buy answers a definite refusal and never calls Vercel; every other call is untouched', async () => {
+    const { f, calls } = fakeFetch([{ status: 200, body: { domain: { boughtAt: 1, expiresAt: 2, renew: false } } }]);
+    const v = liveVercelDomains(env({ DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview' }), f)!;
+    const r = await v.buy('fresh.com', { expectedPrice: 11.25, autoRenew: false, contact: CONTACT });
+    expect(r).toEqual({ ok: false, code: 'buy-disabled', status: 400, definite: true });
+    expect(calls).toHaveLength(0);
+    expect(await v.lookup('owned.com')).toEqual({ boughtAt: 1, expiresAt: 2, renew: false });
+    expect(calls[0].url).toBe('https://api.vercel.com/v5/domains/owned.com');
+  });
+
+  it('the flag is IGNORED in production: buy reaches the registrar', async () => {
+    const { f, calls } = fakeFetch([{ status: 200, body: { orderId: 'ord_1' } }]);
+    const v = liveVercelDomains(env({ DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'production' }), f)!;
+    expect(await v.buy('fresh.com', { expectedPrice: 11.25, autoRenew: false, contact: CONTACT })).toEqual({ ok: true, orderId: 'ord_1' });
+    expect(calls).toHaveLength(1);
+    expect(domainsBuyDisabled({ DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'production' })).toBe(false);
+  });
+
+  it('only the exact value 1 turns it on; unset / 0 / true leave buy alone; no token = no client', async () => {
+    for (const val of [undefined, '0', 'true', '']) {
+      const { f, calls } = fakeFetch([{ status: 200, body: { orderId: 'ord_9' } }]);
+      const v = liveVercelDomains(env(val === undefined ? {} : { DOMAINS_BUY_DISABLED: val }), f)!;
+      expect((await v.buy('a.com', { expectedPrice: 1, autoRenew: false, contact: CONTACT })).ok).toBe(true);
+      expect(calls).toHaveLength(1);
+    }
+    expect(liveVercelDomains({ DOMAINS_BUY_DISABLED: '1' }, fakeFetch([]).f)).toBeNull();
+  });
+
+  it('an OWNED name reads as available at a standard price (so staging can reach the owned-name path); a taken, unowned name stays taken', async () => {
+    const { f } = fakeFetch((url) => {
+      if (url.includes('/registrar/domains/availability')) return { status: 200, body: { results: [{ domain: 'mine.com', available: false }, { domain: 'theirs.com', available: false }, { domain: 'free.com', available: true }] } };
+      if (url.includes('/registrar/domains/price')) return { status: 400, body: { code: 'domain_not_available' } };
+      if (url.includes('/v5/domains/mine.com')) return { status: 200, body: { domain: { boughtAt: 1, expiresAt: Date.now() + 1e9, renew: false } } };
+      return { status: 404, body: {} };
+    });
+    const v = withBuyDisabled(makeVercelDomains({ token: 't', fetch: f }));
+    const a = await v.availability(['mine.com', 'theirs.com', 'free.com']);
+    expect([a.get('mine.com'), a.get('theirs.com'), a.get('free.com')]).toEqual([true, false, true]);
+    const p = await v.prices(['mine.com', 'theirs.com']);
+    expect(p.get('mine.com')).toEqual({ purchasePrice: 10, renewalPrice: 10 });
+    expect(p.has('theirs.com')).toBe(false);
+  });
+
+  it('withBuyDisabled keeps this-bound helpers working (owned uses lookup)', async () => {
+    const { f } = fakeFetch([{ status: 200, body: { domain: { boughtAt: 1, expiresAt: Date.now() + 1e9, renew: true } } }]);
+    const v = withBuyDisabled(makeVercelDomains({ token: 't', fetch: f }));
+    expect(await v.owned('mine.com')).toMatchObject({ renew: true });
+  });
+});

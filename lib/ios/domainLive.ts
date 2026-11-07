@@ -8,6 +8,10 @@
 //   DOMAINS_SANDBOX_REAL_OTIDS optional, comma-separated Sandbox originalTransactionIds allowed to buy for real (internal tests)
 //   DOMAIN_CHECKOUT_SECRET     HMAC key signing the website's domain checkout metadata (lib/webDomains.ts)
 //   STRIPE_DOMAIN_PRICE_ID     optional Stripe price for the $39/year domain; else price_data
+//   STRIPE_DOMAIN_PRODUCT_ID   optional; with no price id, one-click uses price_data on this product
+//   WEB_DOMAIN_ONECLICK        '0' turns the web app's one-click purchase off (default on; hosted Checkout stays)
+//   DOMAINS_BUY_DISABLED       staging only (ignored in production): the registrar refuses every buy without calling Vercel
+//   DOMAINS_TEST_REAL_SUBS     staging only, needs DOMAINS_BUY_DISABLED=1: test-mode sub ids that run the real attach path
 import { liveGetUser } from '../bookings/auth.js';
 import { publicLimiter } from '../bookings/rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from '../bookings/repo.js';
@@ -23,12 +27,24 @@ import { supabaseDomains, type DomainRow } from './domainsRepo.js';
 import type { DomainNotificationSink } from './notifications.js';
 import { supabasePurchases } from './purchases.js';
 import { DOMAIN_PRODUCT_ID } from './tiers.js';
-import { liveVercelDomains, registrantContact } from './vercelDomains.js';
+import { domainsBuyDisabled, liveVercelDomains, registrantContact } from './vercelDomains.js';
 import { sbRest, webAppEntitlementsOn } from '../webApp/webAppServer.js';
 import { stripePayerStatus, type WebDomainDeps } from '../webDomains.js';
+import { isEntitledStatus, type Interval, type Tier } from '../webApp/stripeCore.js';
+import { webProductId } from '../webApp/entitlementGate.js';
 
 export function sandboxRealOtids(raw: string | undefined = process.env.DOMAINS_SANDBOX_REAL_OTIDS): Set<string> {
   return new Set((raw || '').split(',').map((s) => s.trim()).filter(Boolean));
+}
+
+/**
+ * Staging: test-mode subscription ids that run the real attach/link path (DOMAINS_TEST_REAL_SUBS).
+ * Honoured ONLY while DOMAINS_BUY_DISABLED=1 off production, so a test subscription can never reach
+ * the real registrar; empty otherwise (and in production).
+ */
+export function domainTestRealSubs(env: Record<string, string | undefined> = process.env): Set<string> {
+  if (!domainsBuyDisabled(env)) return new Set();
+  return new Set((env.DOMAINS_TEST_REAL_SUBS || '').split(',').map((x) => x.trim()).filter(Boolean));
 }
 
 export async function probeHttps(domain: string): Promise<boolean> {
@@ -53,7 +69,7 @@ export async function stripeSubscription(id: string): Promise<any | null> {
   return r.json();
 }
 
-async function stripe(method: string, path: string, opts: { form?: Record<string, string>; idem?: string } = {}) {
+export async function stripe(method: string, path: string, opts: { form?: Record<string, string>; idem?: string } = {}) {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error('STRIPE_SECRET_KEY not set');
   const headers: Record<string, string> = { Authorization: `Bearer ${key}`, 'Stripe-Version': STRIPE_API_VERSION };
@@ -135,6 +151,26 @@ export function makePayer(verifyDomain: (id: string) => Promise<any>, getSubscri
   };
 }
 
+/**
+ * The web-app site for the republish hook: its offline flags and the product id of its owner's
+ * CURRENT entitled plan (so the Book/Shop links are stripped to the plan, like the web publish).
+ * null when the web app is off or there is no such site.
+ */
+export async function liveWebSite(slug: string): Promise<{ taken_down_at: string | null; removed_at: string | null; product_id: string | null } | null> {
+  if (!webAppEntitlementsOn()) return null;
+  const rows = await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=taken_down_at,removed_at,user_id,environment&limit=1`);
+  const site = rows?.[0];
+  if (!site) return null;
+  let product_id: string | null = null;
+  if (site.user_id && site.environment) {
+    const ents: Array<{ status: string; tier: Tier; billing_interval: Interval }> =
+      (await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(site.user_id)}&environment=eq.${encodeURIComponent(site.environment)}&select=status,tier,billing_interval&order=updated_at.desc`)) ?? [];
+    const ent = ents.find((e) => isEntitledStatus(e.status));
+    if (ent) product_id = webProductId(ent.tier, ent.billing_interval);
+  }
+  return { taken_down_at: site.taken_down_at ?? null, removed_at: site.removed_at ?? null, product_id };
+}
+
 export function liveDomainDeps(): DomainFlowDeps {
   const client = serviceClient();
   const purchases = supabasePurchases(client);
@@ -157,11 +193,7 @@ export function liveDomainDeps(): DomainFlowDeps {
     hooks: makeDomainHooks({
       findBySlug: (slug) => purchases.findBySlug(slug),
       // Web-app sites (no iOS row): only with the web app on (web_app_sites exists then).
-      webSite: async (slug) => {
-        if (!webAppEntitlementsOn()) return null;
-        const r = await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=taken_down_at,removed_at&limit=1`);
-        return r?.[0] ?? null;
-      },
+      webSite: liveWebSite,
       readPending: readPendingSite,
       publish: (slug, opts) => publishSite(slug, opts),
       now: Date.now,
@@ -215,6 +247,7 @@ export function liveWebDomainDeps(authorize: WebDomainDeps['authorize']): WebDom
     priceId: process.env.STRIPE_DOMAIN_PRICE_ID || undefined,
     cancelAndRefund: (subId) => stripeCancelAndRefund(subId),
     notifySupport: (subject, text) => notifySupportEmail(subject, text),
+    testRealSubs: domainTestRealSubs(),
   };
 }
 

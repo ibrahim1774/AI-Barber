@@ -26,7 +26,12 @@ export interface DomainHookDeps {
    * A web-app site (web_app_sites) for a slug with NO ios_purchases row; null when there is none.
    * Optional: absent = iOS-only behaviour (a slug with no iOS row is 'no-site').
    */
-  webSite?(slug: string): Promise<{ taken_down_at?: string | null; removed_at?: string | null } | null>;
+  webSite?(slug: string): Promise<{
+    taken_down_at?: string | null;
+    removed_at?: string | null;
+    /** The site's CURRENT plan as the iOS product id (webProductId); null/absent = none entitled (every Book/Shop link is stripped). */
+    product_id?: string | null;
+  } | null>;
   readPending(slug: string): Promise<PendingSite | null>;
   publish(slug: string, opts: { force: boolean; pending?: PendingSite }): Promise<PublishOutcome>;
   /**
@@ -63,14 +68,14 @@ async function republish(slug: string, deps: DomainHookDeps): Promise<HookOutcom
   return 'republished';
 }
 
-/** A web-created site (no iOS row): republish its stored copy as is (web plans have no tier link strip). */
+/** A web-created site (no iOS row): republish its stored copy with the Book/Shop links its CURRENT plan covers (same strip as the iOS hook and the web publish). */
 async function republishWeb(slug: string, deps: DomainHookDeps): Promise<HookOutcome> {
   const site = await deps.webSite!(slug);
   if (!site) return 'no-site';
   if (site.removed_at || site.taken_down_at) return 'site-offline';
   const pending = await deps.readPending(slug);
   if (!pending?.siteData) return 'no-copy';
-  const outcome = await deps.publish(slug, { force: true, pending });
+  const outcome = await deps.publish(slug, { force: true, pending: { ...pending, siteData: stripLapsedLinks(pending.siteData, site.product_id ?? null) } });
   if (!outcome.ok) throw new Error(`publish-failed: ${outcome.reason || 'unknown'}`);
   return 'republished';
 }

@@ -194,7 +194,7 @@ export default async function handler(req: any, res: any) {
     // A paid, verified domain checkout is a sale: the same server-side Purchase as a site checkout.
     if (domainResult.purchase && (domainResult.status ?? 200) < 500) {
       try {
-        const rep = await reportPurchase(event.data?.object || {}, DOMAIN_PURCHASE_PLAN);
+        const rep = await reportPurchase(domainResult.purchaseObject ?? event.data?.object ?? {}, DOMAIN_PURCHASE_PLAN);
         if (rep.ok === false) return res.status(rep.status).json({ error: rep.error });
       } catch (e: any) {
         console.error('[Stripe Webhook] domain Purchase report failed:', e?.message || e);
