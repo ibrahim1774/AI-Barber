@@ -94,7 +94,8 @@ export function webStatusBody(row: DomainRow | null): DomainStatusBody {
 /** webStatusBody with the DNS / TLS probe on a live manual domain. */
 export async function webStatusWithProbe(row: DomainRow | null, flow: DomainFlowDeps): Promise<DomainStatusBody> {
   if (row?.state === 'manual_live') return statusWithProbe({ ...row, state: 'live' }, flow);
-  return webStatusBody(row);
+  if (row?.state === 'awaiting_setup' || (row?.state === 'transferred' && row.transferred_by === 'manual-ended')) return webStatusBody(row);
+  return statusWithProbe(row, flow); // every other state: the existing status + probe
 }
 
 // ─── signed links ───
