@@ -281,3 +281,326 @@ Forgot your password? https://www.aibarber.org/app/forgot-password
 We never email passwords.",
 }
 `;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 1 anon no shop 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Pick up where you left off. One tap signs you back in.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Your website is saved in your account. Nothing is lost.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">If you have a question, just reply to this email.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a></p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Your website is saved",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "1",
+    },
+  ],
+  "text": "Hi,
+
+Your website is saved in your account. Nothing is lost.
+
+When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+If you have a question, just reply to this email.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN",
+}
+`;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 1 named shop 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Pick up where you left off. One tap signs you back in.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi Jake,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Your website for Jake's Cuts is saved in your account. Nothing is lost.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">If you have a question, just reply to this email.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a></p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Jake, your Jake's Cuts website is saved",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "1",
+    },
+  ],
+  "text": "Hi Jake,
+
+Your website for Jake's Cuts is saved in your account. Nothing is lost.
+
+When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+If you have a question, just reply to this email.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN",
+}
+`;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 1 postal 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Pick up where you left off. One tap signs you back in.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi Jake,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Your website for Jake's Cuts is saved in your account. Nothing is lost.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">If you have a question, just reply to this email.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a><br>Prime Barber, PO Box 1, Town, ST 12345</p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Jake, your Jake's Cuts website is saved",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "1",
+    },
+  ],
+  "text": "Hi Jake,
+
+Your website for Jake's Cuts is saved in your account. Nothing is lost.
+
+When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+If you have a question, just reply to this email.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN
+Prime Barber, PO Box 1, Town, ST 12345",
+}
+`;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 2 anon no shop 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Your pages, services and photos are all saved.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Your website is still saved, with all your pages, services and photos.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">It takes about a minute to finish and go live. Tap below to sign back in and pick up where you left off.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">Stuck on something? Reply and tell me what's in the way. I read every email.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a></p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Your website is still waiting",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "2",
+    },
+  ],
+  "text": "Hi,
+
+Your website is still saved, with all your pages, services and photos.
+
+It takes about a minute to finish and go live. Tap below to sign back in and pick up where you left off.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+Stuck on something? Reply and tell me what's in the way. I read every email.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN",
+}
+`;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 2 named shop 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Your pages, services and photos are all saved.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi Jake,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Your Jake's Cuts website is still saved, with all your pages, services and photos.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">It takes about a minute to finish and go live. Tap below to sign back in and pick up where you left off.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">Stuck on something? Reply and tell me what's in the way. I read every email.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a></p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Your Jake's Cuts website is still waiting",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "2",
+    },
+  ],
+  "text": "Hi Jake,
+
+Your Jake's Cuts website is still saved, with all your pages, services and photos.
+
+It takes about a minute to finish and go live. Tap below to sign back in and pick up where you left off.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+Stuck on something? Reply and tell me what's in the way. I read every email.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN",
+}
+`;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 3 anon no shop 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">This is the last reminder. Your draft stays saved.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">This is the last reminder from me. Your website is still saved and ready to finish whenever you want.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Tap below to sign back in and open it.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">If you decided it's not for you, no problem. You won't get any more emails about it.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a></p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Still want your website?",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "3",
+    },
+  ],
+  "text": "Hi,
+
+This is the last reminder from me. Your website is still saved and ready to finish whenever you want.
+
+Tap below to sign back in and open it.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+If you decided it's not for you, no problem. You won't get any more emails about it.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN",
+}
+`;
+
+exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 3 named shop 1`] = `
+{
+  "from": "Prime Barber <support@davoxa.com>",
+  "headers": {
+    "List-Unsubscribe": "<https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN>, <mailto:support@davoxa.com?subject=unsubscribe>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">This is the last reminder. Your draft stays saved.</div>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Hi Jake,</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">This is the last reminder from me. Your Jake's Cuts website is still saved and ready to finish whenever you want.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">Tap below to sign back in and open it.</p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN" style="color:#0b57d0">Finish my website</a></p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px">If you decided it's not for you, no problem. You won't get any more emails about it.<br><br>Ibrahim<br>Prime Barber</p>
+<p style="margin:0;font-size:12px;line-height:18px;color:#666">You're getting this because you started a website at primebarber.org with jake@gmail.com.<br><a href="https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN" style="color:#666">Unsubscribe</a></p>
+</body></html>",
+  "replyTo": "support@davoxa.com",
+  "subject": "Still want your Jake's Cuts website?",
+  "tags": [
+    {
+      "name": "kind",
+      "value": "signup_nudge",
+    },
+    {
+      "name": "step",
+      "value": "3",
+    },
+  ],
+  "text": "Hi Jake,
+
+This is the last reminder from me. Your Jake's Cuts website is still saved and ready to finish whenever you want.
+
+Tap below to sign back in and open it.
+
+Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
+
+If you decided it's not for you, no problem. You won't get any more emails about it.
+
+Ibrahim
+Prime Barber
+
+You're getting this because you started a website at primebarber.org with jake@gmail.com.
+Unsubscribe: https://www.aibarber.org/api/web-app/unsubscribe?t=UTOKEN",
+}
+`;

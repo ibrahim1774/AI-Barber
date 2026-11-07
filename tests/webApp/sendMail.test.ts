@@ -41,6 +41,28 @@ describe('sendMail', () => {
     expect(k(0)).toBeTruthy(); expect(k(1)).toBe(k(0));
     vi.useRealTimers();
   });
+  it('forwards headers and tags only when present; absent keys are not sent', async () => {
+    const f = vi.fn(async () => res(200, { id: 'm' }));
+    await sendMail('a@b.co', mail, f as any);
+    const plain = JSON.parse((f.mock.calls[0][1] as any).body);
+    expect(plain).not.toHaveProperty('headers');
+    expect(plain).not.toHaveProperty('tags');
+    await sendMail('a@b.co', { ...mail, headers: {}, tags: [] }, f as any);
+    const empty = JSON.parse((f.mock.calls[1][1] as any).body);
+    expect(empty).not.toHaveProperty('headers');
+    expect(empty).not.toHaveProperty('tags');
+    await sendMail('a@b.co', { ...mail, headers: { 'List-Unsubscribe': '<https://x.co/u>' }, tags: [{ name: 'kind', value: 'k' }] }, f as any);
+    const full = JSON.parse((f.mock.calls[2][1] as any).body);
+    expect(full.headers).toEqual({ 'List-Unsubscribe': '<https://x.co/u>' });
+    expect(full.tags).toEqual([{ name: 'kind', value: 'k' }]);
+  });
+  it('mail.from overrides the sender; otherwise env, then the default', async () => {
+    const f = vi.fn(async () => res(200, { id: 'm' }));
+    await sendMail('a@b.co', { ...mail, from: 'P <n@x.co>' }, f as any);
+    expect(JSON.parse((f.mock.calls[0][1] as any).body).from).toBe('P <n@x.co>');
+    await sendMail('a@b.co', mail, f as any);
+    expect(JSON.parse((f.mock.calls[1][1] as any).body).from).toBe('Prime Barber <support@davoxa.com>');
+  });
   it('still throws on a persistent error', async () => {
     const f = vi.fn(async () => res(403, {}));
     await expect(sendMail('a@b.co', mail, f as any)).rejects.toThrow('resend 403');

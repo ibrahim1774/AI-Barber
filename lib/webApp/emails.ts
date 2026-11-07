@@ -12,7 +12,13 @@ export interface EmailInput {
   /** 0 = the first notice; 1+ = a follow-up reminder. */
   reminder?: number;
 }
-export interface Mail { subject: string; html: string; text: string; /** Optional Reply-To address (a real, monitored mailbox). */ replyTo?: string }
+export interface Mail {
+  subject: string; html: string; text: string;
+  /** Optional Reply-To address (a real, monitored mailbox). */ replyTo?: string;
+  /** Optional sender override (full "Name <addr>"). Absent: WEB_APP_EMAIL_FROM or the default. */ from?: string;
+  /** Optional extra mail headers (List-Unsubscribe etc.). Only sent to Resend when present. */ headers?: Record<string, string>;
+  /** Optional Resend tags. Only sent to Resend when present. */ tags?: { name: string; value: string }[];
+}
 
 const TIER_NAME: Record<string, string> = { website: 'Custom site', bookings: 'Custom site + booking', store: 'Custom site, booking + your own store' };
 /** What the plan includes, in a few words. */
@@ -123,13 +129,108 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   return { subject, html, text, replyTo: replyToAddress() };
 }
 
+export interface PlainLayout {
+  preheader?: string;
+  /** Body paragraphs, plain text (escaped for HTML here). */
+  paragraphs: string[];
+  cta: { label: string; href: string };
+  /** Plain lines after the button (e.g. the sign-off). */
+  closing?: string[];
+  /** Small grey footer lines; `unsubscribe` is rendered as a link in HTML and "Unsubscribe: url" in text. */
+  footer: string[];
+  unsubscribe?: { label: string; href: string };
+}
+
+/** The failed-payment look (white page, dark text, one button link, text part mirrors HTML) for any plain mail. */
+export function renderPlain(l: PlainLayout): { html: string; text: string } {
+  const pre = l.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(l.preheader)}</div>\n` : '';
+  const paras = l.paragraphs.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:22px">${esc(p)}</p>`).join('\n');
+  const closing = (l.closing ?? []).length ? `<p style="margin:0 0 16px;font-size:15px;line-height:22px">${(l.closing ?? []).map(esc).join('<br>')}</p>\n` : '';
+  const foot = l.footer.map((f) => esc(f)).join('<br>');
+  const unsub = l.unsubscribe ? `<br><a href="${esc(l.unsubscribe.href)}" style="color:#666">${esc(l.unsubscribe.label)}</a>` : '';
+  const html = `<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
+${pre}${paras}
+<p style="margin:0 0 16px;font-size:15px"><a href="${esc(l.cta.href)}" style="color:#0b57d0">${esc(l.cta.label)}</a></p>
+${closing}<p style="margin:0;font-size:12px;line-height:18px;color:#666">${foot}${unsub}</p>
+</body></html>`;
+  const text = [
+    ...l.paragraphs.flatMap((p) => [p, '']),
+    `${l.cta.label}: ${l.cta.href}`, '',
+    ...(l.closing ?? []), ...((l.closing ?? []).length ? [''] : []),
+    ...l.footer, ...(l.unsubscribe ? [`Unsubscribe: ${l.unsubscribe.href}`] : []),
+  ].join('\n');
+  return { html, text };
+}
+
+export interface NudgeInput {
+  email: string;
+  firstName?: string | null;
+  /** Shop name from the draft; omitted phrasing when blank. */
+  shopName?: string | null;
+  /** Signed one-tap sign-in link (on the app origin). */
+  continueUrl: string;
+  /** One-click unsubscribe URL (on the app origin). */
+  unsubscribeUrl: string;
+}
+
+/**
+ * Unpaid sign-up reminder, step 1 (1 h), 2 (24 h) or 3 (72 h). Plain tone, ONE action link plus an unsubscribe link,
+ * no prices, no images or tracking. Carries RFC 8058 List-Unsubscribe headers and a sender override.
+ */
+export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
+  const first = firstOf(i.firstName);
+  const shop = (i.shopName || '').replace(/\s+/g, ' ').trim();
+  const hi = first ? `Hi ${first},` : 'Hi,';
+  const sign = ['Ibrahim', 'Prime Barber'];
+  const site = shop ? `your ${shop} website` : 'your website';
+  let subject: string; let preheader: string; let paragraphs: string[]; let closing: string[];
+  if (step === 1) {
+    subject = first ? `${first}, ${site} is saved` : `${site.charAt(0).toUpperCase()}${site.slice(1)} is saved`;
+    preheader = 'Pick up where you left off. One tap signs you back in.';
+    paragraphs = [hi, `Your website${shop ? ` for ${shop}` : ''} is saved in your account. Nothing is lost.`,
+      "When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online."];
+    closing = ['If you have a question, just reply to this email.', '', ...sign];
+  } else if (step === 2) {
+    subject = `${site.charAt(0).toUpperCase()}${site.slice(1)} is still waiting`;
+    preheader = 'Your pages, services and photos are all saved.';
+    paragraphs = [hi, `${site.charAt(0).toUpperCase()}${site.slice(1)} is still saved, with all your pages, services and photos.`,
+      'It takes about a minute to finish and go live. Tap below to sign back in and pick up where you left off.'];
+    closing = ["Stuck on something? Reply and tell me what's in the way. I read every email.", '', ...sign];
+  } else {
+    subject = `Still want ${site}?`;
+    preheader = 'This is the last reminder. Your draft stays saved.';
+    paragraphs = [hi, `This is the last reminder from me. ${site.charAt(0).toUpperCase()}${site.slice(1)} is still saved and ready to finish whenever you want.`,
+      'Tap below to sign back in and open it.'];
+    closing = ["If you decided it's not for you, no problem. You won't get any more emails about it.", '', ...sign];
+  }
+  const footer = [`You're getting this because you started a website at primebarber.org with ${i.email}.`];
+  const postal = process.env.WEB_APP_POSTAL_ADDRESS?.trim();
+  const { html, text } = renderPlain({
+    preheader, paragraphs, cta: { label: 'Finish my website', href: i.continueUrl }, closing,
+    footer, unsubscribe: { label: 'Unsubscribe', href: i.unsubscribeUrl },
+  });
+  // Postal line goes after the unsubscribe link, only when configured.
+  const html2 = postal ? html.replace(/<\/p>\n<\/body>/, `<br>${esc(`Prime Barber, ${postal}`)}</p>\n</body>`) : html;
+  const text2 = postal ? `${text}\nPrime Barber, ${postal}` : text;
+  const mailto = replyToAddress();
+  return {
+    subject, html: html2, text: text2, replyTo: mailto,
+    from: process.env.WEB_APP_NUDGE_FROM?.trim() || process.env.WEB_APP_EMAIL_FROM?.trim() || 'Prime Barber <support@davoxa.com>',
+    headers: {
+      'List-Unsubscribe': `<${i.unsubscribeUrl}>, <mailto:${mailto}?subject=unsubscribe>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+    tags: [{ name: 'kind', value: 'signup_nudge' }, { name: 'step', value: String(step) }],
+  };
+}
+
 export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch = fetch, idempotencyKey: string = randomUUID()): Promise<string> {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error('RESEND_API_KEY missing');
   const init = {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify({ from: process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text, ...(mail.replyTo ? { reply_to: mail.replyTo } : {}) }),
+    body: JSON.stringify({ from: mail.from || process.env.WEB_APP_EMAIL_FROM || 'Prime Barber <support@davoxa.com>', to: [to], subject: mail.subject, html: mail.html, text: mail.text, ...(mail.replyTo ? { reply_to: mail.replyTo } : {}), ...(mail.headers && Object.keys(mail.headers).length ? { headers: mail.headers } : {}), ...(mail.tags && mail.tags.length ? { tags: mail.tags } : {}) }),
   };
   // Resend allows ~2 requests/s per key and an order fires several mails at once: retry a 429/5xx once.
   let r = await fetchImpl('https://api.resend.com/emails', init);
