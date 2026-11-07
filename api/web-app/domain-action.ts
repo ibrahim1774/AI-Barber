@@ -6,7 +6,7 @@ import { clientIp, publicLimiter } from '../../lib/bookings/rateLimit.js';
 import { domainActionView, postAllowed, runDomainAction } from '../../lib/webApp/domainManual.js';
 import { liveManualEnv } from '../../lib/webApp/domainManualLive.js';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 300 };
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');

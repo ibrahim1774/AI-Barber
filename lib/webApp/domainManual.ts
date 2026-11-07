@@ -19,7 +19,7 @@ import {
   PAYER_REFRESH_MS, WEB_REFUND_REASONS, type DomainFlowDeps, type DomainStatusBody,
 } from '../ios/domainFlow.js';
 import { OWNER_REMOVED, type DomainRow } from '../ios/domainsRepo.js';
-import { withTimeout } from '../ios/timeout.js';
+import { withTimeout, TimeoutError } from '../ios/timeout.js';
 import {
   finishRefund, recordRefusedPaidSlot, refundedResult, stripePayerStatus, type WebDomainDeps, type WebResult,
 } from '../webDomains.js';
@@ -35,6 +35,10 @@ export const LINK_TTL_MS = 30 * DAY;
 export const ORDER_REMINDER_MS = 48 * HOUR;
 export const UNSENT_ALERT_MS = 24 * HOUR;
 export const RENEWAL_DUE_MS = 30 * DAY;
+/** A republish is a full deploy (~120-150 s). The link handler runs under maxDuration 300: give up on it before the function is killed. */
+export const REPUBLISH_TIMEOUT_MS = 200_000;
+/** The row lease an in-flight Mark live / Can't holds, so the two never interleave (the function's 300 s budget). */
+const ACTION_LEASE_MS = 290_000;
 const iso = (ms: number) => new Date(ms).toISOString();
 const errMsg = (e: unknown) => String((e as any)?.code || (e as Error)?.message || e).slice(0, 200);
 
@@ -481,19 +485,34 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
     if (row.state !== 'awaiting_setup') return msg('Already done', `This order is no longer waiting (${row.state}).`);
     const r = await liveChecks(row, env);
     if (!r.ok) return page(`Not live yet: ${row.domain}`, `${checkTable(r.checks)}<p>Nothing was changed. Fix the red items and try again.</p>`, 409);
+    // The row's lease for the whole republish: a Can't get this name cannot run meanwhile (and the sweep skips the row).
+    const lease = await repo.acquireLease(key, now(), ACTION_LEASE_MS);
+    if (!lease) return msg('In progress', 'Another action on this order is running right now. Nothing was changed; reload in a minute.', 409);
     try {
-      await hooks.onDomainLinked(row.site_slug, row.domain);
-    } catch (e) {
-      console.error(`[domains/manual] ${key}: republish on Mark live failed (row unchanged):`, errMsg(e));
-      return msg('Republish failed', 'The site could not be republished on the new address. Nothing was changed; press the link again in a minute.', 502);
+      const cur0 = (await repo.get(key)) ?? row;
+      if (cur0.state !== 'awaiting_setup') return msg(cur0.state === 'manual_live' ? 'Already live' : 'Already done', cur0.state === 'manual_live' ? `${row.domain} is already marked live.` : `This order is no longer waiting (${cur0.state}).`);
+      try {
+        await withTimeout(Promise.resolve(hooks.onDomainLinked(row.site_slug, row.domain)), REPUBLISH_TIMEOUT_MS, 'republish');
+      } catch (e) {
+        console.error(`[domains/manual] ${key}: republish on Mark live failed or timed out (row unchanged):`, errMsg(e));
+        if (e instanceof TimeoutError) {
+          return msg('Republish still running', 'The republish is taking longer than this page can wait. Nothing was changed on the order; it may finish on its own. Press the link again in a few minutes (it is safe to repeat).', 504);
+        }
+        return msg('Republish failed', 'The site could not be republished on the new address. Nothing was changed; press the link again in a minute.', 502);
+      }
+      const at = iso(now());
+      const moved = await repo.update(key, ['awaiting_setup'], { state: 'manual_live', linked_at: at, dns_ready_at: at, last_error: null });
+      if (!moved) {
+        // Lost the race after the republish (the lease expired): the site now carries the domain it must not. Undo it.
+        const cur = await repo.get(key);
+        if (cur?.state === 'manual_live') return msg('Already live', `${row.domain} is already marked live.`);
+        await Promise.resolve(hooks.onDomainUnlinked(row.site_slug)).catch((e) => console.error(`[domains/manual] ${key}: undo republish failed:`, errMsg(e)));
+        return msg('Already done', `This order is no longer waiting (${cur?.state ?? 'unknown'}). The site was republished back on its free address.`);
+      }
+      row = moved;
+    } finally {
+      await repo.releaseLease(key, lease).catch((e) => console.error(`[domains/manual] ${key}: releasing the lease failed:`, errMsg(e)));
     }
-    const at = iso(now());
-    const moved = await repo.update(key, ['awaiting_setup'], { state: 'manual_live', linked_at: at, dns_ready_at: at, last_error: null });
-    if (!moved) {
-      const cur = await repo.get(key);
-      return cur?.state === 'manual_live' ? msg('Already live', `${row.domain} is already marked live.`) : msg('Already done', `This order is no longer waiting (${cur?.state ?? 'unknown'}).`);
-    }
-    row = moved;
     const mailed = await sendLiveMail(row, env);
     const canonical = m.fetchCanonical ? await withTimeout(m.fetchCanonical(row.domain), 8_000, 'canonical').catch(() => null) : null;
     return page(`${row.domain} is live`, `<p>The site was republished on https://${H(row.domain)} and the row is marked live.</p><p>Customer email: ${mailed ? 'sent' : 'not sent yet (the sweep retries)'}.</p>${r.stub ? '<p><b>STUB:</b> Vercel / HTTPS were not checked (staging).</p>' : ''}<p>Canonical found on the live page (display only): ${canonical ? H(canonical) : 'none found'}</p>`);
@@ -502,12 +521,22 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
   if (p.a === 'cant') {
     if (row.state === 'failed' && row.alerts_sent?.['manual-refund'] && row.refunded_at) return msg('Already done', `${row.domain} was already closed and refunded.`);
     if (row.state === 'awaiting_setup') {
-      const moved = await repo.update(key, ['awaiting_setup'], {
-        state: 'failed', failure_reason: 'taken', last_error: "manual: operator could not register this name", auto_renew: false,
-        alerts_sent: { ...(row.alerts_sent ?? {}), 'manual-refund': iso(now()) },
-      });
-      if (!moved) row = (await repo.get(key)) ?? row;
-      else row = moved;
+      // Refused while a Mark live republish is in flight (it holds the row's lease): the site must not end up published
+      // on a domain whose order was refunded.
+      const lease = await repo.acquireLease(key, now(), ACTION_LEASE_MS);
+      if (!lease) return msg('In progress', 'A Mark live is running on this order right now. Nothing was changed; reload in a minute.', 409);
+      try {
+        const fresh = (await repo.get(key)) ?? row;
+        const moved = fresh.state === 'awaiting_setup'
+          ? await repo.update(key, ['awaiting_setup'], {
+            state: 'failed', failure_reason: 'taken', last_error: "manual: operator could not register this name", auto_renew: false,
+            alerts_sent: { ...(fresh.alerts_sent ?? {}), 'manual-refund': iso(now()) },
+          })
+          : null;
+        row = moved ?? fresh;
+      } finally {
+        await repo.releaseLease(key, lease).catch((e) => console.error(`[domains/manual] ${key}: releasing the lease failed:`, errMsg(e)));
+      }
     }
     if (!(row.state === 'failed' && row.alerts_sent?.['manual-refund'])) return msg('Already done', `This order is no longer waiting (${row.state}).`);
     const settled = await settleWebFailure(row, { repo, now, notifySupport: env.notifySupport ?? env.flow.notifySupport, cancelAndRefund: env.cancelAndRefund });
@@ -531,9 +560,9 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
     const att = await withTimeout(env.flow.vercel.projectDomain(projectFor(row.site_slug), row.domain), 6_000, 'project domain').catch(() => undefined);
     if (att) return msg('Still on the project', `${row.domain} is still attached to Vercel project ${projectFor(row.site_slug)}. Remove it first (the republish would keep it as the address). Nothing was changed.`, 409);
   }
-  try { await hooks.onDomainUnlinked(row.site_slug); } catch (e) {
-    console.error(`[domains/manual] ${key}: republish on Mark ended failed (row unchanged):`, errMsg(e));
-    return msg('Republish failed', 'The site could not be republished on its free address. Nothing was changed; press the link again in a minute.', 502);
+  try { await withTimeout(Promise.resolve(hooks.onDomainUnlinked(row.site_slug)), REPUBLISH_TIMEOUT_MS, 'republish'); } catch (e) {
+    console.error(`[domains/manual] ${key}: republish on Mark ended failed or timed out (row unchanged):`, errMsg(e));
+    return msg(e instanceof TimeoutError ? 'Republish still running' : 'Republish failed', 'The site could not be republished on its free address. Nothing was changed; press the link again in a minute.', 502);
   }
   const at = iso(now());
   const moved = await repo.update(key, ['manual_live'], { state: 'transferred', transferred_at: at, transferred_by: 'manual-ended', detached_at: at, auto_renew: false });

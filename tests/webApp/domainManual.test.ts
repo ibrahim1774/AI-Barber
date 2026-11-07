@@ -1,12 +1,13 @@
 // Manual fulfilment of the web app's $39/year domain (lib/webApp/domainManual.ts): the claim parks a paid
 // order in awaiting_setup and NEVER buys; mails go out exactly once; the three signed links move the row.
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { DOMAIN_SESSION_APP, claimDomainSubscription, createDomainCheckout, domainSig, handleDomainStripeEvent, stripePayerStatus } from '../../lib/webDomains.js';
 import { sweepDomains, projectFor, type DomainFlowDeps } from '../../lib/ios/domainFlow.js';
 import { makePayer } from '../../lib/ios/domainLive.js';
 import {
   domainActionView, runDomainAction, signDomainAction, sweepManualDomains, verifyDomainAction, webStatusBody, webStatusWithProbe,
-  postAllowed, type ManualEnv,
+  postAllowed, REPUBLISH_TIMEOUT_MS, type ManualEnv,
 } from '../../lib/webApp/domainManual.js';
 import { customDomainOf } from '../../lib/webApp/publishFlow.js';
 import { fakeRegistrar } from '../ios/fakeRegistrar.js';
@@ -672,5 +673,67 @@ describe('B1: a web-app site never reaches the registrar, whatever the client se
     await w.claim().catch(() => {});
     expect(w.repo.rows.get(KEY)?.state).not.toBe('awaiting_setup');
     expect(w.reg.api.buy).toHaveBeenCalled();
+  });
+});
+
+
+// ─── B2 / S4: the republish is long; Mark live and Can't never interleave ───
+describe('B2: Mark live fits the function budget and never hangs the page', () => {
+  const ready = async (w: W) => { await w.claim(); await w.attach(); };
+
+  it('the action endpoint and vercel.json both allow 300 s (a republish takes ~150 s)', () => {
+    expect(readFileSync('api/web-app/domain-action.ts', 'utf8')).toMatch(/maxDuration:\s*300/);
+    expect(JSON.parse(readFileSync('vercel.json', 'utf8')).functions['api/web-app/domain-action.ts'].maxDuration).toBe(300);
+  });
+
+  it('a republish that never returns ends the page with an honest 504, leaves the row awaiting_setup, frees the lease, and a retry works', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      await ready(w);
+      w.hooks.onDomainLinked.mockImplementationOnce(() => new Promise<void>(() => {}));
+      const pending = runDomainAction(w.tokenFor('live'), w.env);
+      await vi.advanceTimersByTimeAsync(REPUBLISH_TIMEOUT_MS + 1000);
+      const r = await pending;
+      expect(r.status).toBe(504);
+      expect(r.html).toMatch(/safe to repeat/);
+      expect(w.row().state).toBe('awaiting_setup');
+      expect(w.row().lease_until).toBeNull();
+      const again = await runDomainAction(w.tokenFor('live'), w.env);
+      expect(again.status).toBe(200);
+      expect(w.row().state).toBe('manual_live');
+      expect(w.hooks.onDomainLinked).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe('S4: Can\'t and Mark live cannot interleave', () => {
+  it('Can\'t during a Mark live republish is refused: no refund, row stays awaiting_setup', async () => {
+    const w = world();
+    await w.claim(); await w.attach();
+    let release!: () => void;
+    w.hooks.onDomainLinked.mockImplementationOnce(() => new Promise<void>((res) => { release = res; }));
+    const live = runDomainAction(w.tokenFor('live'), w.env);
+    await new Promise((r) => setTimeout(r, 0));
+    const cant = await runDomainAction(w.tokenFor('cant'), w.env);
+    expect(cant.status).toBe(409);
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+    expect(w.row().state).toBe('awaiting_setup');
+    release();
+    expect((await live).status).toBe(200);
+    expect(w.row().state).toBe('manual_live');
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+  });
+
+  it('losing the race after the republish (lease gone) undoes the republish', async () => {
+    const w = world();
+    await w.claim(); await w.attach();
+    w.hooks.onDomainLinked.mockImplementationOnce(async () => {
+      w.repo.rows.set(KEY, { ...w.row(), state: 'failed', failure_reason: 'taken' }); // Can't won meanwhile
+    });
+    const r = await runDomainAction(w.tokenFor('live'), w.env);
+    expect(r.html).toMatch(/free address/);
+    expect(w.hooks.onDomainUnlinked).toHaveBeenCalledWith(SLUG);
+    expect(w.row().state).toBe('failed');
   });
 });

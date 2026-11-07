@@ -170,6 +170,10 @@
       "maxDuration": 300,
       "includeFiles": "lib/ios/certs/**"
     },
+    "api/web-app/domain-action.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
     "api/purchase-domain.ts": {
       "maxDuration": 300,
       "includeFiles": "lib/ios/certs/**"
