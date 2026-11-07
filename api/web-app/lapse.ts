@@ -4,6 +4,7 @@ import { authorizedStrict } from '../../lib/cronAuth.js';
 import { liveIosOverlapDeps, liveWebSweepDeps, sweepIosOverlap, sweepWebApp } from '../../lib/webApp/lapse.js';
 import { sweepDunning } from '../../lib/webApp/dunning.js';
 import { sweepDuplicates } from '../../lib/webApp/duplicates.js';
+import { liveSignupNudgeDeps, sweepSignupNudges } from '../../lib/webApp/signupNudges.js';
 import { keyMode } from '../../lib/webApp/stripeCore.js';
 import { webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 
@@ -26,7 +27,12 @@ export default async function handler(req: any, res: any) {
     const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
     const duplicates = mode && webAppCheckoutOn() ? await sweepDuplicates(mode).catch((e: any) => { console.error('[web-app dup sweep]', e?.message || e); return null; }) : null;
     const iosOverlap = mode ? await sweepIosOverlap(liveIosOverlapDeps(mode)).catch((e: any) => { console.error('[web-app ios-overlap]', e?.message || e); return null; }) : null;
-    return res.status(200).json({ ok: true, ...summary, dunning, duplicates, iosOverlap });
+    // Unpaid sign-up reminders: best effort, behind its own kill switch (WEB_APP_NUDGES=1; the sweep checks the rest). Can never fail this job.
+    let nudges: unknown = null;
+    if (mode && process.env.WEB_APP_NUDGES === '1') {
+      try { nudges = await sweepSignupNudges(liveSignupNudgeDeps(mode), { mode }); } catch (e: any) { console.error('[web-app nudges]', e?.message || e); }
+    }
+    return res.status(200).json({ ok: true, ...summary, dunning, duplicates, iosOverlap, nudges });
   } catch (err: any) {
     console.error('[Sweeper:web] threw:', err?.message || err);
     return res.status(500).json({ error: err?.message || 'web-app sweep failed' });
