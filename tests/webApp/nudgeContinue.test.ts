@@ -190,7 +190,9 @@ describe('/api/web-app/continue handler', () => {
     const r = await call({ method: 'GET', query: { t } });
     expect(r.code).toBe(200); expect(f).not.toHaveBeenCalled();
     expect(r.body).toContain('<form method="POST" action="/api/web-app/continue"'); expect(r.body).toContain(`value="${t}"`);
-    expect(r.headers['Cache-Control']).toBe('no-store'); expect(r.headers['X-Robots-Tag']).toBe('noindex'); expect(r.headers['Referrer-Policy']).toBe('same-origin');
+    expect(r.body).toContain("history.replaceState(null,'',location.pathname)"); expect(r.body.split(t).length - 1).toBe(1); // token only in the hidden input
+    expect(JSON.stringify(r.headers)).not.toContain(t);
+    expect(r.headers['Cache-Control']).toBe('no-store'); expect(r.headers['X-Robots-Tag']).toBe('noindex'); expect(r.headers['Referrer-Policy']).toBe('strict-origin');
   });
   it('GET shows who it signs in (masked) and a Not you link', async () => {
     stubFetch();
@@ -250,7 +252,7 @@ describe('/api/web-app/continue handler', () => {
     expect(f.mock.calls.some((c) => String(c[0]).includes('generate_link'))).toBe(false);
   });
   it('POST for an iOS purchaser goes to sign-in, never generate_link', async () => {
-    const f = stubFetch({ ios_purchases: json(200, [{ original_transaction_id: 'x', environment: 'Production' }]) });
+    const f = stubFetch({ ios_purchases: () => json(200, [{ original_transaction_id: 'x', environment: 'Production' }]) });
     const r = await call({ method: 'POST', headers: { origin: ORIGIN, 'x-real-ip': `10.1.0.${n}` }, body: { t: live() } });
     expect(r.code).toBe(303); expect(r.headers.Location).toBe('/app/sign-in'); expect(r.headers['Set-Cookie']).toBeUndefined();
     expect(f.mock.calls.some((c) => String(c[0]).includes('generate_link'))).toBe(false);

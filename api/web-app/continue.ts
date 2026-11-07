@@ -21,7 +21,7 @@ const tokenFrom = (req: any): unknown => {
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Robots-Tag', 'noindex');
-  res.setHeader('Referrer-Policy', 'same-origin'); // 'no-referrer' makes browsers send Origin: null on the form POST
+  res.setHeader('Referrer-Policy', 'strict-origin'); // the Referer never carries path or query (the token); 'no-referrer' would make the form POST send Origin: null
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
   const secret = process.env.WEB_APP_NUDGE_SECRET || '';

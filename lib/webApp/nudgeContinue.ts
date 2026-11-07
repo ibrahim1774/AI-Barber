@@ -88,7 +88,7 @@ export async function performContinue(token: unknown, deps: ContinueDeps): Promi
 }
 
 // ---------- pages (shared with the unsubscribe handler) ----------
-export function mailPage(opts: { heading: string; body: string; button?: { label: string; href?: string; formAction?: string; fields?: Record<string, string> }; alt?: { label: string; href: string } }): string {
+export function mailPage(opts: { heading: string; body: string; button?: { label: string; href?: string; formAction?: string; fields?: Record<string, string> }; alt?: { label: string; href: string }; script?: string }): string {
   const b = opts.button;
   const btn = !b ? '' : b.formAction
     ? `<form method="POST" action="${esc(b.formAction)}" style="margin:0 0 16px">${Object.entries(b.fields ?? {}).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('')}<button type="submit" style="${BTN}">${esc(b.label)}</button></form>`
@@ -96,7 +96,7 @@ export function mailPage(opts: { heading: string; body: string; button?: { label
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Prime Barber</title></head>
 <body style="margin:0;padding:24px 16px;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
 <div style="max-width:420px;margin:0 auto"><p style="margin:0 0 12px;font-size:20px;font-weight:600">${esc(opts.heading)}</p>
-<p style="margin:0 0 20px;font-size:15px;line-height:22px">${esc(opts.body)}</p>${btn}${opts.alt ? `<p style="margin:0;font-size:14px"><a href="${esc(opts.alt.href)}" style="color:#0b57d0">${esc(opts.alt.label)}</a></p>` : ''}</div></body></html>`;
+<p style="margin:0 0 20px;font-size:15px;line-height:22px">${esc(opts.body)}</p>${btn}${opts.alt ? `<p style="margin:0;font-size:14px"><a href="${esc(opts.alt.href)}" style="color:#0b57d0">${esc(opts.alt.label)}</a></p>` : ''}</div>${opts.script ? `<script>${opts.script}</script>` : ''}</body></html>`;
 }
 const BTN = 'padding:13px 26px;background-color:#0b57d0;border:0;border-radius:8px;color:#ffffff;font-size:16px;font-weight:600;line-height:20px;cursor:pointer';
 
@@ -108,6 +108,8 @@ export function continuePage(state: PageState, token?: string, hint?: string | n
       body: hint ? `This link signs in ${hint}. Tap the button to pick up where you left off.` : 'Tap the button to sign in and pick up where you left off.',
       button: { label: hint ? `Continue as ${hint}` : 'Continue', formAction: '/api/web-app/continue', fields: { t: token ?? '' } },
       alt: { label: 'Not you? Sign in', href: SIGN_IN_PATH },
+      // Strip ?t= from the address bar; the token stays only in the form's hidden input. The page works without JS.
+      script: "try{history.replaceState(null,'',location.pathname)}catch(e){}",
     });
     case 'used': return mailPage({ heading: 'This link was already used', body: 'For your security each link works once. Sign in to open your website.', button: signIn });
     case 'gone': return mailPage({ heading: 'We could not find this account', body: 'The account for this link no longer exists.', button: signIn });
