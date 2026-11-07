@@ -22,6 +22,11 @@ import { stripLapsedLinks } from './tiers.js';
 
 export interface DomainHookDeps {
   findBySlug(slug: string): Promise<PurchaseRow | null>;
+  /**
+   * A web-app site (web_app_sites) for a slug with NO ios_purchases row; null when there is none.
+   * Optional: absent = iOS-only behaviour (a slug with no iOS row is 'no-site').
+   */
+  webSite?(slug: string): Promise<{ taken_down_at?: string | null; removed_at?: string | null } | null>;
   readPending(slug: string): Promise<PendingSite | null>;
   publish(slug: string, opts: { force: boolean; pending?: PendingSite }): Promise<PublishOutcome>;
   /**
@@ -45,7 +50,7 @@ function offline(row: PurchaseRow, deps: DomainHookDeps): boolean {
 
 async function republish(slug: string, deps: DomainHookDeps): Promise<HookOutcome> {
   const row = await deps.findBySlug(slug);
-  if (!row?.site_slug) return 'no-site';
+  if (!row?.site_slug) return deps.webSite ? republishWeb(slug, deps) : 'no-site';
   // The offline page stays; the next restore (sweep) publishes with the new address.
   if (offline(row, deps)) return 'site-offline';
   const pending = await deps.readPending(row.site_slug);
@@ -54,6 +59,18 @@ async function republish(slug: string, deps: DomainHookDeps): Promise<HookOutcom
     force: true,
     pending: { ...pending, siteData: stripLapsedLinks(pending.siteData, row.product_id) },
   });
+  if (!outcome.ok) throw new Error(`publish-failed: ${outcome.reason || 'unknown'}`);
+  return 'republished';
+}
+
+/** A web-created site (no iOS row): republish its stored copy as is (web plans have no tier link strip). */
+async function republishWeb(slug: string, deps: DomainHookDeps): Promise<HookOutcome> {
+  const site = await deps.webSite!(slug);
+  if (!site) return 'no-site';
+  if (site.removed_at || site.taken_down_at) return 'site-offline';
+  const pending = await deps.readPending(slug);
+  if (!pending?.siteData) return 'no-copy';
+  const outcome = await deps.publish(slug, { force: true, pending });
   if (!outcome.ok) throw new Error(`publish-failed: ${outcome.reason || 'unknown'}`);
   return 'republished';
 }

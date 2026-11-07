@@ -24,13 +24,14 @@ import type { DomainNotificationSink } from './notifications.js';
 import { supabasePurchases } from './purchases.js';
 import { DOMAIN_PRODUCT_ID } from './tiers.js';
 import { liveVercelDomains, registrantContact } from './vercelDomains.js';
+import { sbRest, webAppEntitlementsOn } from '../webApp/webAppServer.js';
 import { stripePayerStatus, type WebDomainDeps } from '../webDomains.js';
 
 export function sandboxRealOtids(raw: string | undefined = process.env.DOMAINS_SANDBOX_REAL_OTIDS): Set<string> {
   return new Set((raw || '').split(',').map((s) => s.trim()).filter(Boolean));
 }
 
-async function probeHttps(domain: string): Promise<boolean> {
+export async function probeHttps(domain: string): Promise<boolean> {
   try {
     const r = await fetch(`https://${domain}/`, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(5_000) });
     return r.status > 0 && r.status < 500;
@@ -155,6 +156,12 @@ export function liveDomainDeps(): DomainFlowDeps {
     shopOtidOf: async (userId) => (await shops.shopByOwner(userId))?.ios_otid ?? null,
     hooks: makeDomainHooks({
       findBySlug: (slug) => purchases.findBySlug(slug),
+      // Web-app sites (no iOS row): only with the web app on (web_app_sites exists then).
+      webSite: async (slug) => {
+        if (!webAppEntitlementsOn()) return null;
+        const r = await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=taken_down_at,removed_at&limit=1`);
+        return r?.[0] ?? null;
+      },
       readPending: readPendingSite,
       publish: (slug, opts) => publishSite(slug, opts),
       now: Date.now,

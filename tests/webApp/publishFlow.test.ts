@@ -273,3 +273,34 @@ describe('runWebPublish: the seoFallbacks field of the success body (step 7 read
     expect(r.status).toBe(402); expect(r.body.seoFallbacks).toBeUndefined();
   });
 });
+
+import { customDomainOf, siteBody } from '../../lib/webApp/publishFlow.js';
+describe('site body customDomain (additive)', () => {
+  it('siteBody without customDomain has no such key; with it (or null) the key is present', () => {
+    expect('customDomain' in siteBody('s', null, true)).toBe(false);
+    expect(siteBody('s', null, true, null).customDomain).toBeNull();
+    const d = { domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: null, autoRenew: true };
+    expect(siteBody('s', null, true, d).customDomain).toEqual(d);
+  });
+  it('customDomainOf maps usable states only', () => {
+    expect(customDomainOf(null)).toBeNull();
+    expect(customDomainOf({ domain: null, state: 'none' })).toBeNull();
+    expect(customDomainOf({ domain: 'a.com', state: 'failed:registrar' })).toBeNull();
+    expect(customDomainOf({ domain: 'a.com', state: 'expired' })).toBeNull();
+    expect(customDomainOf({ domain: 'a.com', state: 'registering', autoRenew: true })).toMatchObject({ state: 'registering', url: null, autoRenew: true });
+    expect(customDomainOf({ domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: '2027-01-01T00:00:00.000Z', autoRenew: true })!.url).toBe('https://a.com');
+  });
+  it('lookup: body carries customDomain only when domainOf is wired; a domainOf failure is ignored', async () => {
+    const base: any = {
+      environment: 'test', userOf: async () => ({ id: 'u1' }),
+      sites: { byUser: async () => ({ slug: 's', removed_at: null, taken_down_at: null }) },
+      readPending: async () => null, subscriptionOf: async () => ({ status: 'active' }),
+    };
+    expect('customDomain' in (await runWebSiteLookup(base, { authorization: 'Bearer x' }) as any).body).toBe(false);
+    const d = { domain: 'a.com', state: 'live', url: 'https://a.com', paidUntil: null, autoRenew: true };
+    expect(((await runWebSiteLookup({ ...base, domainOf: async () => d }, { authorization: 'Bearer x' })) as any).body.customDomain).toEqual(d);
+    const failed: any = await runWebSiteLookup({ ...base, domainOf: async () => { throw new Error('db'); } }, { authorization: 'Bearer x' });
+    expect(failed.status).toBe(200);
+    expect('customDomain' in failed.body).toBe(false);
+  });
+});

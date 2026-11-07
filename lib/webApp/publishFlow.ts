@@ -83,6 +83,17 @@ export interface WebSiteBody {
   version: number;
   editedBy: SiteEditor | null;
   editedAt: string | null;
+  /** Present only on the site lookup when it was asked for: the site's custom domain (null = none). Additive. */
+  customDomain?: WebCustomDomain | null;
+}
+
+export interface WebCustomDomain { domain: string; state: string; url: string | null; paidUntil: string | null; autoRenew: boolean }
+
+/** A domain status (lib/ios/domainFlow statusBody) as the site body's customDomain; null while there is no usable domain. */
+export function customDomainOf(b: { domain: string | null; state: string; url?: string; paidUntil?: string | null; autoRenew?: boolean } | null): WebCustomDomain | null {
+  if (!b?.domain) return null;
+  if (!/^(registering|linking|live|cancelled-until:)/.test(b.state)) return null; // none, failed:*, expired, transferred
+  return { domain: b.domain, state: b.state, url: b.url ?? null, paidUntil: b.paidUntil ?? null, autoRenew: b.autoRenew === true };
 }
 
 export type WebPublishResult = { status: number; body: unknown };
@@ -91,7 +102,7 @@ export const PUBLISH_CAS_ATTEMPTS = 12;
 const badRequest = { status: 400, body: { error: 'bad-request' } };
 const unavailable = { status: 503, body: { error: 'temporarily-unavailable' } };
 
-export function siteBody(slug: string, pending: PendingSite | null, active: boolean): WebSiteBody {
+export function siteBody(slug: string, pending: PendingSite | null, active: boolean, customDomain?: WebCustomDomain | null): WebSiteBody {
   return {
     siteId: slug,
     deployedUrl: pending?.deployedUrl || null,
@@ -100,6 +111,7 @@ export function siteBody(slug: string, pending: PendingSite | null, active: bool
     version: versionOf(pending),
     editedBy: pending?.editedBy ?? null,
     editedAt: pending?.editedAt ?? null,
+    ...(customDomain !== undefined ? { customDomain } : {}),
   };
 }
 
@@ -368,7 +380,10 @@ export function liveWebPublishDeps(): WebPublishDeps {
  * or the lapse job took the site down. Same body shape as the iOS lookup so the app's status and restore code runs unchanged.
  */
 export async function runWebSiteLookup(
-  deps: Pick<WebPublishDeps, 'environment' | 'userOf' | 'sites' | 'readPending'> & { subscriptionOf(userId: string): Promise<{ status: string } | null> },
+  deps: Pick<WebPublishDeps, 'environment' | 'userOf' | 'sites' | 'readPending'> & { subscriptionOf(userId: string): Promise<{ status: string } | null>;
+    /** Optional: the site's custom domain; a failure here never fails the lookup. */
+    domainOf?(slug: string): Promise<WebCustomDomain | null>;
+  },
   ctx: { authorization?: unknown },
 ): Promise<WebPublishResult> {
   let caller: { id: string } | null;
@@ -379,7 +394,12 @@ export async function runWebSiteLookup(
     if (!site || site.removed_at) return { status: 404, body: { error: 'no-site' } };
     const sub = await deps.subscriptionOf(caller.id);
     const active = !!sub && isEntitledStatus(sub.status) && !site.taken_down_at;
-    return { status: 200, body: siteBody(site.slug, await deps.readPending(site.slug), active) };
+    const pending = await deps.readPending(site.slug);
+    let domain: WebCustomDomain | null | undefined;
+    if (deps.domainOf) {
+      try { domain = await deps.domainOf(site.slug); } catch (e) { console.error('[web-app/site] domain lookup failed:', (e as Error)?.message || e); domain = undefined; }
+    }
+    return { status: 200, body: siteBody(site.slug, pending, active, domain) };
   } catch (e) {
     console.error('[web-app/site] lookup failed:', (e as Error)?.message || e);
     return { status: 503, body: { error: 'temporarily-unavailable' } };

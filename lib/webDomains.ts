@@ -23,7 +23,7 @@ import { isComDomain } from './ios/domainNames.js';
 import { newCheckoutMethodParams } from './checkoutPaymentMethods.js';
 import {
   WEB_REFUND_REASONS, advanceSlot, alertOnce, applyPayerEvent, domainsNotConfigured, missingDomainConfig, ownDetached,
-  precheckDomain, refundWebRow, reserveSlot, statusBody,
+  precheckDomain, refundWebRow, reserveSlot, statusBody, statusWithProbe,
   type DomainFlowDeps, type PayerStatus,
 } from './ios/domainFlow.js';
 
@@ -440,14 +440,14 @@ export async function webDomainStatus(subId: string, deps: Pick<DomainFlowDeps, 
 
 export interface PanelDeps {
   authorize: AuthorizeOwner;
-  flow: Pick<DomainFlowDeps, 'repo'>;
+  flow: Pick<DomainFlowDeps, 'repo'> & Partial<Pick<DomainFlowDeps, 'vercel' | 'probeHttps'>>;
   getSubscription(id: string): Promise<any | null>;
   /** POST /v1/billing_portal/sessions → { url }. */
   createPortalSession(customer: string, returnUrl: string): Promise<{ ok: boolean; data: any }>;
 }
 
 /** The site's website-bought domain row: the one holding the site, else the most recent. */
-async function webRowFor(slug: string, deps: Pick<PanelDeps, 'flow'>) {
+export async function webRowFor(slug: string, deps: Pick<PanelDeps, 'flow'>) {
   const rows = (await deps.flow.repo.all()).filter((r) => r.site_slug === slug && r.source === 'stripe');
   const holding = rows.find((r) => !['failed', 'detached', 'transferred'].includes(r.state));
   return holding ?? rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
@@ -458,7 +458,7 @@ export async function webDomainPanelStatus(body: any, authorization: unknown, de
   const auth = await deps.authorize(body?.siteId, authorization);
   if (!auth.ok || !auth.target) return denied(auth);
   const row = await webRowFor(auth.target, deps);
-  return { status: 200, body: { ...statusBody(row), ...(row?.refunded_at ? { refunded: true } : {}) } };
+  return { status: 200, body: { ...(row && deps.flow.vercel ? await statusWithProbe(row, deps.flow as DomainFlowDeps) : statusBody(row)), ...(row?.refunded_at ? { refunded: true } : {}) } };
 }
 
 /**

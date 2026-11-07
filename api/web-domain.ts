@@ -1,9 +1,10 @@
 import { STRIPE_API_VERSION } from '../lib/stripeVersion.js';
 import { webDomainPanelStatus, webDomainPortal } from '../lib/webDomains.js';
 import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
+import { liveVercelDomains } from '../lib/ios/vercelDomains.js';
 import { supabaseDomains } from '../lib/ios/domainsRepo.js';
 import { serviceClient } from '../lib/bookings/repo.js';
-import { stripeSubscription } from '../lib/ios/domainLive.js';
+import { probeHttps, stripeSubscription } from '../lib/ios/domainLive.js';
 import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
 
 // POST { action: 'status' | 'portal', siteId } + Authorization: Bearer <the site owner's token>.
@@ -22,7 +23,7 @@ export default async function handler(req: any, res: any) {
     const authDeps = liveDeployAuthDeps();
     const deps = {
       authorize: (siteId: unknown, authorization: unknown) => authorizeSiteOwner({ siteId, authorization }, authDeps),
-      flow: { repo: supabaseDomains(serviceClient()) },
+      flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
       getSubscription: stripeSubscription,
       async createPortalSession(customer: string, returnUrl: string) {
         const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
