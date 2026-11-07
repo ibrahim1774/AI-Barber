@@ -60,7 +60,7 @@ async function customerOf(slug: string): Promise<{ email: string | null; shopNam
 
 /** True when the slug has a web_app_sites row (web-created site). Throws on an outage so callers fail closed (manual). */
 export async function liveIsWebAppSite(slug: string): Promise<boolean> {
-  const rows: Array<{ slug: string }> | null = await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=slug&limit=1`);
+  const rows: Array<{ slug: string }> | null = await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=slug&limit=1`, { timeoutMs: 5_000 });
   if (!Array.isArray(rows)) throw new Error('web_app_sites lookup returned no result');
   return rows.length > 0;
 }

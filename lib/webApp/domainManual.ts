@@ -39,6 +39,11 @@ export const RENEWAL_DUE_MS = 30 * DAY;
 export const REPUBLISH_TIMEOUT_MS = 200_000;
 /** The row lease an in-flight Mark live / Can't holds, so the two never interleave (the function's 300 s budget). */
 const ACTION_LEASE_MS = 290_000;
+/** alerts_sent marker: this row was created by the manual claim (parked in awaiting_setup, never bought). */
+export const MANUAL_ORIGIN = 'manual-origin';
+const MARK_LIVE_TIMEOUT = 'mark-live-timeout:';
+const STUCK_REFUND_ALERT_MS = 6 * HOUR;
+const OWNER_REMOVED_REFUND_MAX_AGE_MS = 30 * DAY;
 const iso = (ms: number) => new Date(ms).toISOString();
 const errMsg = (e: unknown) => String((e as any)?.code || (e as Error)?.message || e).slice(0, 200);
 
@@ -354,6 +359,8 @@ export async function manualClaim(
       original_transaction_id: key, source: 'stripe', environment: 'Production', site_slug: v.slug, domain: v.domain, simulated,
       auto_renew: payer.autoRenew === true, paid_until: payer.expiresAt != null ? iso(payer.expiresAt) : null,
     });
+    // Positive proof this slot was manual and never bought by the system; it survives the detach on owner removal (B-N1).
+    if (ins === 'ok') await setMarker(repo, key, MANUAL_ORIGIN, iso(now()), null);
     const row = await repo.get(key);
     if (ins === 'conflict' && (!row || row.domain !== v.domain || row.site_slug !== v.slug)) {
       const h = await repo.holdingSite(v.slug);
@@ -487,7 +494,10 @@ export async function domainActionView(token: unknown, env: ManualEnv): Promise<
   if (p.a === 'cant') {
     if (row.state === 'failed' && row.alerts_sent?.['manual-refund']) return msg('Already done', `${row.domain} was already closed and refunded${row.refunded_at ? '' : ' (the refund is being retried)'}.`);
     if (row.state !== 'awaiting_setup') return msg('Already done', `This order is no longer waiting (${row.state}).`);
-    return page(`Can't get ${row.domain}`, `${facts}<p>Pressing the button cancels the $39 subscription, refunds it in full and emails the customer to pick another name. This cannot be undone.</p>${form(t, "Can't get this name: refund $39")}`);
+    const to = row.last_error?.startsWith(MARK_LIVE_TIMEOUT) ? Date.parse(row.last_error.slice(MARK_LIVE_TIMEOUT.length)) : NaN;
+    const warn = Number.isFinite(to) && env.flow.now() - to < 10 * 60_000
+      ? '<p><b>Warning:</b> a Mark live republish timed out in the last 10 minutes and its deploy may still finish with this domain on the site. Wait a few minutes before refunding, or the site could keep showing a domain that was refunded.</p>' : '';
+    return page(`Can't get ${row.domain}`, `${facts}${warn}<p>Pressing the button cancels the $39 subscription, refunds it in full and emails the customer to pick another name. This cannot be undone.</p>${form(t, "Can't get this name: refund $39")}`);
   }
   // end
   if (endedOnPage(row)) return msg('Already ended', `${row.domain} was already marked ended.`);
@@ -532,6 +542,7 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
       } catch (e) {
         console.error(`[domains/manual] ${key}: republish on Mark live failed or timed out (row unchanged):`, errMsg(e));
         if (e instanceof TimeoutError) {
+          await repo.update(key, ['awaiting_setup'], { last_error: `${MARK_LIVE_TIMEOUT}${iso(now())}` }).catch(() => {});
           return msg('Republish still running', 'The republish is taking longer than this page can wait. Nothing was changed on the order; it may finish on its own. Press the link again in a few minutes (it is safe to repeat).', 504);
         }
         return msg('Republish failed', 'The site could not be republished on the new address. Nothing was changed; press the link again in a minute.', 502);
@@ -655,6 +666,7 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
       const row = (await repo.get(cand.original_transaction_id)) ?? cand;
 
       if (row.state === 'awaiting_setup') {
+        if (!row.alerts_sent?.[MANUAL_ORIGIN]) await setMarker(repo, row.original_transaction_id, MANUAL_ORIGIN, iso(now()), row);
         const sent = await sendOrderMails(row, env);
         if (sent.order) out.orderMails.push(row.domain);
         if (sent.customer) out.customerMails.push(row.domain);
@@ -712,7 +724,8 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
       // The owner removed the site / deleted the account while the order was waiting (releaseDomainsForRemoval).
       // Nothing was bought by the system (never linked): cancel and refund in full, once (the Stripe idempotency key
       // domain-refund-<sub> makes a repeat harmless), then tell Ibrahim. The notice does not depend on the order mail having gone out.
-      if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED && !row.linked_at) {
+      if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED && !row.linked_at && !row.vercel_bought_at
+        && !!row.alerts_sent?.[MANUAL_ORIGIN] && now() - Date.parse(row.detached_at || row.updated_at || '') < OWNER_REMOVED_REFUND_MAX_AGE_MS) {
         let cur = row;
         let refunded = !!cur.refunded_at || !!cur.alerts_sent?.['owner-removed-refund'];
         if (!refunded) {
@@ -726,6 +739,12 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
           } catch (e) {
             out.errors.push(`${cur.original_transaction_id}: owner-removed refund ${errMsg(e)}`);
             console.error(`[domains/manual] ${cur.original_transaction_id}: refund after owner removal failed (retried next sweep):`, errMsg(e));
+            // Keeps failing (no payment to refund, a dispute): tell support once, bounded like a stuck claim.
+            const since = Date.parse(cur.detached_at || cur.updated_at || '');
+            if (Number.isFinite(since) && now() - since >= STUCK_REFUND_ALERT_MS) {
+              await alertOnce(cur, 'alert:owner-removed-refund', `Domain refund keeps failing: ${cur.domain}`,
+                `An order was closed because its owner removed the site or deleted the account, but cancelling and refunding it has failed for over ${Math.round(STUCK_REFUND_ALERT_MS / 3600_000)} hours. Refund it by hand in Stripe; the sweep keeps retrying.\n\nDomain: ${cur.domain}\nSite: ${cur.site_slug}\nSubscription: ${subOf(cur)}\nError: ${errMsg(e)}`, alertDeps);
+            }
           }
         }
         if (!cur.alerts_sent?.['order-void']) {

@@ -766,6 +766,73 @@ describe('NITs: dunning is not ended, honest live mail, https-only link base', (
   });
 });
 
+describe('B-N1: the owner-removed refund only touches manual, never-bought, recent rows', () => {
+  const detach = (w: W, over: any = {}) => w.repo.update(KEY, null, { state: 'detached', failure_reason: 'owner-removed', detached_at: new Date(w.flow.now()).toISOString(), ...over });
+  const voids = (w: W) => w.fm.sent.filter((s) => /^Domain order void/.test(s.mail.subject));
+
+  it('a system-bought legacy row (vercel_bought_at, no manual origin) is NOT refunded and gets no void mail', async () => {
+    const w = world();
+    w.repo.rows.set('stripe:legacy', { ...blankRow({ original_transaction_id: 'stripe:legacy', source: 'stripe', site_slug: 'legacy-site', domain: 'legacy.com' } as any), state: 'detached', failure_reason: 'owner-removed', vercel_bought_at: new Date(T0).toISOString(), detached_at: new Date(T0).toISOString() } as any);
+    await w.sweep(); await w.sweep();
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+    expect(voids(w)).toHaveLength(0);
+  });
+
+  it('even without a bought stamp, a row with no manual-origin proof is left alone', async () => {
+    const w = world();
+    w.repo.rows.set('stripe:legacy', { ...blankRow({ original_transaction_id: 'stripe:legacy', source: 'stripe', site_slug: 'legacy-site', domain: 'legacy.com' } as any), state: 'detached', failure_reason: 'owner-removed', detached_at: new Date(T0).toISOString() } as any);
+    await w.sweep();
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+  });
+
+  it('a manual never-bought row is still refunded once; one detached more than 30 days ago is not', async () => {
+    const w = world();
+    await w.claim();
+    expect(w.row().alerts_sent?.['manual-origin']).toBeTruthy();
+    await detach(w);
+    await w.sweep(); await w.sweep();
+    expect(w.cancelAndRefund).toHaveBeenCalledTimes(1);
+    expect(voids(w)).toHaveLength(1);
+
+    const old = world();
+    await old.claim();
+    await detach(old);
+    old.tick(31 * DAY);
+    await old.sweep();
+    expect(old.cancelAndRefund).not.toHaveBeenCalled();
+  });
+
+  it('a refund failing for over 6 hours alerts support once', async () => {
+    const w = world();
+    await w.claim();
+    await detach(w);
+    w.cancelAndRefund.mockRejectedValue(new Error('no payment to refund'));
+    await w.sweep();
+    expect(w.notifySupport).not.toHaveBeenCalled();
+    w.tick(7 * HOUR);
+    await w.sweep(); await w.sweep();
+    expect(w.notifySupport).toHaveBeenCalledTimes(1);
+    expect(w.notifySupport.mock.calls[0][0]).toMatch(/refund keeps failing/);
+  });
+});
+
+describe('S4 residual: Can\'t warns right after a timed-out Mark live', () => {
+  it('shows the warning within 10 minutes of a 504, not after', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      await w.claim(); await w.attach();
+      w.hooks.onDomainLinked.mockImplementationOnce(() => new Promise<void>(() => {}));
+      const p = runDomainAction(w.tokenFor('live'), w.env);
+      await vi.advanceTimersByTimeAsync(REPUBLISH_TIMEOUT_MS + 1000);
+      expect((await p).status).toBe(504);
+      expect((await domainActionView(w.tokenFor('cant'), w.env)).html).toMatch(/Warning/);
+      w.tick(11 * 60_000);
+      expect((await domainActionView(w.tokenFor('cant'), w.env)).html).not.toMatch(/Warning/);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
 describe('B2: Mark live fits the function budget and never hangs the page', () => {
   const ready = async (w: W) => { await w.claim(); await w.attach(); };
 
