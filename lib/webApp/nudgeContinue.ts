@@ -32,6 +32,8 @@ export interface ContinueDeps {
   email(userId: string): Promise<string | null>;
   /** Entitled in the DB (any environment) OR a completed Stripe payment. Throws on error: never sign in on a doubt. */
   isPaid(userId: string, email: string): Promise<boolean>;
+  /** App Store state, an ios_purchases row, or a legacy aibarber.org site: not a web-app customer, never auto sign in. Throws on error. */
+  isNotWeb(userId: string): Promise<boolean>;
   markPaid(userId: string): Promise<void>;
   stampLinkUsed(userId: string, step: 1 | 2 | 3, row: ContinueRow, nowIso: string): Promise<void>;
   /** Admin magic link -> hashed token (nothing is emailed). */
@@ -67,6 +69,8 @@ export async function performContinue(token: unknown, deps: ContinueDeps): Promi
 
     const email = await deps.email(userId);
     if (!email) return { kind: 'page', state: 'gone' };
+    // Checked live at click time (a row finished as 'done' after mail 3 is never re-checked by the sweep).
+    if (await deps.isNotWeb(userId)) return { kind: 'redirect', location: SIGN_IN_PATH, cookies: [] };
     // A paid account (live site, bookings, customer data) is not worth a bearer link: plain sign-in instead.
     if (await deps.isPaid(userId, email)) {
       await deps.markPaid(userId).catch(() => {});
@@ -125,6 +129,7 @@ export function liveContinueDeps(mode: Mode, secret: string, rest: typeof sbRest
     },
     async email(uid) { const u = await nd.adminUser(uid); return u ? (u.email?.trim() || null) : null; },
     async isPaid(uid, email) { return (await nd.isEntitled(uid)) || (await nd.stripePaid(email, uid)); },
+    async isNotWeb(uid) { return !!(await nd.appStoreState(uid)) || (await nd.hasIosPurchase(uid)) || (await nd.hasLegacySite(uid)); },
     markPaid: (uid) => nd.stop(uid, 'paid', new Date().toISOString()),
     async stampLinkUsed(uid, step, row, nowIso) {
       await rest(`web_app_signup_nudges?user_id=eq.${enc(uid)}&environment=eq.${mode}`, { method: 'PATCH', prefer: 'return=minimal', body: { links_used: { ...(row.links_used ?? {}), [String(step)]: nowIso } } });

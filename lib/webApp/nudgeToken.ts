@@ -26,7 +26,7 @@ export type ContinueResult = { ok: true; userId: string; step: 1 | 2 | 3; expire
 export function signContinueToken(userId: string, step: 1 | 2 | 3, mode: 'live' | 'test', now = Date.now(), secret?: string, ttlMs = CONTINUE_TTL_MS, hint?: string): string {
   const s = secretOf(secret);
   if (!s) throw new Error('WEB_APP_NUDGE_SECRET missing');
-  const payload = b64(JSON.stringify({ v: 1, u: userId, s: step, m: mode, n: randomBytes(8).toString('hex'), e: now + ttlMs, ...(hint ? { h: hint.slice(0, 80) } : {}) }));
+  const payload = b64(JSON.stringify({ v: 1, u: userId, s: step, m: mode, n: randomBytes(8).toString('hex'), e: now + ttlMs, ...(hint && Buffer.byteLength(hint, 'utf8') <= HINT_MAX_BYTES ? { h: hint } : {}) }));
   return `${payload}.${b64(mac('continue', payload, s))}`;
 }
 
@@ -45,11 +45,18 @@ export function verifyContinueToken(token: unknown, opts: { now?: number; secret
   if (p.m !== opts.mode) return { ok: false, reason: 'wrong_mode' };
   if (opts.expect?.userId !== undefined && opts.expect.userId !== p.u) return { ok: false, reason: 'wrong_user' };
   if (opts.expect?.step !== undefined && opts.expect.step !== p.s) return { ok: false, reason: 'wrong_step' };
-  return { ok: true, userId: p.u, step: p.s, expiresAt: p.e, hint: typeof p.h === 'string' && p.h.length <= 80 ? p.h : null };
+  return { ok: true, userId: p.u, step: p.s, expiresAt: p.e, hint: typeof p.h === 'string' && Buffer.byteLength(p.h, 'utf8') <= HINT_MAX_BYTES ? p.h : null };
 }
 
 /** "jake@gmail.com" -> "j•••@gmail.com": shown on the confirm page so a forwarded link is recognisable. */
-export const maskEmail = (e: string): string => { const [l, d] = e.split('@'); return l && d ? `${l[0]}•••@${d}` : ''; };
+export const maskEmail = (e: string): string => {
+  const [l, d] = e.split('@');
+  if (!l || !d) return '';
+  const c = [...l]; // by code point, so a non-ASCII local part never splits a character
+  return `${c.length <= 2 ? `${c[0]}•` : `${c[0]}${'•'.repeat(c.length - 2)}${c[c.length - 1]}`}@${d}`;
+};
+/** The hint is capped by UTF-8 bytes (not characters) so the token stays well under its 600 char limit. */
+export const HINT_MAX_BYTES = 100;
 
 const normEmail = (e: string) => e.trim().toLowerCase();
 

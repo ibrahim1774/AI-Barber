@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CONTINUE_TTL_MS, signContinueToken, signUnsubscribeToken, verifyContinueToken, verifyUnsubscribeToken } from '../../lib/webApp/nudgeToken.js';
+import { HINT_MAX_BYTES, maskEmail, CONTINUE_TTL_MS, signContinueToken, signUnsubscribeToken, verifyContinueToken, verifyUnsubscribeToken } from '../../lib/webApp/nudgeToken.js';
 
 const S = 'test-secret-1234567890';
 const U = '11111111-2222-3333-4444-555555555555';
@@ -11,11 +11,11 @@ describe('continue token', () => {
     expect(verifyContinueToken(t, { now: T0 + 1000, secret: S, mode: 'test' })).toEqual({ ok: true, userId: U, step: 2, expiresAt: T0 + CONTINUE_TTL_MS, hint: null });
   });
   it('carries an optional signed hint; tampering with it breaks the signature', () => {
-    const t = signContinueToken(U, 1, 'test', T0, S, undefined, 'j•••@gmail.com');
+    const t = signContinueToken(U, 1, 'test', T0, S, undefined, 'j••e@gmail.com');
     const r: any = verifyContinueToken(t, { now: T0, secret: S, mode: 'test' });
-    expect(r.ok).toBe(true); expect(r.hint).toBe('j•••@gmail.com');
+    expect(r.ok).toBe(true); expect(r.hint).toBe('j••e@gmail.com');
     const [p, m] = t.split('.');
-    const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url').toString()), h: 'x•••@evil.co' })).toString('base64url');
+    const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url').toString()), h: 'x••y@evil.co' })).toString('base64url');
     expect(verifyContinueToken(`${forged}.${m}`, { now: T0, secret: S, mode: 'test' })).toEqual({ ok: false, reason: 'bad_signature' });
   });
   it('is bound to user and step when the caller expects them', () => {
@@ -62,6 +62,25 @@ describe('continue token', () => {
   });
   it('tokens differ per call (nonce)', () => {
     expect(signContinueToken(U, 1, 'test', T0, S)).not.toBe(signContinueToken(U, 1, 'test', T0, S));
+  });
+});
+
+describe('hint size', () => {
+  it('is capped by UTF-8 bytes: an IDN hint over the cap is dropped, a normal one stays, and the token stays under 600 chars', () => {
+    const idn = maskEmail(`jake@${'ü'.repeat(60)}.com`); // 60 two-byte letters: well over 100 bytes
+    expect(Buffer.byteLength(idn)).toBeGreaterThan(HINT_MAX_BYTES);
+    const t = signContinueToken(U, 1, 'test', T0, S, undefined, idn);
+    expect(t.length).toBeLessThan(600);
+    expect((verifyContinueToken(t, { now: T0, secret: S, mode: 'test' }) as any).hint).toBeNull();
+    expect((verifyContinueToken(t, { now: T0, secret: S, mode: 'test' }) as any).ok).toBe(true);
+    const ok = maskEmail('jake@bücher.example');
+    const t2 = signContinueToken(U, 1, 'test', T0, S, undefined, ok);
+    expect(t2.length).toBeLessThan(600);
+    expect((verifyContinueToken(t2, { now: T0, secret: S, mode: 'test' }) as any).hint).toBe(ok);
+  });
+  it('maskEmail keeps length for the local part and never shows more than first and last letter', () => {
+    expect(maskEmail('jake@gmail.com')).toBe('j••e@gmail.com');
+    expect(maskEmail('x@y.co')).toBe('x•@y.co'); expect(maskEmail('')).toBe('');
   });
 });
 

@@ -8,7 +8,7 @@ const U = 'user-1';
 const NOW = 1_800_000_000_000;
 const tok = (step: 1 | 2 | 3 = 1, mode: 'live' | 'test' = 'test', uid = U, at = NOW) => signContinueToken(uid, step, mode, at, S);
 
-function deps(o: { row?: Partial<ContinueRow> | null; email?: string | null | Error; paid?: boolean | Error; now?: number; gen?: (e: string) => Promise<string>; consume?: any } = {}) {
+function deps(o: { row?: Partial<ContinueRow> | null; email?: string | null | Error; paid?: boolean | Error; notWeb?: boolean | Error; now?: number; gen?: (e: string) => Promise<string>; consume?: any } = {}) {
   const calls: string[] = [];
   const row: ContinueRow | null = o.row === null ? null : { step1_sent_at: '2026-11-10T00:00:00Z', step2_sent_at: null, step3_sent_at: null, links_used: null, ...o.row };
   const d: ContinueDeps = {
@@ -16,6 +16,7 @@ function deps(o: { row?: Partial<ContinueRow> | null; email?: string | null | Er
     row: async () => { calls.push('row'); return row; },
     email: async () => { calls.push('email'); if (o.email instanceof Error) throw o.email; return o.email === undefined ? 'jake@gmail.com' : o.email; },
     isPaid: async () => { calls.push('paid'); if (o.paid instanceof Error) throw o.paid; return !!o.paid; },
+    isNotWeb: async () => { calls.push('notweb'); if (o.notWeb instanceof Error) throw o.notWeb; return !!o.notWeb; },
     markPaid: async () => { calls.push('markPaid'); },
     stampLinkUsed: async () => { calls.push('stamp'); },
     generateLink: o.gen ?? (async () => { calls.push('generate'); return 'HASH'; }),
@@ -30,9 +31,9 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(
 describe('previewContinue (GET): no DB, no Supabase', () => {
   const p = { mode: 'test' as const, secret: S, now: () => NOW + 1000 };
   it('the masked address signed into the token comes back as the hint (GET stays DB-free); no hint -> null', () => {
-    expect(previewContinue(signContinueToken(U, 1, 'test', NOW, S, undefined, maskEmail('jake@gmail.com')), p).hint).toBe('j•••@gmail.com');
+    expect(previewContinue(signContinueToken(U, 1, 'test', NOW, S, undefined, maskEmail('jake@gmail.com')), p).hint).toBe('j••e@gmail.com');
     expect(previewContinue(tok(), p).hint).toBeNull();
-    expect(maskEmail('a@b.co')).toBe('a•••@b.co'); expect(maskEmail('nope')).toBe('');
+    expect(maskEmail('a@b.co')).toBe('a•@b.co'); expect(maskEmail('ab@b.co')).toBe('a•@b.co'); expect(maskEmail('abc@b.co')).toBe('a•c@b.co'); expect(maskEmail('nope')).toBe('');
   });
   it('valid token -> form; expired, tampered, junk, other mode -> expired', () => {
     expect(previewContinue(tok(), p).state).toBe('form');
@@ -52,7 +53,7 @@ describe('performContinue (POST)', () => {
     expect(out.cookies[0]).toMatch(/^pb_rt=RT-secret; HttpOnly; Secure; SameSite=Lax; Path=\/api\/web-app\/session/);
     expect(out.cookies[1]).toMatch(/^pb_has=1; /);
     expect(JSON.stringify(out)).not.toContain('HASH');
-    expect(calls).toEqual(['row', 'email', 'paid', 'generate', 'consume', 'stamp']);
+    expect(calls).toEqual(['row', 'email', 'notweb', 'paid', 'generate', 'consume', 'stamp']);
   });
   it('a row stopped as paid / not_web / live never auto signs in; other stops still do', async () => {
     for (const stop_reason of ['paid', 'not_web', 'live']) {
@@ -61,6 +62,16 @@ describe('performContinue (POST)', () => {
       expect(calls).not.toContain('generate');
     }
     expect(((await performContinue(tok(), deps({ row: { stopped_at: 'x', stop_reason: 'expired' } }).d)) as any).kind).toBe('redirect');
+  });
+  it('an iOS / App Store / legacy account is sent to sign-in at click time, even when the row finished as done', async () => {
+    const { d, calls } = deps({ notWeb: true, row: { step3_sent_at: '2026-11-10T00:00:00Z', stopped_at: 'x', stop_reason: 'done' } });
+    expect(await performContinue(tok(3), d)).toEqual({ kind: 'redirect', location: '/app/sign-in', cookies: [] });
+    expect(calls).not.toContain('generate'); expect(calls).not.toContain('paid');
+  });
+  it('an error in the iOS / legacy lookup never signs in', async () => {
+    const { d, calls } = deps({ notWeb: new Error('db') });
+    expect(await performContinue(tok(), d)).toEqual({ kind: 'page', state: 'unavailable' });
+    expect(calls).not.toContain('generate');
   });
   it('a session without a user id is refused', async () => {
     const { d } = deps({ consume: async () => ({ refreshToken: 'RT', userId: null }) });
@@ -153,6 +164,7 @@ function stubFetch(over: Record<string, any> = {}) {
     if (u.includes('web_app_signup_nudges') && (init?.method ?? 'GET') === 'GET') return json(200, [{ step1_sent_at: '2026-11-10T00:00:00Z', step2_sent_at: null, step3_sent_at: null, links_used: null }]);
     if (u.includes('web_app_signup_nudges')) return json(200, null);
     if (u.includes('/auth/v1/admin/users/')) return json(200, { id: U, email: 'jake@gmail.com', created_at: '2026-11-09T00:00:00Z', email_confirmed_at: '2026-11-09T00:00:00Z' });
+    if (u.includes('ab_shops') || u.includes('ios_purchases') || u.includes('/rest/v1/sites?')) return json(200, []);
     if (u.includes('web_app_entitlements')) return json(200, []);
     if (u.includes('web_app_customers')) return json(200, []);
     if (u.includes('checkout/sessions')) return json(200, { data: [] });
@@ -184,7 +196,7 @@ describe('/api/web-app/continue handler', () => {
     stubFetch();
     const t = signContinueToken(U, 1, 'test', Date.now(), S, undefined, maskEmail('jake@gmail.com'));
     const r = await call({ method: 'GET', query: { t } });
-    expect(r.body).toContain('Continue as j•••@gmail.com'); expect(r.body).toContain('Not you? Sign in'); expect(r.body).toContain('href="/app/sign-in"');
+    expect(r.body).toContain('Continue as j••e@gmail.com'); expect(r.body).toContain('Not you? Sign in'); expect(r.body).toContain('href="/app/sign-in"');
     expect(r.body).not.toContain('jake@gmail.com');
   });
   it('GET with a bad token says the link expired, still no network', async () => {
@@ -233,6 +245,12 @@ describe('/api/web-app/continue handler', () => {
   });
   it('POST for a paid account redirects to sign-in and never calls generate_link', async () => {
     const f = stubFetch({ web_app_entitlements: json(200, [{ status: 'active' }]) });
+    const r = await call({ method: 'POST', headers: { origin: ORIGIN, 'x-real-ip': `10.1.0.${n}` }, body: { t: live() } });
+    expect(r.code).toBe(303); expect(r.headers.Location).toBe('/app/sign-in'); expect(r.headers['Set-Cookie']).toBeUndefined();
+    expect(f.mock.calls.some((c) => String(c[0]).includes('generate_link'))).toBe(false);
+  });
+  it('POST for an iOS purchaser goes to sign-in, never generate_link', async () => {
+    const f = stubFetch({ ios_purchases: json(200, [{ original_transaction_id: 'x', environment: 'Production' }]) });
     const r = await call({ method: 'POST', headers: { origin: ORIGIN, 'x-real-ip': `10.1.0.${n}` }, body: { t: live() } });
     expect(r.code).toBe(303); expect(r.headers.Location).toBe('/app/sign-in'); expect(r.headers['Set-Cookie']).toBeUndefined();
     expect(f.mock.calls.some((c) => String(c[0]).includes('generate_link'))).toBe(false);
