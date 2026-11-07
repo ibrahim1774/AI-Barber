@@ -7,7 +7,7 @@ import { sweepDomains, projectFor, type DomainFlowDeps } from '../../lib/ios/dom
 import { makePayer } from '../../lib/ios/domainLive.js';
 import {
   domainActionView, runDomainAction, signDomainAction, sweepManualDomains, verifyDomainAction, webStatusBody, webStatusWithProbe,
-  postAllowed, REPUBLISH_TIMEOUT_MS, type ManualEnv,
+  postAllowed, sendRowMailOnce, REPUBLISH_TIMEOUT_MS, type ManualEnv,
 } from '../../lib/webApp/domainManual.js';
 import { customDomainOf } from '../../lib/webApp/publishFlow.js';
 import { fakeRegistrar } from '../ios/fakeRegistrar.js';
@@ -735,5 +735,69 @@ describe('S4: Can\'t and Mark live cannot interleave', () => {
     expect(r.html).toMatch(/free address/);
     expect(w.hooks.onDomainUnlinked).toHaveBeenCalledWith(SLUG);
     expect(w.row().state).toBe('failed');
+  });
+});
+
+
+// ─── S1 / S2: exactly-once mails survive a lost marker; alerts_sent writers do not wipe each other ───
+describe('S1: a lost marker never means a second mail or a false alert', () => {
+  const failMarkerOnce = (w: W) => {
+    const real = w.repo.mergeAlert!.bind(w.repo);
+    let failed = false;
+    w.repo.mergeAlert = async (o, k, v) => { if (!failed && k === 'order') { failed = true; throw new Error('db blip'); } return real(o, k, v); };
+  };
+
+  it('same Idempotency-Key, an hour later: byte-identical order mail (links do not depend on the clock), one delivery, marker saved on the retry', async () => {
+    const w = world();
+    await w.claim();
+    // The claim already sent; forget the marker (as if the DB write after the accepted send was lost).
+    const r0 = w.row(); w.repo.rows.set(KEY, { ...r0, alerts_sent: null });
+    w.tick(HOUR);
+    await w.sweep();
+    expect(w.fm.toOrders()).toHaveLength(1); // strict fake: a changed body would have thrown 409, a fresh key would add a mail
+    const orderCalls = (w.fm.deps.sendMail as any).mock.calls.filter((c: any[]) => c[2] === `domain-order:${KEY}`);
+    expect(orderCalls).toHaveLength(2); // the retry reached Resend ...
+    expect(orderCalls[1][1]).toEqual(orderCalls[0][1]); // ... with the very same body (no clock in the links)
+    expect(w.row().alerts_sent?.order).toBeTruthy();
+    expect(w.notifySupport).not.toHaveBeenCalled();
+  });
+
+  it('a Resend 409 invalid_idempotent_request is "already accepted": marker written, no alert, no resend', async () => {
+    const w = world();
+    await w.claim();
+    w.repo.rows.set(KEY, { ...w.row(), alerts_sent: null });
+    w.fm.deps.liveUrlOf = vi.fn(async () => 'https://changed.example/'); // the body differs from the accepted one
+    w.tick(30 * HOUR);
+    await w.sweep();
+    expect(w.fm.toOrders()).toHaveLength(1);
+    expect(w.row().alerts_sent?.order).toBeTruthy();
+    expect(w.notifySupport).not.toHaveBeenCalled();
+  });
+
+  it('a marker write that fails after an accepted send is retried by the sweep without a duplicate', async () => {
+    const w = world();
+    failMarkerOnce(w);
+    await w.claim();
+    expect(w.row().alerts_sent?.order).toBeUndefined();
+    w.tick(HOUR);
+    await w.sweep();
+    expect(w.fm.toOrders()).toHaveLength(1);
+    expect(w.row().alerts_sent?.order).toBeTruthy();
+  });
+});
+
+describe('S2: alerts_sent is merged, never overwritten from a stale read', () => {
+  it('a marker written from a stale row keeps the other writer\'s keys', async () => {
+    const w = world();
+    await w.claim();
+    const row = w.row();
+    await w.repo.mergeAlert!(KEY, 'alert:other', 'x');
+    // A stale read that has not seen alert:other (what a concurrent sweep / claim would hold).
+    const realGet = w.repo.get.bind(w.repo);
+    w.repo.get = async (k: string) => { const r = await realGet(k); return r ? { ...r, alerts_sent: Object.fromEntries(Object.entries(r.alerts_sent ?? {}).filter(([k2]) => k2 !== 'alert:other')) } : r; };
+    w.repo.rows.set(KEY, { ...w.row(), alerts_sent: { ...(w.row().alerts_sent ?? {}), order: undefined as any } });
+    delete (w.row().alerts_sent as any).order;
+    await sendRowMailOnce({ ...row, alerts_sent: null }, 'customer-live', 'x@y.test', () => ({ subject: 's', html: 'h', text: 't' }), w.env);
+    expect(w.repo.rows.get(KEY)!.alerts_sent).toMatchObject({ 'alert:other': 'x', 'customer-live': expect.any(String) });
   });
 });

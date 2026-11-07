@@ -160,19 +160,28 @@ export function postAllowed(headers: Record<string, string | string[] | undefine
   return !!origin && !!host && origin === `https://${host}`;
 }
 
-function linkFor(action: DomainAction, row: DomainRow, m: ManualDeps, now: number): string | null {
+/**
+ * A link's expiry comes from a fixed time of the row (never the clock at build time), so a retry of the same
+ * mail under the same Idempotency-Key carries byte-identical links (Resend answers 409 for a changed body).
+ */
+function linkFor(action: DomainAction, row: DomainRow, m: ManualDeps, base: number): string | null {
   if (!m.linkSecret) return null;
-  const t = signDomainAction(m.linkSecret, { a: action, k: row.original_transaction_id, d: row.domain, s: row.site_slug, exp: now + LINK_TTL_MS });
+  const t = signDomainAction(m.linkSecret, { a: action, k: row.original_transaction_id, d: row.domain, s: row.site_slug, exp: base + LINK_TTL_MS });
   return `${m.linkBase.replace(/\/+$/, '')}/api/web-app/domain-action?t=${t}`;
 }
 
-const orderLinks = (row: DomainRow, m: ManualDeps, now: number): OrderLinks | null => {
-  const live = linkFor('live', row, m, now);
-  const cant = linkFor('cant', row, m, now);
+const orderLinks = (row: DomainRow, m: ManualDeps, base: number): OrderLinks | null => {
+  const live = linkFor('live', row, m, base);
+  const cant = linkFor('cant', row, m, base);
   return live && cant ? { live, cant } : null;
 };
 
 // ─── facts and mails (exactly once) ───
+
+const createdMs = (row: Pick<DomainRow, 'created_at'>) => Date.parse(row.created_at);
+/** Fixed per row (changes only when a renewal moves paid_until), so the ended mail's link is the same on a retry. */
+const endedBaseMs = (row: Pick<DomainRow, 'created_at' | 'paid_until' | 'linked_at'>) =>
+  Math.max(createdMs(row), Date.parse(row.paid_until || '') || 0, Date.parse(row.linked_at || '') || 0);
 
 const subOf = (row: Pick<DomainRow, 'original_transaction_id'>) => row.original_transaction_id.replace(/^stripe:/, '');
 
@@ -210,6 +219,22 @@ async function factsFor(row: DomainRow, env: ManualEnv, opts: { sub?: any; ownDe
   };
 }
 
+const isIdempotentRepeat = (e: unknown) => (e as any)?.status === 409 && (e as any)?.resendName === 'invalid_idempotent_request';
+
+/** One alerts_sent marker, merged atomically when the repo can (never wiping another writer's keys). Never throws. */
+async function setMarker(repo: DomainFlowDeps['repo'], otid: string, event: string, at: string, fallback: DomainRow | null): Promise<void> {
+  try {
+    if (repo.mergeAlert) {
+      if (await repo.mergeAlert(otid, event, at)) return;
+      throw new Error('merge not applied');
+    }
+    const f2 = (await repo.get(otid)) ?? fallback;
+    await repo.update(otid, null, { alerts_sent: { ...(f2?.alerts_sent ?? {}), [event]: at } });
+  } catch (e) {
+    console.error(`[domains/manual] ${otid}: marker ${event} was not saved (the Idempotency-Key stops a duplicate):`, errMsg(e));
+  }
+}
+
 /**
  * Send the mail `event` of this row once. The marker (alerts_sent[event]) is re-read before sending and
  * written only after Resend accepted it; the Idempotency-Key makes a crash between the two harmless.
@@ -227,15 +252,16 @@ export async function sendRowMailOnce(
   try {
     await env.manual.sendMail(to, await build(), `domain-${event}:${otid}${idemSuffix}`);
   } catch (e) {
-    console.error(`[domains/manual] ${otid}: mail ${event} not sent (retried next sweep):`, errMsg(e));
+    // Resend: the same Idempotency-Key with a different body = this mail was already accepted earlier (its marker was lost).
+    if (!isIdempotentRepeat(e)) {
+      console.error(`[domains/manual] ${otid}: mail ${event} not sent (retried next sweep):`, errMsg(e));
+      return false;
+    }
+    console.error(`[domains/manual] ${otid}: mail ${event} was already accepted by Resend; saving its marker`);
+    await setMarker(repo, otid, event, iso(now()), fresh);
     return false;
   }
-  try {
-    const f2 = (await repo.get(otid)) ?? fresh;
-    await repo.update(otid, null, { alerts_sent: { ...(f2?.alerts_sent ?? {}), [event]: iso(now()) } });
-  } catch (e) {
-    console.error(`[domains/manual] ${otid}: mail ${event} sent but its marker was not saved (the Idempotency-Key stops a duplicate):`, errMsg(e));
-  }
+  await setMarker(repo, otid, event, iso(now()), fresh);
   return true;
 }
 
@@ -245,7 +271,7 @@ export async function sendOrderMails(row: DomainRow, env: ManualEnv, opts: { sub
   const now = env.flow.now();
   let facts: OrderFacts | null = null;
   const facts_ = async () => (facts ??= await factsFor(row, env, opts));
-  const order = await sendRowMailOnce(row, 'order', m.ordersEmail, async () => orderEmail(await facts_(), orderLinks(row, m, now)), env);
+  const order = await sendRowMailOnce(row, 'order', m.ordersEmail, async () => orderEmail(await facts_(), orderLinks(row, m, createdMs(row))), env);
   const customer = await sendCustomerMail(row, 'customer-ordered', env, (f) => customerOrderedEmail(f, m.appOrigin), facts_);
   return { order, customer };
 }
@@ -534,6 +560,8 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
           })
           : null;
         row = moved ?? fresh;
+        if (moved) await setMarker(repo, key, 'manual-refund', iso(now()), moved); // survives a concurrent alerts_sent writer
+        row = (await repo.get(key)) ?? row;
       } finally {
         await repo.releaseLease(key, lease).catch((e) => console.error(`[domains/manual] ${key}: releasing the lease failed:`, errMsg(e)));
       }
@@ -631,10 +659,10 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
         }
         if (inactive && !cur.alerts_sent?.['order-void']) {
           const f = await factsFor(cur, env);
-          if (await sendRowMailOnce(cur, 'order-void', m.ordersEmail, () => orderVoidEmail(f, orderLinks(cur, m, now()), 'subscription'), env)) out.voids.push(cur.domain);
+          if (await sendRowMailOnce(cur, 'order-void', m.ordersEmail, () => orderVoidEmail(f, orderLinks(cur, m, createdMs(cur)), 'subscription'), env)) out.voids.push(cur.domain);
         } else if (!inactive && cur.alerts_sent?.order && !cur.alerts_sent?.['order-reminder'] && now() - Date.parse(cur.created_at) >= ORDER_REMINDER_MS) {
           const f = await factsFor(cur, env);
-          if (await sendRowMailOnce(cur, 'order-reminder', m.ordersEmail, () => orderReminderEmail(f, orderLinks(cur, m, now())), env)) out.reminders.push(cur.domain);
+          if (await sendRowMailOnce(cur, 'order-reminder', m.ordersEmail, () => orderReminderEmail(f, orderLinks(cur, m, createdMs(cur) + ORDER_REMINDER_MS)), env)) out.reminders.push(cur.domain);
         }
         continue;
       }
@@ -647,7 +675,7 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
           out.refreshed.push(cur.domain);
           if (!s.active && !cur.alerts_sent?.ended) {
             const f = await factsFor(cur, env);
-            if (await sendRowMailOnce(cur, 'ended', m.ordersEmail, () => endedEmail(f, linkFor('end', cur, m, now())), env)) out.ended.push(cur.domain);
+            if (await sendRowMailOnce(cur, 'ended', m.ordersEmail, () => endedEmail(f, linkFor('end', cur, m, endedBaseMs(cur))), env)) out.ended.push(cur.domain);
           }
         }
         cur = (await repo.get(cur.original_transaction_id)) ?? cur;

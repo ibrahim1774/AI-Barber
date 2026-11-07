@@ -7,13 +7,18 @@ export interface SentMail { to: string; mail: Mail; key: string }
 
 export function fakeManual(over: Partial<ManualDeps> = {}) {
   const sent: SentMail[] = [];
-  const state = { failSends: false, failFor: new Set<string>(), seenKeys: new Set<string>() };
+  const state = { failSends: false, failFor: new Set<string>(), seenKeys: new Map<string, string>() };
   const deps: ManualDeps = {
     // Mimics Resend's Idempotency-Key: a repeated key is accepted but delivers nothing new.
     sendMail: vi.fn(async (to: string, mail: Mail, key: string) => {
       if (state.failSends || state.failFor.has(to)) throw new Error('resend 500');
-      if (state.seenKeys.has(key)) return;
-      state.seenKeys.add(key);
+      // Resend: same key + same body = accepted again, nothing new delivered; same key + a different body = 409.
+      const body = JSON.stringify(mail);
+      if (state.seenKeys.has(key)) {
+        if (state.seenKeys.get(key) === body) return;
+        throw Object.assign(new Error('resend 409'), { status: 409, resendName: 'invalid_idempotent_request' });
+      }
+      state.seenKeys.set(key, body);
       sent.push({ to, mail, key });
     }),
     ordersEmail: 'orders@example.test',

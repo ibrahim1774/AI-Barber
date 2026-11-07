@@ -99,6 +99,11 @@ export interface DomainsRepo {
    * Returns the new row, or null when the row did not match. A 23505 throws DomainConflict.
    */
   update(otid: string, from: readonly DomainState[] | null, patch: Partial<DomainRow>, where?: { auto_renew?: boolean }): Promise<DomainRow | null>;
+  /**
+   * Set one alerts_sent marker WITHOUT losing another writer's keys (optimistic: re-read, merge, write only if
+   * updated_at is unchanged, retry). Keeps an existing value. True when the marker is stored. Optional: callers fall back to read-merge-write.
+   */
+  mergeAlert?(otid: string, key: string, value: string): Promise<boolean>;
   /** paid_until = max(paid_until, at), in SQL. */
   extendPaidUntil(otid: string, at: number): Promise<void>;
   /** Take the row's lease until now + ms when it is free. Returns the lease token (its lease_until), or null. */
@@ -209,6 +214,23 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
         fail('update', error);
       }
       return Array.isArray(data) && data[0] ? num(data[0]) : null;
+    },
+
+    async mergeAlert(otid, key, value) {
+      for (let i = 0; i < 5; i++) {
+        const { data: cur, error } = await db().from(TABLE).select('alerts_sent,updated_at').eq('original_transaction_id', otid).maybeSingle();
+        if (error) fail('mergeAlert', error);
+        if (!cur) return false;
+        const sent = (cur.alerts_sent ?? {}) as Record<string, string>;
+        if (sent[key]) return true;
+        const stamp = new Date().toISOString();
+        let q = db().from(TABLE).update({ alerts_sent: { ...sent, [key]: value }, updated_at: stamp }).eq('original_transaction_id', otid);
+        q = cur.updated_at ? q.eq('updated_at', cur.updated_at) : q.is('updated_at', null);
+        const { data, error: e2 } = await q.select('original_transaction_id');
+        if (e2) fail('mergeAlert', e2);
+        if (Array.isArray(data) && data.length > 0) return true;
+      }
+      return false;
     },
 
     async extendPaidUntil(otid, at) {

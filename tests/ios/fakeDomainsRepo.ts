@@ -80,6 +80,12 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
       rows.set(otid, next);
       return copy(next);
     },
+    async mergeAlert(otid, key, value) {
+      const cur = rows.get(otid);
+      if (!cur) return false;
+      if (!cur.alerts_sent?.[key]) rows.set(otid, { ...cur, alerts_sent: { ...(cur.alerts_sent ?? {}), [key]: value }, updated_at: stamp() });
+      return true;
+    },
     async extendPaidUntil(otid, at) {
       const cur = rows.get(otid);
       if (cur && (!cur.paid_until || Date.parse(cur.paid_until) < at)) rows.set(otid, { ...cur, paid_until: new Date(at).toISOString() });

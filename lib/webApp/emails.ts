@@ -213,7 +213,11 @@ export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch =
     await new Promise((res) => setTimeout(res, 1100));
     r = await fetchImpl('https://api.resend.com/emails', init);
   }
-  if (!r.ok) throw new Error(`resend ${r.status}`);
+  if (!r.ok) {
+    // Keep Resend's error name (not its message) so callers can tell an Idempotency-Key conflict from an outage.
+    const name = ((await r.json().catch(() => null)) as any)?.name;
+    throw Object.assign(new Error(`resend ${r.status}`), { status: r.status, resendName: typeof name === 'string' ? name : undefined });
+  }
   // A 2xx without a message id is not an accepted email: never report it as sent.
   const body: any = await r.json().catch(() => null);
   if (!body || typeof body.id !== 'string' || !body.id) throw new Error('resend accepted without a message id');
