@@ -109,7 +109,7 @@ export function customDomainOf(
   return {
     domain: b.domain, state: b.state, url: sandbox ? null : b.url ?? null, paidUntil: b.paidUntil ?? null, autoRenew: b.autoRenew === true,
     ...(sandbox ? { sandbox: true as const } : {}),
-    ready: !sandbox && b.state === 'live' && !!row?.dns_ready_at,
+    ready: !sandbox && (b.state === 'live' || b.state.startsWith('cancelled-until:')) && !!row?.dns_ready_at,
   };
 }
 

@@ -301,6 +301,13 @@ describe('site body customDomain (additive)', () => {
     expect(customDomainOf(live, { simulated: true, dns_ready_at: 'x' })).toMatchObject({ sandbox: true, url: null, ready: false });
     expect('sandbox' in customDomainOf(live, { dns_ready_at: 'x' })!).toBe(false);
   });
+  it('customDomainOf: a cancelled-until domain (works until the paid year ends) is ready once dns_ready_at is set, so the address does not revert', () => {
+    const c = { domain: 'a.com', state: 'cancelled-until:2027-01-01', url: 'https://a.com' };
+    expect(customDomainOf(c, { dns_ready_at: '2026-11-06T00:00:00.000Z' })).toMatchObject({ ready: true, url: 'https://a.com' });
+    expect(customDomainOf(c, { dns_ready_at: null })!.ready).toBe(false);
+    expect(customDomainOf(c)!.ready).toBe(false);
+    expect(customDomainOf({ ...c, sandbox: true }, { simulated: true, dns_ready_at: 'x' })!.ready).toBe(false);
+  });
   it('lookup: a domainOf that never answers is dropped after the deadline, the lookup still answers 200', async () => {
     vi.useFakeTimers();
     try {
