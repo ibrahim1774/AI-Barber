@@ -106,13 +106,16 @@ export const replyToAddress = (): string => process.env.WEB_APP_REPLY_TO?.trim()
  * that mirrors the HTML, no hidden preheader, no sign-in or reset links, a one-line reason for the email.
  */
 export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
+  // Gmail filed the "payment didn't go through / Update payment method" version (link to invoice.stripe.com) as spam
+  // while the welcome mail reached the inbox. So: no alarm words, and the one link goes to our own sign-in page, never
+  // to Stripe (the customer opens Billing in the app). i.updateUrl is accepted but deliberately not used.
   const reminder = (i.reminder ?? 0) > 0;
-  const href = i.updateUrl || signInLink(origin);
+  const href = signInLink(origin);
   const first = firstOf(i.firstName);
-  const subject = (reminder ? 'Reminder: ' : '') + (first ? `${first}, your payment didn't go through` : "Your payment didn't go through");
-  const headline = reminder ? "Your payment still hasn't gone through" : "Your payment didn't go through";
+  const subject = first ? `${first}, about your Prime Barber plan` : 'About your Prime Barber plan';
+  const headline = reminder ? 'Your renewal still needs attention' : 'Your renewal needs attention';
   const planName = PLAN[i.tier] ?? 'barber site hosting';
-  const lead = `We couldn't charge your card for your ${planName}. Update your card to keep your site online.`;
+  const lead = `The renewal for your ${planName} didn't complete. To keep your site online, sign in and open Billing to check your details.`;
   const rows: Array<[string, string]> = [];
   if (i.siteUrl) rows.push(['Site', i.siteUrl.replace(/^https?:\/\//, '')]);
   rows.push(['Plan', TIER_NAME[i.tier] ?? i.tier]);
@@ -122,10 +125,10 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
 <p style="margin:0 0 12px;font-size:16px;font-weight:600">${esc(headline)}</p>
 <p style="margin:0 0 12px;font-size:15px;line-height:22px">${esc(lead)}</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px">${factRows}</table>
-<p style="margin:0 0 16px;font-size:15px"><a href="${esc(href)}" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0 0 16px;font-size:15px"><a href="${esc(href)}" style="color:#0b57d0">Sign in to Prime Barber</a></p>
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">${esc(footer)}</p>
 </body></html>`;
-  const text = [headline, '', lead, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', `Update payment method: ${href}`, '', footer].join('\n');
+  const text = [headline, '', lead, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', `Sign in to Prime Barber: ${href}`, '', footer].join('\n');
   return { subject, html, text, replyTo: replyToAddress() };
 }
 

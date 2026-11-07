@@ -103,22 +103,22 @@ We never email passwords.",
 exports[`golden email output (env unset) > failed payment: first, reminder, no name, no site > first 1`] = `
 {
   "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
-<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your payment didn't go through</p>
-<p style="margin:0 0 12px;font-size:15px;line-height:22px">We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.</p>
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your renewal needs attention</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">The renewal for your barber booking + site plan didn't complete. To keep your site online, sign in and open Billing to check your details.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Site</td><td style="padding:4px 0;color:#111;font-size:14px">joes.vercel.app</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Plan</td><td style="padding:4px 0;color:#111;font-size:14px">Custom site + booking</td></tr></table>
-<p style="margin:0 0 16px;font-size:15px"><a href="https://invoice.stripe.com/i/x" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/app/sign-in" style="color:#0b57d0">Sign in to Prime Barber</a></p>
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you have a Prime Barber plan. Questions? Reply to this email.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Jack, your payment didn't go through",
-  "text": "Your payment didn't go through
+  "subject": "Jack, about your Prime Barber plan",
+  "text": "Your renewal needs attention
 
-We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.
+The renewal for your barber booking + site plan didn't complete. To keep your site online, sign in and open Billing to check your details.
 
 Site: joes.vercel.app
 Plan: Custom site + booking
 
-Update payment method: https://invoice.stripe.com/i/x
+Sign in to Prime Barber: https://www.aibarber.org/app/sign-in
 
 You are getting this because you have a Prime Barber plan. Questions? Reply to this email.",
 }
@@ -127,21 +127,21 @@ You are getting this because you have a Prime Barber plan. Questions? Reply to t
 exports[`golden email output (env unset) > failed payment: first, reminder, no name, no site > no site, sign-in fallback 1`] = `
 {
   "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
-<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your payment didn't go through</p>
-<p style="margin:0 0 12px;font-size:15px;line-height:22px">We couldn't charge your card for your barber store + booking + site plan. Update your card to keep your site online.</p>
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your renewal needs attention</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">The renewal for your barber store + booking + site plan didn't complete. To keep your site online, sign in and open Billing to check your details.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Plan</td><td style="padding:4px 0;color:#111;font-size:14px">Custom site, booking + your own store</td></tr></table>
-<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/app/sign-in" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/app/sign-in" style="color:#0b57d0">Sign in to Prime Barber</a></p>
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you have a Prime Barber plan. Questions? Reply to this email.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Your payment didn't go through",
-  "text": "Your payment didn't go through
+  "subject": "About your Prime Barber plan",
+  "text": "Your renewal needs attention
 
-We couldn't charge your card for your barber store + booking + site plan. Update your card to keep your site online.
+The renewal for your barber store + booking + site plan didn't complete. To keep your site online, sign in and open Billing to check your details.
 
 Plan: Custom site, booking + your own store
 
-Update payment method: https://www.aibarber.org/app/sign-in
+Sign in to Prime Barber: https://www.aibarber.org/app/sign-in
 
 You are getting this because you have a Prime Barber plan. Questions? Reply to this email.",
 }
@@ -150,22 +150,22 @@ You are getting this because you have a Prime Barber plan. Questions? Reply to t
 exports[`golden email output (env unset) > failed payment: first, reminder, no name, no site > reminder no name 1`] = `
 {
   "html": "<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
-<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your payment still hasn't gone through</p>
-<p style="margin:0 0 12px;font-size:15px;line-height:22px">We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.</p>
+<p style="margin:0 0 12px;font-size:16px;font-weight:600">Your renewal still needs attention</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:22px">The renewal for your barber booking + site plan didn't complete. To keep your site online, sign in and open Billing to check your details.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Site</td><td style="padding:4px 0;color:#111;font-size:14px">joes.vercel.app</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top">Plan</td><td style="padding:4px 0;color:#111;font-size:14px">Custom site + booking</td></tr></table>
-<p style="margin:0 0 16px;font-size:15px"><a href="https://invoice.stripe.com/i/x" style="color:#0b57d0">Update payment method</a></p>
+<p style="margin:0 0 16px;font-size:15px"><a href="https://www.aibarber.org/app/sign-in" style="color:#0b57d0">Sign in to Prime Barber</a></p>
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you have a Prime Barber plan. Questions? Reply to this email.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Reminder: Your payment didn't go through",
-  "text": "Your payment still hasn't gone through
+  "subject": "About your Prime Barber plan",
+  "text": "Your renewal still needs attention
 
-We couldn't charge your card for your barber booking + site plan. Update your card to keep your site online.
+The renewal for your barber booking + site plan didn't complete. To keep your site online, sign in and open Billing to check your details.
 
 Site: joes.vercel.app
 Plan: Custom site + booking
 
-Update payment method: https://invoice.stripe.com/i/x
+Sign in to Prime Barber: https://www.aibarber.org/app/sign-in
 
 You are getting this because you have a Prime Barber plan. Questions? Reply to this email.",
 }
