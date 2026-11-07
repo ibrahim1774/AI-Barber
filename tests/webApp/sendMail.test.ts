@@ -42,7 +42,7 @@ describe('sendMail', () => {
     vi.useRealTimers();
   });
   it('forwards headers and tags only when present; absent keys are not sent', async () => {
-    const f = vi.fn(async () => res(200, { id: 'm' }));
+    const f = vi.fn(async (..._a: any[]) => res(200, { id: 'm' }));
     await sendMail('a@b.co', mail, f as any);
     const plain = JSON.parse((f.mock.calls[0][1] as any).body);
     expect(plain).not.toHaveProperty('headers');
@@ -57,7 +57,7 @@ describe('sendMail', () => {
     expect(full.tags).toEqual([{ name: 'kind', value: 'k' }]);
   });
   it('mail.from overrides the sender; otherwise env, then the default', async () => {
-    const f = vi.fn(async () => res(200, { id: 'm' }));
+    const f = vi.fn(async (..._a: any[]) => res(200, { id: 'm' }));
     await sendMail('a@b.co', { ...mail, from: 'P <n@x.co>' }, f as any);
     expect(JSON.parse((f.mock.calls[0][1] as any).body).from).toBe('P <n@x.co>');
     await sendMail('a@b.co', mail, f as any);
