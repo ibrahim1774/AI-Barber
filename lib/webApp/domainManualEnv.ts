@@ -46,6 +46,13 @@ async function customerOf(slug: string): Promise<{ email: string | null; shopNam
   return { email, shopName };
 }
 
+/** True when the slug has a web_app_sites row (web-created site). Throws on an outage so callers fail closed (manual). */
+export async function liveIsWebAppSite(slug: string): Promise<boolean> {
+  const rows: Array<{ slug: string }> | null = await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=slug&limit=1`);
+  if (!Array.isArray(rows)) throw new Error('web_app_sites lookup returned no result');
+  return rows.length > 0;
+}
+
 export function liveManualDeps(opts: { getSubscription?: (id: string) => Promise<any | null> } = {}): ManualDeps {
   return {
     async sendMail(to, mail, key) { await sendMail(to, mail, fetch, key); },
@@ -58,6 +65,7 @@ export function liveManualDeps(opts: { getSubscription?: (id: string) => Promise
     teamSlug: process.env.VERCEL_TEAM_SLUG || null,
     verifyStub: verifyStubOn(),
     getSubscription: opts.getSubscription,
+    isWebAppSite: liveIsWebAppSite,
     async fetchCanonical(domain) {
       const r = await fetch(`https://${domain}/`, { redirect: 'follow', signal: AbortSignal.timeout(6_000) });
       const html = await r.text();

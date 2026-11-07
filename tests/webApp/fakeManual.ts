@@ -26,6 +26,7 @@ export function fakeManual(over: Partial<ManualDeps> = {}) {
     verifyStub: false,
     getSubscription: vi.fn(async (id: string) => ({ id, customer: 'cus_cust0001', livemode: true })),
     fetchCanonical: vi.fn(async (d: string) => `https://${d}/`),
+    isWebAppSite: vi.fn(async (_slug: string) => false),
     ...over,
   };
   return { deps, sent, state, toOrders: () => sent.filter((s) => s.to === deps.ordersEmail), toCustomer: () => sent.filter((s) => s.to !== deps.ordersEmail) };

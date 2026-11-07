@@ -7,6 +7,7 @@ import { serviceClient } from '../lib/bookings/repo.js';
 import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
 import { APP_ORIGIN, webAppCheckoutOn } from '../lib/webApp/webAppServer.js';
 import { webPlanOf } from '../lib/webApp/domainOneClickLive.js';
+import { liveIsWebAppSite } from '../lib/webApp/domainManualEnv.js';
 
 // POST { domain, siteId } + Authorization: Bearer <Supabase access token of the site's owner>
 // → { url } of a $39/year Stripe subscription Checkout for the domain (lib/webDomains.ts).
@@ -30,6 +31,7 @@ export default async function handler(req: any, res: any) {
       authorize: (siteId, authorization) => authorizeSiteOwner({ siteId, authorization }, authDeps),
       flow: { vercel: liveVercelDomains(), contact: registrantContact(), repo: supabaseDomains(serviceClient()) },
       secret: process.env.DOMAIN_CHECKOUT_SECRET || '',
+      isWebAppSite: liveIsWebAppSite,
       priceId: process.env.STRIPE_DOMAIN_PRICE_ID || undefined,
       async createStripeSession(params) {
         const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {

@@ -60,6 +60,11 @@ export interface ManualDeps {
   getSubscription?(id: string): Promise<any | null>;
   /** The canonical URL the live domain serves (display only on the result page). */
   fetchCanonical?(domain: string): Promise<string | null>;
+  /**
+   * Server-side fact: the slug is a web-app (primebarber.org web) site, i.e. it has a web_app_sites row. The system NEVER
+   * buys a domain for these, whatever the Stripe subscription's metadata says. Throws on an outage (callers fail closed = manual).
+   */
+  isWebAppSite(slug: string): Promise<boolean>;
 }
 
 /** What every manual-flow function needs. */
@@ -72,6 +77,23 @@ export interface ManualEnv {
 
 /** The subscription asks for manual fulfilment (set only by the web app's checkout and one-click). Unsigned on purpose: forging it can only make an order manual. */
 export const isManualSub = (sub: any): boolean => sub?.metadata?.fulfil === 'manual';
+
+/**
+ * B1: fulfilment is decided by facts the server holds, never by what the client asked for. A subscription is
+ * manual when it carries the marker OR its site is a web-app site. The lookup fails closed: an error counts as
+ * manual (park it, never buy). Without the manual wiring an unmarked subscription stays on the legacy automatic
+ * path (the legacy dashboard); every live wiring provides it.
+ */
+export async function fulfilManually(sub: any, slug: string, manual?: Pick<ManualDeps, 'isWebAppSite'>): Promise<boolean> {
+  if (isManualSub(sub)) return true;
+  if (!manual) return false;
+  try {
+    return await manual.isWebAppSite(slug);
+  } catch (e) {
+    console.error('[domains/manual] web-app site lookup failed (treated as manual, never bought):', errMsg(e));
+    return true;
+  }
+}
 
 // ─── public status ───
 

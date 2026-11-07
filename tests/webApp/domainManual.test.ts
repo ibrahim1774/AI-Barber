@@ -1,7 +1,7 @@
 // Manual fulfilment of the web app's $39/year domain (lib/webApp/domainManual.ts): the claim parks a paid
 // order in awaiting_setup and NEVER buys; mails go out exactly once; the three signed links move the row.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { DOMAIN_SESSION_APP, claimDomainSubscription, domainSig, handleDomainStripeEvent, stripePayerStatus } from '../../lib/webDomains.js';
+import { DOMAIN_SESSION_APP, claimDomainSubscription, createDomainCheckout, domainSig, handleDomainStripeEvent, stripePayerStatus } from '../../lib/webDomains.js';
 import { sweepDomains, projectFor, type DomainFlowDeps } from '../../lib/ios/domainFlow.js';
 import { makePayer } from '../../lib/ios/domainLive.js';
 import {
@@ -619,5 +619,58 @@ describe('Mark ended', () => {
     const again = await w.claim('sub_m2', false, 'freshcuts2.com');
     expect(again.status).toBe(202);
     expect(w.repo.rows.get('stripe:sub_m2')?.state).toBe('awaiting_setup');
+  });
+});
+
+
+// ─── B1: the server decides manual vs automatic from facts about the SITE, not from the request ───
+describe('B1: a web-app site never reaches the registrar, whatever the client sent', () => {
+  const unmarked = (w: W) => { w.subs.sub_m1.metadata = md(DOMAIN, SLUG, { fulfil: undefined }); };
+
+  it('checkout: a web-app site WITHOUT app:web still gets the manual marker; a legacy site does not; a failed lookup is manual', async () => {
+    const run = async (isWebAppSite: (s: string) => Promise<boolean>, body: any = {}) => {
+      const w = world();
+      const createStripeSession = vi.fn(async (_p: URLSearchParams) => ({ ok: true, status: 200, data: { url: 'https://checkout.stripe.com/x' } }));
+      const authorize = async () => ({ ok: true, target: SLUG, actor: 'web-user' as const });
+      const r = await createDomainCheckout({ domain: DOMAIN, siteId: SLUG, ...body }, 'https://www.aibarber.org', 'Bearer x',
+        { authorize, flow: { ...w.flow, contact: {} as any }, secret: SECRET, createStripeSession, isWebAppSite });
+      expect(r.status).toBe(200);
+      return createStripeSession.mock.calls[0][0];
+    };
+    const web = await run(async () => true); // no `app` in the body
+    expect(web.get('metadata[fulfil]')).toBe('manual');
+    expect(web.get('subscription_data[metadata][fulfil]')).toBe('manual');
+    expect((await run(async () => { throw new Error('db down'); })).get('metadata[fulfil]')).toBe('manual');
+    expect((await run(async () => false)).get('metadata[fulfil]')).toBeNull(); // legacy aibarber.org site: unchanged
+  });
+
+  it('claim (API return): an unmarked subscription of a web-app site parks in awaiting_setup and buys nothing', async () => {
+    const w = world({ manual: { isWebAppSite: vi.fn(async () => true) } });
+    unmarked(w);
+    const r = await w.claim();
+    expect(r.status).toBe(202);
+    expect(w.row()).toMatchObject({ state: 'awaiting_setup' });
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+    expect(w.reg.api.addProjectDomain).not.toHaveBeenCalled();
+  });
+
+  it('webhook: the same, and a failed web-app lookup is parked too (fail closed), not bought', async () => {
+    for (const isWebAppSite of [vi.fn(async () => true), vi.fn(async () => { throw new Error('db down'); })]) {
+      const w = world({ manual: { isWebAppSite } });
+      unmarked(w);
+      const r = await w.event('checkout.session.completed', { id: 'cs_1', payment_status: 'paid', mode: 'subscription', subscription: 'sub_m1', metadata: { type: 'domain_purchase', app: DOMAIN_SESSION_APP } });
+      expect(r.status).toBe(200);
+      expect(r.background).toBeUndefined();
+      expect(w.row()).toMatchObject({ state: 'awaiting_setup' });
+      expect(w.reg.api.buy).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a legacy (non web-app) unmarked subscription stays on the automatic path (unchanged)', async () => {
+    const w = world({ flow: { contact: {} as any } }); // isWebAppSite -> false
+    unmarked(w);
+    await w.claim().catch(() => {});
+    expect(w.repo.rows.get(KEY)?.state).not.toBe('awaiting_setup');
+    expect(w.reg.api.buy).toHaveBeenCalled();
   });
 });

@@ -21,7 +21,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import { newCheckoutMethodParams } from './checkoutPaymentMethods.js';
-import { claimManualDomain, webStatusBody, webStatusWithProbe, isManualSub, manualClaim, type ManualDeps } from './webApp/domainManual.js';
+import { claimManualDomain, webStatusBody, webStatusWithProbe, fulfilManually, manualClaim, type ManualDeps } from './webApp/domainManual.js';
 import {
   WEB_REFUND_REASONS, advanceSlot, alertOnce, applyPayerEvent, domainsNotConfigured, missingDomainConfig, ownDetached,
   precheckDomain, refundWebRow, reserveSlot,
@@ -109,6 +109,8 @@ export interface CheckoutDeps {
   priceId?: string;
   /** POST https://api.stripe.com/v1/checkout/sessions (form params) → the session JSON. */
   createStripeSession(params: URLSearchParams): Promise<{ ok: boolean; status: number; data: any }>;
+  /** B1: the slug is a web-app site (a web_app_sites row). Such sites always get a manual order. Throws on an outage (= manual). */
+  isWebAppSite?(slug: string): Promise<boolean>;
 }
 
 /**
@@ -165,6 +167,13 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
   const refusal = await domainSaleRefusal(deps.flow, slug, domain);
   if (refusal) return refusal;
 
+  // B1: manual or automatic is decided by the SITE (a web_app_sites row), never by the request body: a web-app
+  // account that omits `app: 'web'` still gets a manual order. A failed lookup counts as manual (fail closed).
+  let manualOrder = webFlow;
+  if (!manualOrder && deps.isWebAppSite) {
+    try { manualOrder = await deps.isWebAppSite(slug); } catch { manualOrder = true; }
+  }
+
   let customer: string | null = null;
   if (webFlow && web?.customerOf && auth.userId && auth.actor === 'web-user') {
     try { customer = await web.customerOf(auth.userId); } catch { customer = null; } // no customer: Checkout asks for the card
@@ -198,7 +207,7 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
     params.append(`${prefix}[siteId]`, slug);
     params.append(`${prefix}[sig]`, sig);
     // The web app's orders are set up by hand (lib/webApp/domainManual.ts); the legacy dashboard's stay automatic.
-    if (webFlow) params.append(`${prefix}[fulfil]`, 'manual');
+    if (manualOrder) params.append(`${prefix}[fulfil]`, 'manual');
   }
 
   if (customer) params.append('customer', customer);
@@ -302,7 +311,7 @@ export async function claimDomainSubscription(
   deps: Pick<WebDomainDeps, 'flow' | 'cancelAndRefund' | 'notifySupport' | 'manual'>,
 ): Promise<WebResult> {
   // The web app's orders are fulfilled by hand: park them, never buy. (The legacy dashboard keeps its automatic purchase.)
-  if (isManualSub(sub)) {
+  if (await fulfilManually(sub, v.slug, deps.manual)) {
     if (!deps.manual) return { status: 503, body: { error: 'domains-unavailable' } };
     return claimManualDomain(sub, v, simulated, { ...deps, manual: deps.manual });
   }
@@ -498,7 +507,7 @@ export async function handleDomainStripeEvent(
     const payer = stripePayerStatus(sub, deps.flow.now());
     if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
     const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: simulatedSub(v.slug, deps, obj, sub), slug: v.slug, domain: v.domain, payer };
-    if (isManualSub(sub)) {
+    if (await fulfilManually(sub, v.slug, deps.manual)) {
       // Manual fulfilment: park the paid order, no purchase, no background work, no mail here (a fast 200;
       // the web sweep sends the order and customer emails within 10 minutes). Fail closed without the manual wiring.
       if (!deps.manual) throw new Error('manual domain fulfilment is not wired');
