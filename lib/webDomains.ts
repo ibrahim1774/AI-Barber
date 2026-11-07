@@ -21,9 +21,10 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import { newCheckoutMethodParams } from './checkoutPaymentMethods.js';
+import { claimManualDomain, webStatusBody, webStatusWithProbe, isManualSub, manualClaim, type ManualDeps } from './webApp/domainManual.js';
 import {
   WEB_REFUND_REASONS, advanceSlot, alertOnce, applyPayerEvent, domainsNotConfigured, missingDomainConfig, ownDetached,
-  precheckDomain, refundWebRow, reserveSlot, statusBody, statusWithProbe,
+  precheckDomain, refundWebRow, reserveSlot,
   type DomainFlowDeps, type PayerStatus,
 } from './ios/domainFlow.js';
 
@@ -196,6 +197,8 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
     params.append(`${prefix}[domain]`, domain);
     params.append(`${prefix}[siteId]`, slug);
     params.append(`${prefix}[sig]`, sig);
+    // The web app's orders are set up by hand (lib/webApp/domainManual.ts); the legacy dashboard's stay automatic.
+    if (webFlow) params.append(`${prefix}[fulfil]`, 'manual');
   }
 
   if (customer) params.append('customer', customer);
@@ -234,6 +237,12 @@ export interface WebDomainDeps {
    * test-mode subscription ids that run the real attach/link path instead of the simulation.
    */
   testRealSites?: ReadonlySet<string>;
+  /**
+   * Manual fulfilment of web-app domain orders (lib/webApp/domainManual.ts): subscriptions asking for it
+   * (metadata fulfil=manual) are parked in `awaiting_setup`; the system never buys them. Without it such a
+   * subscription is refused (fail closed), never bought automatically.
+   */
+  manual?: ManualDeps;
 }
 
 /** Stripe test mode, from Stripe's own livemode flag (never the key prefix). */
@@ -290,8 +299,13 @@ export async function claimDomainSubscription(
   sub: any,
   v: { domain: string; slug: string; subscriptionId: string },
   simulated: boolean,
-  deps: Pick<WebDomainDeps, 'flow' | 'cancelAndRefund' | 'notifySupport'>,
+  deps: Pick<WebDomainDeps, 'flow' | 'cancelAndRefund' | 'notifySupport' | 'manual'>,
 ): Promise<WebResult> {
+  // The web app's orders are fulfilled by hand: park them, never buy. (The legacy dashboard keeps its automatic purchase.)
+  if (isManualSub(sub)) {
+    if (!deps.manual) return { status: 503, body: { error: 'domains-unavailable' } };
+    return claimManualDomain(sub, v, simulated, { ...deps, manual: deps.manual });
+  }
   const payer = stripePayerStatus(sub, deps.flow.now());
   if (!payer.active) return { status: 402, body: { error: 'subscription-inactive' } };
   if (!simulated && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
@@ -348,7 +362,7 @@ export function refundedResult(domain: string, reason?: string | null): WebResul
 }
 
 /** Cancel + refund (idempotent at Stripe), then stamp the row. True once refunded. */
-function finishRefund(row: { original_transaction_id: string; domain: string; site_slug?: string; failure_reason?: string | null }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>): Promise<boolean> {
+export function finishRefund(row: { original_transaction_id: string; domain: string; site_slug?: string; failure_reason?: string | null }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>): Promise<boolean> {
   return refundWebRow(row, {
     repo: deps.flow.repo, now: deps.flow.now, cancelAndRefund: deps.cancelAndRefund,
     notifySupport: deps.notifySupport ?? deps.flow.notifySupport,
@@ -484,6 +498,17 @@ export async function handleDomainStripeEvent(
     const payer = stripePayerStatus(sub, deps.flow.now());
     if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
     const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: simulatedSub(v.slug, deps, obj, sub), slug: v.slug, domain: v.domain, payer };
+    if (isManualSub(sub)) {
+      // Manual fulfilment: park the paid order, no purchase, no background work, no mail here (a fast 200;
+      // the web sweep sends the order and customer emails within 10 minutes). Fail closed without the manual wiring.
+      if (!deps.manual) throw new Error('manual domain fulfilment is not wired');
+      const r = await manualClaim(sub, v, c.simulated, { ...deps, manual: deps.manual });
+      if (r.kind === 'row') return { handled: true, status: 200, body: { received: true, domain: true }, ...sale };
+      if (r.kind === 'refunded') return { handled: true, status: 200, body: { received: true, domain: false, refused: 'refunded', refunded: true }, purchase };
+      if (r.kind === 'needs-support') return { handled: true, status: 200, body: { received: true, domain: false, refused: r.code, needsSupport: true }, purchase };
+      if (r.kind === 'inactive') return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
+      return { handled: true, status: 500, body: { error: r.kind === 'unavailable' ? 'domains-unavailable' : 'temporarily-unavailable' } };
+    }
     const reserved = await reserveSlot(c, deps.flow);
     if (reserved.result) {
       const refused = await recordRefusedPaidSlot(c, reserved.result, deps);
@@ -504,7 +529,7 @@ export async function handleDomainStripeEvent(
 
 /** For admin / support: the status body of a web domain by subscription id. */
 export async function webDomainStatus(subId: string, deps: Pick<DomainFlowDeps, 'repo'>) {
-  return statusBody(await deps.repo.get(`stripe:${subId}`));
+  return webStatusBody(await deps.repo.get(`stripe:${subId}`));
 }
 
 // ─── the website's domain panel (api/web-domain) ───
@@ -529,7 +554,7 @@ export async function webDomainPanelStatus(body: any, authorization: unknown, de
   const auth = await deps.authorize(body?.siteId, authorization);
   if (!auth.ok || !auth.target) return denied(auth);
   const row = await webRowFor(auth.target, deps);
-  return { status: 200, body: { ...(row && deps.flow.vercel ? await statusWithProbe(row, deps.flow as DomainFlowDeps) : statusBody(row)), ...(row?.refunded_at ? { refunded: true } : {}) } };
+  return { status: 200, body: { ...(row && deps.flow.vercel ? await webStatusWithProbe(row, deps.flow as DomainFlowDeps) : webStatusBody(row)), ...(row?.refunded_at ? { refunded: true } : {}) } };
 }
 
 /**

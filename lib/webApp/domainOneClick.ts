@@ -46,6 +46,8 @@ export interface OneClickDeps {
   cancelAndRefund(subscriptionId: string): Promise<void>;
   notifySupport?(subject: string, text: string): Promise<void>;
   testRealSites?: ReadonlySet<string>;
+  /** Manual fulfilment wiring (lib/webApp/domainManual.ts). */
+  manual?: WebDomainDeps['manual'];
   /** False = one-click off (env flag, key mismatch, no price): Checkout only. */
   enabled: boolean;
 }
@@ -176,6 +178,7 @@ export function oneClickForm(args: {
     'metadata[siteId]': args.slug,
     'metadata[sig]': domainSig(args.secret, args.domain, args.slug),
     'metadata[oneclick]': '1', // reporting only (the Purchase event); never trusted for anything else
+    'metadata[fulfil]': 'manual', // set up by hand (lib/webApp/domainManual.ts); the system never buys these
     'expand[0]': 'latest_invoice',
   };
   if (args.priceId) {
@@ -225,8 +228,8 @@ export async function oneClickDomainPurchase(body: any, authorization: unknown, 
   const refusal = await domainSaleRefusal(deps.flow, slug, domain);
   if (refusal) return refusal;
 
-  const claimDeps: Pick<WebDomainDeps, 'flow' | 'cancelAndRefund' | 'notifySupport'> = {
-    flow: deps.flow, cancelAndRefund: deps.cancelAndRefund, notifySupport: deps.notifySupport,
+  const claimDeps: Pick<WebDomainDeps, 'flow' | 'cancelAndRefund' | 'notifySupport' | 'manual'> = {
+    flow: deps.flow, cancelAndRefund: deps.cancelAndRefund, notifySupport: deps.notifySupport, manual: deps.manual,
   };
 
   let plan: WebPlan | null;

@@ -10,6 +10,7 @@ import { isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest } from './webAppServer.js';
 import { oneClickFlagOn, type OneClickDeps, type WebPlan } from './domainOneClick.js';
 import type { AuthorizeOwner, PanelDeps } from '../webDomains.js';
+import { liveManualDeps } from './domainManualEnv.js';
 
 /**
  * The shop's PAID plan customer (the entitled web_app_entitlements row of this Stripe mode) and the
@@ -53,6 +54,7 @@ export function liveOneClickDeps(authorize: AuthorizeOwner): OneClickDeps {
     cancelAndRefund: (id) => stripeCancelAndRefund(id),
     notifySupport: (subject, text) => notifySupportEmail(subject, text),
     testRealSites: domainTestRealSites(),
+    manual: liveManualDeps({ getSubscription: stripeSubscription }),
     enabled: oneClickEnabled(),
   };
 }

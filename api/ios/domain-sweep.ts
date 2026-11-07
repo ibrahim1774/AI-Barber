@@ -4,12 +4,23 @@
 // the first 140 s, so one slow step (a republish, ~150 s) still ends inside the budget.
 import { authorized } from '../../lib/cronAuth.js';
 import { runDomainSweep } from '../../lib/ios/domainLive.js';
+import { sweepManualDomains } from '../../lib/webApp/domainManual.js';
+import { liveManualEnv } from '../../lib/webApp/domainManualLive.js';
 
 export const config = { maxDuration: 300 };
 const START_CUTOFF_MS = 140_000;
 
 export default async function handler(req: any, res: any) {
   if (!authorized(req)) return res.status(401).json({ error: 'Not authorized' });
-  const summary = await runDomainSweep(Date.now() + START_CUTOFF_MS);
-  return res.status('error' in summary ? 500 : 200).json('error' in summary ? summary : { ok: true, ...summary });
+  const deadline = Date.now() + START_CUTOFF_MS;
+  const summary = await runDomainSweep(deadline);
+  // The web app's manual domain orders (emails, reminders, ended, renewal-due): own try/catch, never fails the iOS sweep.
+  let manual: unknown;
+  try {
+    manual = await sweepManualDomains(liveManualEnv(), deadline);
+  } catch (e: any) {
+    console.error('[Sweeper:manual-domains] threw:', e?.message || e);
+    manual = { error: 'manual domain sweep failed' };
+  }
+  return res.status('error' in summary ? 500 : 200).json('error' in summary ? { ...summary, manual } : { ok: true, ...summary, manual });
 }

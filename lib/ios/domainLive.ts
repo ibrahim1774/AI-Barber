@@ -32,6 +32,7 @@ import { domainsBuyDisabled, liveVercelDomains, registrantContact } from './verc
 import { keyMode } from '../webApp/stripeCore.js';
 import { sbRest, webAppEntitlementsOn } from '../webApp/webAppServer.js';
 import { stripePayerStatus, type WebDomainDeps } from '../webDomains.js';
+import { liveManualDeps } from '../webApp/domainManualEnv.js';
 import { isEntitledStatus, type Interval, type Tier } from '../webApp/stripeCore.js';
 import { webProductId } from '../webApp/entitlementGate.js';
 
@@ -250,6 +251,7 @@ export function liveWebDomainDeps(authorize: WebDomainDeps['authorize']): WebDom
     cancelAndRefund: (subId) => stripeCancelAndRefund(subId),
     notifySupport: (subject, text) => notifySupportEmail(subject, text),
     testRealSites: domainTestRealSites(),
+    manual: liveManualDeps({ getSubscription: stripeSubscription }),
   };
 }
 

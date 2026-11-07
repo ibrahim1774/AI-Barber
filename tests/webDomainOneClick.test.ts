@@ -10,6 +10,7 @@ import type { DomainFlowDeps } from '../lib/ios/domainFlow.js';
 import { makePayer, domainTestRealSites } from '../lib/ios/domainLive.js';
 import { fakeRegistrar } from './ios/fakeRegistrar.js';
 import { fakeDomainsRepo, blankRow } from './ios/fakeDomainsRepo.js';
+import { fakeManual } from './webApp/fakeManual.js';
 
 const T0 = 1_800_000_000_000;
 const DAY = 24 * 3600_000;
@@ -104,16 +105,17 @@ function world(opts: { livemode?: boolean; priceId?: string; flow?: Partial<Doma
     sitePurchase: async () => null, hooks, now: clock, notifySupport, cancelAndRefund: (id) => cancelAndRefund(id),
     ...opts.flow,
   };
+  const fm = fakeManual();
   const deps: OneClickDeps = {
-    authorize, flow, secret: SECRET, priceId: PRICE, stripe: st.fn,
+    authorize, flow, secret: SECRET, priceId: PRICE, stripe: st.fn, manual: fm.deps,
     planOf: vi.fn(async () => ({ customer: 'cus_plan0001', subscriptionId: 'sub_plan0001' })),
     ownsWebSite: vi.fn(async (slug: string, userId: string) => slug === 'fresh-cuts' && userId === 'u1'),
     cancelAndRefund, notifySupport, enabled: true,
     ...opts.deps,
   };
-  const webhookDeps = { getSubscription: async (id: string) => (st.subs.has(id) ? structuredClone(st.subs.get(id)) : null), flow, secret: SECRET, priceId: deps.priceId, cancelAndRefund, notifySupport, testRealSites: deps.testRealSites };
+  const webhookDeps = { getSubscription: async (id: string) => (st.subs.has(id) ? structuredClone(st.subs.get(id)) : null), flow, secret: SECRET, priceId: deps.priceId, cancelAndRefund, notifySupport, testRealSites: deps.testRealSites, manual: deps.manual };
   return {
-    reg, repo, st, deps, flow, hooks, cancelAndRefund, notifySupport,
+    reg, repo, st, deps, flow, hooks, cancelAndRefund, notifySupport, fm,
     buy: (body: any = { domain: 'freshcuts.com', siteId: 'fresh-cuts' }, auth: unknown = OWNER) => oneClickDomainPurchase(body, auth, deps),
     card: (auth: unknown = OWNER) => oneClickCard({ siteId: 'fresh-cuts' }, auth, deps),
     event: (type: string, object: any) => handleDomainStripeEvent({ type, data: { object } }, () => webhookDeps as any),
@@ -164,7 +166,8 @@ describe('one-click buy: the charge', () => {
     expect(new Set(w.st.posts().map((p) => p.idem)).size).toBe(1);
     expect(w.st.subs.size).toBe(1);
     expect(w.rows()).toHaveLength(1);
-    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+    expect(w.reg.api.buy).not.toHaveBeenCalled(); // manual fulfilment: the system never buys
+    expect(w.fm.toOrders()).toHaveLength(1); // one order email for the double click
   });
 
   it('a retry in a later 10-minute window is a new attempt key (a fixed card is not stuck on a cached decline)', async () => {
@@ -308,24 +311,24 @@ describe('one-click buy: no card, declined, SCA: nothing charged, nothing left b
 });
 
 describe('one-click buy: the claim (shared state machine)', () => {
-  it('paid + active: the row stripe:<sub> goes reserved → bought → live through the real registrar; auto-renew off, link hook ran', async () => {
+  it('paid + active: the row stripe:<sub> is parked in awaiting_setup (manual fulfilment): no registrar buy, no attach, no republish', async () => {
     const w = world();
     const r = await w.buy();
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(202);
+    expect(r.body).toMatchObject({ domain: 'freshcuts.com', state: 'awaiting-setup' });
     const row = w.repo.rows.get('stripe:sub_oneclick1')!;
-    expect(row).toMatchObject({ state: 'live', source: 'stripe', site_slug: 'fresh-cuts', domain: 'freshcuts.com', simulated: false });
-    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
-    expect(w.reg.registered.get('freshcuts.com')?.renew).toBe(true); // auto-renew follows the active subscription (the machine bought it with renew off)
-    expect(w.reg.api.buy).toHaveBeenCalledWith('freshcuts.com', expect.objectContaining({ autoRenew: false }));
-    expect(w.hooks.onDomainLinked).toHaveBeenCalled();
+    expect(row).toMatchObject({ state: 'awaiting_setup', source: 'stripe', site_slug: 'fresh-cuts', domain: 'freshcuts.com', simulated: false });
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+    expect(w.reg.api.addProjectDomain).not.toHaveBeenCalled();
+    expect(w.hooks.onDomainLinked).not.toHaveBeenCalled();
   });
 
   it('Stripe test mode: the row is simulated and Vercel is never asked to buy or attach', async () => {
     const w = world({ livemode: false });
     const r = await w.buy();
-    expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ sandbox: true });
-    expect(w.repo.rows.get('stripe:sub_oneclick1')).toMatchObject({ simulated: true, state: 'live' });
+    expect(r.status).toBe(202);
+    expect(r.body).toMatchObject({ sandbox: true, state: 'awaiting-setup' });
+    expect(w.repo.rows.get('stripe:sub_oneclick1')).toMatchObject({ simulated: true, state: 'awaiting_setup' });
     expect(w.reg.api.buy).not.toHaveBeenCalled();
     expect(w.reg.api.addProjectDomain).not.toHaveBeenCalled();
   });
@@ -363,25 +366,26 @@ describe('one-click buy: the claim (shared state machine)', () => {
     expect(w.reg.api.buy).not.toHaveBeenCalled();
   });
 
-  it('the webhook wins the race (its created event reserved the row first): the same row resumes, one registrar buy', async () => {
+  it('the webhook wins the race (its created event parked the row first): the same row answers, no buy, ONE order mail', async () => {
     const w = world();
     w.st.state.onCreated = async (sub) => { await w.event('customer.subscription.created', sub); };
     const r = await w.buy();
     expect([200, 202]).toContain(r.status);
     expect(w.rows()).toHaveLength(1);
-    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
-    expect(w.repo.rows.get('stripe:sub_oneclick1')?.state).toBe('live');
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+    expect(w.repo.rows.get('stripe:sub_oneclick1')?.state).toBe('awaiting_setup');
+    expect(w.fm.toOrders()).toHaveLength(1);
   });
 
   it('a paid, verified subscription of this site with no row (died after Stripe took the money) is claimed, not charged again', async () => {
     const w = world();
-    const f = { customer: 'cus_plan0001', ...Object.fromEntries(Object.entries({ type: 'domain_purchase', app: DOMAIN_SESSION_APP, domain: 'other.com', siteId: 'fresh-cuts', sig: domainSig(SECRET, 'other.com', 'fresh-cuts') }).map(([k, v]) => [`metadata[${k}]`, v])), 'items[0][price]': PRICE };
+    const f = { customer: 'cus_plan0001', ...Object.fromEntries(Object.entries({ type: 'domain_purchase', app: DOMAIN_SESSION_APP, domain: 'other.com', siteId: 'fresh-cuts', sig: domainSig(SECRET, 'other.com', 'fresh-cuts'), fulfil: 'manual' }).map(([k, v]) => [`metadata[${k}]`, v])), 'items[0][price]': PRICE };
     await w.st.fn('POST', '/v1/subscriptions', { form: f as any, idem: 'seed' });
     w.st.calls.length = 0;
     const r = await w.buy(); // asks for freshcuts.com; the orphan (other.com) is what was paid for
     expect([200, 202]).toContain(r.status);
     expect(w.st.posts()).toHaveLength(0);
-    expect(w.repo.rows.get('stripe:sub_oneclick1')).toMatchObject({ domain: 'other.com', state: 'live' });
+    expect(w.repo.rows.get('stripe:sub_oneclick1')).toMatchObject({ domain: 'other.com', state: 'awaiting_setup' });
     // another site's subscription on the same customer is never taken
     const w2 = world();
     const g = { ...f, 'metadata[siteId]': 'someone-else', 'metadata[sig]': domainSig(SECRET, 'other.com', 'someone-else') };
@@ -487,7 +491,10 @@ describe('hosted Checkout stays the fallback (customer + return page are web-onl
     expect(p.get('success_url')).toBe('https://www.primebarber.org/app/domain?domain_payment=success&session_id={CHECKOUT_SESSION_ID}');
     expect(p.get('cancel_url')).toBe('https://www.primebarber.org/app/domain?domain_payment=cancelled');
     expect(web.customerOf).toHaveBeenCalledWith('u1');
-    const strip = (x: URLSearchParams) => [...x.entries()].filter(([k]) => !['customer', 'success_url', 'cancel_url'].includes(k));
+    const strip = (x: URLSearchParams) => [...x.entries()].filter(([k]) => !['customer', 'success_url', 'cancel_url'].includes(k) && !k.endsWith('[fulfil]'));
+    expect(p.get('metadata[fulfil]')).toBe('manual');
+    expect(p.get('subscription_data[metadata][fulfil]')).toBe('manual');
+    expect(legacy.createStripeSession.mock.calls[0][0].get('metadata[fulfil]')).toBeNull(); // the legacy dashboard stays automatic
     expect(strip(p)).toEqual(strip(legacy.createStripeSession.mock.calls[0][0]));
   });
 
