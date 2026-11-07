@@ -23,6 +23,8 @@ export interface OrderFacts {
   /** An own, detached name of this site: already on the Vercel team, just re-attach. */
   ownDetached: boolean;
   paidUntil: string | null;
+  /** The row's auto_renew: false = the customer already cancelled (the live mail must not promise a renewal). */
+  autoRenew?: boolean;
   teamSlug: string | null;
 }
 
@@ -146,13 +148,15 @@ export function customerOrderedEmail(f: Pick<OrderFacts, 'domain' | 'liveUrl'>, 
   ], replyToAddress());
 }
 
-export function customerLiveEmail(f: Pick<OrderFacts, 'domain' | 'liveUrl' | 'paidUntil'>, origin: string): Mail {
+export function customerLiveEmail(f: Pick<OrderFacts, 'domain' | 'liveUrl' | 'paidUntil'> & { autoRenew?: boolean }, origin: string): Mail {
   return textMail(`${f.domain} is live`, [
     `Your website is now live at https://${f.domain}`,
     '',
     f.liveUrl ? `Your previous address keeps working too: ${f.liveUrl}` : 'Your previous address keeps working too.',
     '',
-    `Your $39/year subscription renews every year${f.paidUntil ? ` (next on ${new Date(f.paidUntil).toISOString().slice(0, 10)})` : ''} until you cancel it. If you cancel, the domain keeps working until the paid year ends. Manage it here: ${manageUrl(origin)}`,
+    f.autoRenew === false
+      ? `Your $39/year subscription is set to end${f.paidUntil ? ` on ${new Date(f.paidUntil).toISOString().slice(0, 10)}` : ' at the end of the paid year'} and will not renew. The domain keeps working until then. Manage it here: ${manageUrl(origin)}`
+      : `Your $39/year subscription renews every year${f.paidUntil ? ` (next on ${new Date(f.paidUntil).toISOString().slice(0, 10)})` : ''} until you cancel it. If you cancel, the domain keeps working until the paid year ends. Manage it here: ${manageUrl(origin)}`,
     '',
     'Questions? Reply to this email.',
   ], replyToAddress());

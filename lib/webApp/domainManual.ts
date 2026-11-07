@@ -165,7 +165,7 @@ export function postAllowed(headers: Record<string, string | string[] | undefine
  * mail under the same Idempotency-Key carries byte-identical links (Resend answers 409 for a changed body).
  */
 function linkFor(action: DomainAction, row: DomainRow, m: ManualDeps, base: number): string | null {
-  if (!m.linkSecret) return null;
+  if (!m.linkSecret || !m.linkBase) return null;
   const t = signDomainAction(m.linkSecret, { a: action, k: row.original_transaction_id, d: row.domain, s: row.site_slug, exp: base + LINK_TTL_MS });
   return `${m.linkBase.replace(/\/+$/, '')}/api/web-app/domain-action?t=${t}`;
 }
@@ -182,6 +182,15 @@ const createdMs = (row: Pick<DomainRow, 'created_at'>) => Date.parse(row.created
 /** Fixed per row (changes only when a renewal moves paid_until), so the ended mail's link is the same on a retry. */
 const endedBaseMs = (row: Pick<DomainRow, 'created_at' | 'paid_until' | 'linked_at'>) =>
   Math.max(createdMs(row), Date.parse(row.paid_until || '') || 0, Date.parse(row.linked_at || '') || 0);
+
+/** N1: Stripe is still retrying the card (past_due): not over yet, so no "ended" mail and no Mark ended. Unknown = not dunning. */
+async function inDunning(row: DomainRow, env: ManualEnv): Promise<boolean> {
+  if (!env.manual.getSubscription) return false;
+  try {
+    const sub = await withTimeout(env.manual.getSubscription(subOf(row)), 6_000, 'subscription');
+    return sub?.status === 'past_due';
+  } catch { return false; }
+}
 
 const subOf = (row: Pick<DomainRow, 'original_transaction_id'>) => row.original_transaction_id.replace(/^stripe:/, '');
 
@@ -215,7 +224,7 @@ async function factsFor(row: DomainRow, env: ManualEnv, opts: { sub?: any; ownDe
     domain: row.domain, slug, project: projectFor(slug), liveUrl, customerEmail: cust.email, shopName: cust.shopName,
     subscriptionId: subOf(row), stripeCustomerId: typeof customer === 'string' ? customer : null,
     testMode: sub ? sub.livemode === false : row.simulated, createdAt: row.created_at, priceNote: quote,
-    ownDetached: opts.ownDetachedName ?? !!row.last_error?.startsWith('own detached name'), paidUntil: row.paid_until, teamSlug: m.teamSlug ?? null,
+    ownDetached: opts.ownDetachedName ?? !!row.last_error?.startsWith('own detached name'), paidUntil: row.paid_until, autoRenew: row.auto_renew, teamSlug: m.teamSlug ?? null,
   };
 }
 
@@ -486,7 +495,8 @@ export async function domainActionView(token: unknown, env: ManualEnv): Promise<
   const chk: Check[] = [];
   try {
     const s = await withTimeout(env.flow.payer(row), 8_000, 'payer status');
-    chk.push({ name: 'Subscription over', ok: !s.active, required: true, detail: s.active ? `still paid${s.expiresAt ? ` until ${iso(s.expiresAt)}` : ''}: not yet` : 'the subscription is no longer active' });
+    const dun = !s.active && await inDunning(row, env);
+    chk.push({ name: 'Subscription over', ok: !s.active && !dun, required: true, detail: dun ? 'Stripe is still retrying the card (past due): not yet' : s.active ? `still paid${s.expiresAt ? ` until ${iso(s.expiresAt)}` : ''}: not yet` : 'the subscription is no longer active' });
   } catch (e) { chk.push({ name: 'Subscription over', ok: false, required: true, detail: `Stripe did not answer (${errMsg(e)})` }); }
   if (!env.manual.verifyStub && env.flow.vercel) {
     const att = await withTimeout(env.flow.vercel.projectDomain(projectFor(row.site_slug), row.domain), 6_000, 'project domain').catch(() => undefined);
@@ -583,6 +593,7 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
   try { s = await withTimeout(env.flow.payer(row), 8_000, 'payer status'); } catch (e) {
     return msg('Try again', `Stripe did not answer (${errMsg(e)}). Nothing was changed.`, 503);
   }
+  if (!s.active && await inDunning(row, env)) return msg('Still paid', 'Stripe is still retrying the customer\'s card (past due). Nothing was changed; wait until the subscription is cancelled.', 409);
   if (s.active) return msg('Still paid', `The subscription is still active${s.expiresAt ? ` until ${iso(s.expiresAt)}` : ''}. Nothing was changed.`, 409);
   if (!m.verifyStub && env.flow.vercel) {
     const att = await withTimeout(env.flow.vercel.projectDomain(projectFor(row.site_slug), row.domain), 6_000, 'project domain').catch(() => undefined);
@@ -673,7 +684,7 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
           const s = await withTimeout(env.flow.payer(cur), 8_000, 'payer status');
           cur = await refreshFromPayer(cur, s, env.flow);
           out.refreshed.push(cur.domain);
-          if (!s.active && !cur.alerts_sent?.ended) {
+          if (!s.active && !cur.alerts_sent?.ended && !(await inDunning(cur, env))) {
             const f = await factsFor(cur, env);
             if (await sendRowMailOnce(cur, 'ended', m.ordersEmail, () => endedEmail(f, linkFor('end', cur, m, endedBaseMs(cur))), env)) out.ended.push(cur.domain);
           }

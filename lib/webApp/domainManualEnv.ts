@@ -23,10 +23,22 @@ export function verifyStubOn(env: Record<string, string | undefined> = process.e
   return env.DOMAIN_LIVE_VERIFY_STUB === '1' && domainsBuyDisabled(env) && keyMode(env.STRIPE_SECRET_KEY) === 'test';
 }
 
+/**
+ * Origin of the operator links. https only (a typo or an http base would send live tokens in the clear / to a stray host: no links
+ * at all instead, and the action endpoint / mails say links are off). On a Vercel preview or development deployment the
+ * production URL is NOT used as a default (the links would land on production and be rejected): set DOMAIN_ADMIN_LINK_BASE.
+ */
 export function linkBase(env: Record<string, string | undefined> = process.env): string {
-  if (env.DOMAIN_ADMIN_LINK_BASE) return env.DOMAIN_ADMIN_LINK_BASE;
-  if (env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  return APP_ORIGIN();
+  const nonProd = !!env.VERCEL_ENV && env.VERCEL_ENV !== 'production';
+  const raw = env.DOMAIN_ADMIN_LINK_BASE
+    || (!nonProd && env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '')
+    || (!nonProd ? APP_ORIGIN() : '');
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && u.hostname.includes('.') ? u.origin : '';
+  } catch {
+    return '';
+  }
 }
 
 async function customerOf(slug: string): Promise<{ email: string | null; shopName: string | null }> {

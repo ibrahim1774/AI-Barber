@@ -2,6 +2,8 @@
 // order in awaiting_setup and NEVER buys; mails go out exactly once; the three signed links move the row.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { customerLiveEmail } from '../../lib/webApp/domainEmails.js';
+import { linkBase } from '../../lib/webApp/domainManualEnv.js';
 import { DOMAIN_SESSION_APP, claimDomainSubscription, createDomainCheckout, domainSig, handleDomainStripeEvent, stripePayerStatus } from '../../lib/webDomains.js';
 import { sweepDomains, projectFor, type DomainFlowDeps } from '../../lib/ios/domainFlow.js';
 import { makePayer } from '../../lib/ios/domainLive.js';
@@ -730,6 +732,37 @@ describe('S5: a paid order that cannot be claimed for hours alerts support (subj
     expect(subject).toMatch(/cannot be claimed/);
     expect(text).toContain('sub_m1');
     expect(text).not.toMatch(/@|shop@customer/);
+  });
+});
+
+describe('NITs: dunning is not ended, honest live mail, https-only link base', () => {
+  it('N1: past_due -> no ended mail and Mark ended refused; canceled -> mail once', async () => {
+    const w = world();
+    await w.claim();
+    await w.repo.update(KEY, null, { state: 'manual_live', linked_at: new Date(T0).toISOString(), alerts_sent: { ...w.row().alerts_sent, 'customer-live': 'x' } });
+    w.subs.sub_m1 = { ...w.subs.sub_m1, status: 'past_due' };
+    await w.sweep();
+    expect(w.fm.sent.filter((s) => /period ended/.test(s.mail.subject))).toHaveLength(0);
+    const r = await runDomainAction(w.tokenFor('end'), w.env);
+    expect(r.status).toBe(409);
+    expect(w.hooks.onDomainUnlinked).not.toHaveBeenCalled();
+    w.cancelSub(); w.tick(13 * HOUR);
+    await w.sweep(); await w.sweep();
+    expect(w.fm.sent.filter((s) => /period ended/.test(s.mail.subject))).toHaveLength(1);
+  });
+
+  it('N2: a customer who already cancelled is not told the domain renews', () => {
+    const f = { domain: DOMAIN, liveUrl: null, paidUntil: new Date(T0 + 100 * DAY).toISOString() };
+    expect(customerLiveEmail({ ...f, autoRenew: false }, 'https://app.example.test').text).toMatch(/will not renew/);
+    expect(customerLiveEmail({ ...f, autoRenew: true }, 'https://app.example.test').text).toMatch(/renews every year/);
+  });
+
+  it('N4: the link base is https only; a preview deployment has no default', () => {
+    expect(linkBase({ DOMAIN_ADMIN_LINK_BASE: 'http://x.example' })).toBe('');
+    expect(linkBase({ DOMAIN_ADMIN_LINK_BASE: 'https://x.example/path' })).toBe('https://x.example');
+    expect(linkBase({ VERCEL_ENV: 'preview', VERCEL_PROJECT_PRODUCTION_URL: 'api.example' })).toBe('');
+    expect(linkBase({ VERCEL_ENV: 'production', VERCEL_PROJECT_PRODUCTION_URL: 'api.example' })).toBe('https://api.example');
+    expect(linkBase({ VERCEL_ENV: 'preview', DOMAIN_ADMIN_LINK_BASE: 'https://stage.example' })).toBe('https://stage.example');
   });
 });
 
