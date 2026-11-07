@@ -21,7 +21,7 @@ const tokenFrom = (req: any): unknown => {
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Robots-Tag', 'noindex');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Referrer-Policy', 'same-origin'); // 'no-referrer' makes browsers send Origin: null on the form POST
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
   const secret = process.env.WEB_APP_NUDGE_SECRET || '';
@@ -31,14 +31,18 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'GET') {
     const token = tokenFrom(req);
-    const state = previewContinue(token, { mode, secret, now: Date.now });
-    return html(res, 200, continuePage(state, state === 'form' ? String(token) : undefined));
+    const { state, hint } = previewContinue(token, { mode, secret, now: Date.now });
+    return html(res, 200, continuePage(state, state === 'form' ? String(token) : undefined, hint));
   }
 
   // POST: same-origin only (Origin/Sec-Fetch-Site must be ours when sent) and rate limited per IP.
   const origin = req.headers?.origin;
   const site = req.headers?.['sec-fetch-site'];
-  if ((origin !== undefined && !webAppOriginAllowed(origin)) || (site !== undefined && site !== 'same-origin' && site !== 'same-site')) {
+  // Cross-site is always refused. An Origin, when sent, must be ours; "null" is accepted only when the browser itself
+  // says the request is same-origin (Sec-Fetch-Site), which a cross-site page cannot forge.
+  const crossSite = site !== undefined && site !== 'same-origin' && site !== 'same-site';
+  const originOk = origin === undefined || webAppOriginAllowed(origin) || (origin === 'null' && site === 'same-origin');
+  if (crossSite || !originOk) {
     return res.status(403).json({ error: 'forbidden_origin' });
   }
   if (!(await limiter.hit(`continue:${clientIp(req.headers)}`, CONTINUE_PER_MINUTE, 60_000, Date.now()))) {

@@ -20,6 +20,7 @@ const appPath = (step: 1 | 2 | 3) => `/app/?from=nudge${step}`;
 export interface ContinueRow {
   step1_sent_at: string | null; step2_sent_at: string | null; step3_sent_at: string | null;
   links_used: Record<string, string> | null;
+  stopped_at?: string | null; stop_reason?: string | null;
 }
 export interface ContinueDeps {
   mode: Mode;
@@ -45,9 +46,12 @@ export type ContinueOutcome =
   | { kind: 'redirect'; location: string; cookies: string[] };
 
 /** GET: no DB, no Supabase. A valid, unexpired token for this mode shows the button; anything else shows "expired". */
-export function previewContinue(token: unknown, deps: Pick<ContinueDeps, 'mode' | 'secret' | 'now'>): PageState {
-  return verifyContinueToken(token, { now: deps.now(), secret: deps.secret, mode: deps.mode }).ok ? 'form' : 'expired';
+export function previewContinue(token: unknown, deps: Pick<ContinueDeps, 'mode' | 'secret' | 'now'>): { state: PageState; hint: string | null } {
+  const t = verifyContinueToken(token, { now: deps.now(), secret: deps.secret, mode: deps.mode });
+  return t.ok ? { state: 'form', hint: t.hint } : { state: 'expired', hint: null };
 }
+/** Rows stopped for these reasons belong to someone who already pays, has a live site, or is an iOS/legacy customer: never auto sign in. */
+const NO_AUTO_SIGN_IN = new Set(['paid', 'not_web', 'live']);
 
 export async function performContinue(token: unknown, deps: ContinueDeps): Promise<ContinueOutcome> {
   const t = verifyContinueToken(token, { now: deps.now(), secret: deps.secret, mode: deps.mode });
@@ -57,6 +61,7 @@ export async function performContinue(token: unknown, deps: ContinueDeps): Promi
     const row = await deps.row(userId);
     // A token for an unsent step never exists: no row, or no mail for that step, means this is not a link we sent.
     if (!row || !(row as any)[`step${step}_sent_at`]) return { kind: 'page', state: 'expired' };
+    if (row.stop_reason && NO_AUTO_SIGN_IN.has(row.stop_reason)) return { kind: 'redirect', location: SIGN_IN_PATH, cookies: [] };
     const first = row.links_used?.[String(step)];
     if (first && deps.now() - Date.parse(first) > USED_GRACE_MS) return { kind: 'page', state: 'used' };
 
@@ -68,7 +73,7 @@ export async function performContinue(token: unknown, deps: ContinueDeps): Promi
       return { kind: 'redirect', location: SIGN_IN_PATH, cookies: [] };
     }
     const session = await deps.consume(await deps.generateLink(email));
-    if (!session.refreshToken || (session.userId && session.userId !== userId)) return { kind: 'page', state: 'unavailable' };
+    if (!session.refreshToken || !session.userId || session.userId !== userId) return { kind: 'page', state: 'unavailable' };
     // The first click starts the grace window; a refresh inside it keeps the original stamp.
     if (!first) await deps.stampLinkUsed(userId, step, row, new Date(deps.now()).toISOString());
     return { kind: 'redirect', location: appPath(step), cookies: [cookieFor(session.refreshToken), hintFor()] };
@@ -79,7 +84,7 @@ export async function performContinue(token: unknown, deps: ContinueDeps): Promi
 }
 
 // ---------- pages (shared with the unsubscribe handler) ----------
-export function mailPage(opts: { heading: string; body: string; button?: { label: string; href?: string; formAction?: string; fields?: Record<string, string> } }): string {
+export function mailPage(opts: { heading: string; body: string; button?: { label: string; href?: string; formAction?: string; fields?: Record<string, string> }; alt?: { label: string; href: string } }): string {
   const b = opts.button;
   const btn = !b ? '' : b.formAction
     ? `<form method="POST" action="${esc(b.formAction)}" style="margin:0 0 16px">${Object.entries(b.fields ?? {}).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('')}<button type="submit" style="${BTN}">${esc(b.label)}</button></form>`
@@ -87,14 +92,19 @@ export function mailPage(opts: { heading: string; body: string; button?: { label
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Prime Barber</title></head>
 <body style="margin:0;padding:24px 16px;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
 <div style="max-width:420px;margin:0 auto"><p style="margin:0 0 12px;font-size:20px;font-weight:600">${esc(opts.heading)}</p>
-<p style="margin:0 0 20px;font-size:15px;line-height:22px">${esc(opts.body)}</p>${btn}</div></body></html>`;
+<p style="margin:0 0 20px;font-size:15px;line-height:22px">${esc(opts.body)}</p>${btn}${opts.alt ? `<p style="margin:0;font-size:14px"><a href="${esc(opts.alt.href)}" style="color:#0b57d0">${esc(opts.alt.label)}</a></p>` : ''}</div></body></html>`;
 }
 const BTN = 'padding:13px 26px;background-color:#0b57d0;border:0;border-radius:8px;color:#ffffff;font-size:16px;font-weight:600;line-height:20px;cursor:pointer';
 
-export function continuePage(state: PageState, token?: string): string {
+export function continuePage(state: PageState, token?: string, hint?: string | null): string {
   const signIn = { label: 'Sign in', href: SIGN_IN_PATH };
   switch (state) {
-    case 'form': return mailPage({ heading: 'Open your Prime Barber website', body: 'Tap the button to sign in and pick up where you left off.', button: { label: 'Continue', formAction: '/api/web-app/continue', fields: { t: token ?? '' } } });
+    case 'form': return mailPage({
+      heading: 'Open your Prime Barber website',
+      body: hint ? `This link signs in ${hint}. Tap the button to pick up where you left off.` : 'Tap the button to sign in and pick up where you left off.',
+      button: { label: hint ? `Continue as ${hint}` : 'Continue', formAction: '/api/web-app/continue', fields: { t: token ?? '' } },
+      alt: { label: 'Not you? Sign in', href: SIGN_IN_PATH },
+    });
     case 'used': return mailPage({ heading: 'This link was already used', body: 'For your security each link works once. Sign in to open your website.', button: signIn });
     case 'gone': return mailPage({ heading: 'We could not find this account', body: 'The account for this link no longer exists.', button: signIn });
     case 'unavailable': return mailPage({ heading: "We couldn't sign you in right now", body: 'Please try the link again in a minute, or sign in the usual way.', button: signIn });
@@ -111,7 +121,7 @@ export function liveContinueDeps(mode: Mode, secret: string, rest: typeof sbRest
   return {
     mode, secret, now: () => Date.now(),
     async row(uid) {
-      return (await rest(`web_app_signup_nudges?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=step1_sent_at,step2_sent_at,step3_sent_at,links_used&limit=1`))?.[0] ?? null;
+      return (await rest(`web_app_signup_nudges?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=step1_sent_at,step2_sent_at,step3_sent_at,links_used,stopped_at,stop_reason&limit=1`))?.[0] ?? null;
     },
     async email(uid) { const u = await nd.adminUser(uid); return u ? (u.email?.trim() || null) : null; },
     async isPaid(uid, email) { return (await nd.isEntitled(uid)) || (await nd.stripePaid(email, uid)); },

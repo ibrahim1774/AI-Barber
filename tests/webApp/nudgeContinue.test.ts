@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { performContinue, previewContinue, USED_GRACE_MS, type ContinueDeps, type ContinueRow } from '../../lib/webApp/nudgeContinue.js';
-import { signContinueToken } from '../../lib/webApp/nudgeToken.js';
+import { maskEmail, signContinueToken } from '../../lib/webApp/nudgeToken.js';
 import handler from '../../api/web-app/continue.js';
 
 const S = 'continue-secret';
@@ -29,12 +29,17 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(
 
 describe('previewContinue (GET): no DB, no Supabase', () => {
   const p = { mode: 'test' as const, secret: S, now: () => NOW + 1000 };
+  it('the masked address signed into the token comes back as the hint (GET stays DB-free); no hint -> null', () => {
+    expect(previewContinue(signContinueToken(U, 1, 'test', NOW, S, undefined, maskEmail('jake@gmail.com')), p).hint).toBe('j•••@gmail.com');
+    expect(previewContinue(tok(), p).hint).toBeNull();
+    expect(maskEmail('a@b.co')).toBe('a•••@b.co'); expect(maskEmail('nope')).toBe('');
+  });
   it('valid token -> form; expired, tampered, junk, other mode -> expired', () => {
-    expect(previewContinue(tok(), p)).toBe('form');
-    expect(previewContinue(tok(1, 'test', U, NOW - 8 * 24 * 3600_000), p)).toBe('expired');
-    expect(previewContinue(tok() + 'x', p)).toBe('expired');
-    expect(previewContinue(undefined, p)).toBe('expired');
-    expect(previewContinue(tok(1, 'live'), p)).toBe('expired');
+    expect(previewContinue(tok(), p).state).toBe('form');
+    expect(previewContinue(tok(1, 'test', U, NOW - 8 * 24 * 3600_000), p).state).toBe('expired');
+    expect(previewContinue(tok() + 'x', p).state).toBe('expired');
+    expect(previewContinue(undefined, p).state).toBe('expired');
+    expect(previewContinue(tok(1, 'live'), p).state).toBe('expired');
   });
 });
 
@@ -48,6 +53,18 @@ describe('performContinue (POST)', () => {
     expect(out.cookies[1]).toMatch(/^pb_has=1; /);
     expect(JSON.stringify(out)).not.toContain('HASH');
     expect(calls).toEqual(['row', 'email', 'paid', 'generate', 'consume', 'stamp']);
+  });
+  it('a row stopped as paid / not_web / live never auto signs in; other stops still do', async () => {
+    for (const stop_reason of ['paid', 'not_web', 'live']) {
+      const { d, calls } = deps({ row: { stopped_at: 'x', stop_reason } });
+      expect(await performContinue(tok(), d)).toEqual({ kind: 'redirect', location: '/app/sign-in', cookies: [] });
+      expect(calls).not.toContain('generate');
+    }
+    expect(((await performContinue(tok(), deps({ row: { stopped_at: 'x', stop_reason: 'expired' } }).d)) as any).kind).toBe('redirect');
+  });
+  it('a session without a user id is refused', async () => {
+    const { d } = deps({ consume: async () => ({ refreshToken: 'RT', userId: null }) });
+    expect(await performContinue(tok(), d)).toEqual({ kind: 'page', state: 'unavailable' });
   });
   it('uses the account email from the admin lookup for the magic link', async () => {
     const gen = vi.fn(async (_e: string) => 'H');
@@ -161,7 +178,14 @@ describe('/api/web-app/continue handler', () => {
     const r = await call({ method: 'GET', query: { t } });
     expect(r.code).toBe(200); expect(f).not.toHaveBeenCalled();
     expect(r.body).toContain('<form method="POST" action="/api/web-app/continue"'); expect(r.body).toContain(`value="${t}"`);
-    expect(r.headers['Cache-Control']).toBe('no-store'); expect(r.headers['X-Robots-Tag']).toBe('noindex'); expect(r.headers['Referrer-Policy']).toBe('no-referrer');
+    expect(r.headers['Cache-Control']).toBe('no-store'); expect(r.headers['X-Robots-Tag']).toBe('noindex'); expect(r.headers['Referrer-Policy']).toBe('same-origin');
+  });
+  it('GET shows who it signs in (masked) and a Not you link', async () => {
+    stubFetch();
+    const t = signContinueToken(U, 1, 'test', Date.now(), S, undefined, maskEmail('jake@gmail.com'));
+    const r = await call({ method: 'GET', query: { t } });
+    expect(r.body).toContain('Continue as j•••@gmail.com'); expect(r.body).toContain('Not you? Sign in'); expect(r.body).toContain('href="/app/sign-in"');
+    expect(r.body).not.toContain('jake@gmail.com');
   });
   it('GET with a bad token says the link expired, still no network', async () => {
     const f = stubFetch();
@@ -191,6 +215,15 @@ describe('/api/web-app/continue handler', () => {
     expect((await call({ method: 'POST', headers: { origin: 'https://evil.example', 'x-real-ip': `10.1.0.${n}` }, body: { t: live() } })).code).toBe(403);
     expect((await call({ method: 'POST', headers: { 'sec-fetch-site': 'cross-site', 'x-real-ip': `10.1.0.${n}` }, body: { t: live() } })).code).toBe(403);
     expect(f).not.toHaveBeenCalled();
+  });
+  it('Origin: null is accepted only with Sec-Fetch-Site same-origin; cross-site is always refused', async () => {
+    stubFetch();
+    const post = (h: any) => call({ method: 'POST', headers: { 'x-real-ip': `10.1.0.${n}`, ...h }, body: { t: live() } });
+    expect((await post({ origin: 'null', 'sec-fetch-site': 'same-origin' })).code).toBe(303);
+    expect((await post({ origin: 'null' })).code).toBe(403);
+    expect((await post({ origin: 'null', 'sec-fetch-site': 'cross-site' })).code).toBe(403);
+    expect((await post({ origin: ORIGIN, 'sec-fetch-site': 'cross-site' })).code).toBe(403);
+    expect((await post({ origin: 'https://evil.example', 'sec-fetch-site': 'same-origin' })).code).toBe(403);
   });
   it('POST is rate limited per IP (429 after 10)', async () => {
     stubFetch();

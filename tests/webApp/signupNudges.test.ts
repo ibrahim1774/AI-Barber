@@ -193,6 +193,7 @@ describe('step selection', () => {
     const t = decodeURIComponent(/continue\?t=(\S+)/.exec(m.world.sent[0].text)![1]);
     expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'test', expect: { userId: 'u1', step: 2 } }).ok).toBe(true);
     expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'test', expect: { userId: 'u1', step: 1 } }).ok).toBe(false);
+    expect((verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'test' }) as any).hint).toBe('j•••@gmail.com');
     expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'live' })).toEqual({ ok: false, reason: 'wrong_mode' });
   });
 });

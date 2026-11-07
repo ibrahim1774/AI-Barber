@@ -6,7 +6,7 @@
 //  - Stripe/admin/DB errors never send and never stop a row (the next sweep tries again);
 //  - tokens, email addresses and mail bodies are never logged (user id + step only).
 import { promises as dns } from 'node:dns';
-import { signContinueToken, signUnsubscribeToken } from './nudgeToken.js';
+import { maskEmail, signContinueToken, signUnsubscribeToken } from './nudgeToken.js';
 import { isEntitledStatus, WEB_APP_TAG } from './stripeCore.js';
 import { APP_ORIGIN, sbRest, stripeCall } from './webAppServer.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
@@ -217,7 +217,7 @@ export async function sweepSignupNudges(
     if (await deps.stripePaid(email, uid)) return stop('paid'); // last check, immediately before the send
 
     const origin = APP_ORIGIN();
-    const t = signContinueToken(uid, step, mode, deps.now(), env.WEB_APP_NUDGE_SECRET);
+    const t = signContinueToken(uid, step, mode, deps.now(), env.WEB_APP_NUDGE_SECRET, undefined, maskEmail(email));
     const mail = signupNudgeEmail(step, {
       email, firstName: firstNameOf(user.name), shopName: draft.shopName,
       continueUrl: `${origin}/api/web-app/continue?t=${encodeURIComponent(t)}`,

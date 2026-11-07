@@ -8,7 +8,15 @@ const T0 = 1_800_000_000_000;
 describe('continue token', () => {
   it('round-trips user, step and expiry', () => {
     const t = signContinueToken(U, 2, 'test', T0, S);
-    expect(verifyContinueToken(t, { now: T0 + 1000, secret: S, mode: 'test' })).toEqual({ ok: true, userId: U, step: 2, expiresAt: T0 + CONTINUE_TTL_MS });
+    expect(verifyContinueToken(t, { now: T0 + 1000, secret: S, mode: 'test' })).toEqual({ ok: true, userId: U, step: 2, expiresAt: T0 + CONTINUE_TTL_MS, hint: null });
+  });
+  it('carries an optional signed hint; tampering with it breaks the signature', () => {
+    const t = signContinueToken(U, 1, 'test', T0, S, undefined, 'j•••@gmail.com');
+    const r: any = verifyContinueToken(t, { now: T0, secret: S, mode: 'test' });
+    expect(r.ok).toBe(true); expect(r.hint).toBe('j•••@gmail.com');
+    const [p, m] = t.split('.');
+    const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url').toString()), h: 'x•••@evil.co' })).toString('base64url');
+    expect(verifyContinueToken(`${forged}.${m}`, { now: T0, secret: S, mode: 'test' })).toEqual({ ok: false, reason: 'bad_signature' });
   });
   it('is bound to user and step when the caller expects them', () => {
     const t = signContinueToken(U, 1, 'test', T0, S);

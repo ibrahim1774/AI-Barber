@@ -21,12 +21,12 @@ function macOk(given: string, expected: Buffer): boolean {
 }
 
 export type ContinueFail = 'malformed' | 'bad_signature' | 'expired' | 'wrong_user' | 'wrong_step' | 'wrong_mode' | 'no_secret';
-export type ContinueResult = { ok: true; userId: string; step: 1 | 2 | 3; expiresAt: number } | { ok: false; reason: ContinueFail };
+export type ContinueResult = { ok: true; userId: string; step: 1 | 2 | 3; expiresAt: number; hint: string | null } | { ok: false; reason: ContinueFail };
 
-export function signContinueToken(userId: string, step: 1 | 2 | 3, mode: 'live' | 'test', now = Date.now(), secret?: string, ttlMs = CONTINUE_TTL_MS): string {
+export function signContinueToken(userId: string, step: 1 | 2 | 3, mode: 'live' | 'test', now = Date.now(), secret?: string, ttlMs = CONTINUE_TTL_MS, hint?: string): string {
   const s = secretOf(secret);
   if (!s) throw new Error('WEB_APP_NUDGE_SECRET missing');
-  const payload = b64(JSON.stringify({ v: 1, u: userId, s: step, m: mode, n: randomBytes(8).toString('hex'), e: now + ttlMs }));
+  const payload = b64(JSON.stringify({ v: 1, u: userId, s: step, m: mode, n: randomBytes(8).toString('hex'), e: now + ttlMs, ...(hint ? { h: hint.slice(0, 80) } : {}) }));
   return `${payload}.${b64(mac('continue', payload, s))}`;
 }
 
@@ -45,8 +45,11 @@ export function verifyContinueToken(token: unknown, opts: { now?: number; secret
   if (p.m !== opts.mode) return { ok: false, reason: 'wrong_mode' };
   if (opts.expect?.userId !== undefined && opts.expect.userId !== p.u) return { ok: false, reason: 'wrong_user' };
   if (opts.expect?.step !== undefined && opts.expect.step !== p.s) return { ok: false, reason: 'wrong_step' };
-  return { ok: true, userId: p.u, step: p.s, expiresAt: p.e };
+  return { ok: true, userId: p.u, step: p.s, expiresAt: p.e, hint: typeof p.h === 'string' && p.h.length <= 80 ? p.h : null };
 }
+
+/** "jake@gmail.com" -> "j•••@gmail.com": shown on the confirm page so a forwarded link is recognisable. */
+export const maskEmail = (e: string): string => { const [l, d] = e.split('@'); return l && d ? `${l[0]}•••@${d}` : ''; };
 
 const normEmail = (e: string) => e.trim().toLowerCase();
 
