@@ -73,7 +73,7 @@ export interface DomainRow {
 }
 
 export type NewDomainRow = Pick<DomainRow, 'original_transaction_id' | 'source' | 'environment' | 'site_slug' | 'domain' | 'simulated' | 'auto_renew'> &
-  Partial<Pick<DomainRow, 'paid_until'>>;
+  Partial<Pick<DomainRow, 'paid_until' | 'alerts_sent'>>;
 
 export interface DomainsRepo {
   get(otid: string): Promise<DomainRow | null>;

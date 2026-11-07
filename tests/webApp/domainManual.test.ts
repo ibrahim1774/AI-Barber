@@ -816,6 +816,31 @@ describe('B-N1: the owner-removed refund only touches manual, never-bought, rece
   });
 });
 
+describe('follow-ups: marker at insert, timeout keeps the own-name note', () => {
+  it('the awaiting_setup row is inserted WITH the manual-origin marker (no separate write)', async () => {
+    const w = world();
+    const upd = vi.spyOn(w.repo, 'update'); const merge = vi.spyOn(w.repo, 'mergeAlert' as any);
+    await w.claim();
+    expect(w.row().alerts_sent?.['manual-origin']).toBeTruthy();
+    expect(merge.mock.calls.filter((c: any[]) => c[1] === 'manual-origin')).toHaveLength(0);
+    expect(upd.mock.calls.filter((c: any[]) => c[2]?.alerts_sent?.['manual-origin'])).toHaveLength(0);
+  });
+
+  it('a Mark live timeout leaves the own-detached-name note in last_error', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      await w.claim(); await w.attach();
+      await w.repo.update(KEY, null, { last_error: 'own detached name: already on the Vercel team, re-attach only' });
+      w.hooks.onDomainLinked.mockImplementationOnce(() => new Promise<void>(() => {}));
+      const p = runDomainAction(w.tokenFor('live'), w.env);
+      await vi.advanceTimersByTimeAsync(REPUBLISH_TIMEOUT_MS + 1000);
+      expect((await p).status).toBe(504);
+      expect(w.row().last_error).toMatch(/^own detached name/);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
 describe('S4 residual: Can\'t warns right after a timed-out Mark live', () => {
   it('shows the warning within 10 minutes of a 504, not after', async () => {
     vi.useFakeTimers();

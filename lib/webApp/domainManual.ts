@@ -358,9 +358,9 @@ export async function manualClaim(
     const ins = await repo.insertAwaitingSetup({
       original_transaction_id: key, source: 'stripe', environment: 'Production', site_slug: v.slug, domain: v.domain, simulated,
       auto_renew: payer.autoRenew === true, paid_until: payer.expiresAt != null ? iso(payer.expiresAt) : null,
+      alerts_sent: { [MANUAL_ORIGIN]: iso(now()) }, // in the insert itself: no separate write that could fail
     });
     // Positive proof this slot was manual and never bought by the system; it survives the detach on owner removal (B-N1).
-    if (ins === 'ok') await setMarker(repo, key, MANUAL_ORIGIN, iso(now()), null);
     const row = await repo.get(key);
     if (ins === 'conflict' && (!row || row.domain !== v.domain || row.site_slug !== v.slug)) {
       const h = await repo.holdingSite(v.slug);
@@ -494,8 +494,8 @@ export async function domainActionView(token: unknown, env: ManualEnv): Promise<
   if (p.a === 'cant') {
     if (row.state === 'failed' && row.alerts_sent?.['manual-refund']) return msg('Already done', `${row.domain} was already closed and refunded${row.refunded_at ? '' : ' (the refund is being retried)'}.`);
     if (row.state !== 'awaiting_setup') return msg('Already done', `This order is no longer waiting (${row.state}).`);
-    const to = row.last_error?.startsWith(MARK_LIVE_TIMEOUT) ? Date.parse(row.last_error.slice(MARK_LIVE_TIMEOUT.length)) : NaN;
-    const warn = Number.isFinite(to) && env.flow.now() - to < 10 * 60_000
+    const lastTimeout = Math.max(0, ...Object.keys(row.alerts_sent ?? {}).filter((k) => k.startsWith(MARK_LIVE_TIMEOUT)).map((k) => Date.parse(k.slice(MARK_LIVE_TIMEOUT.length))).filter(Number.isFinite));
+    const warn = lastTimeout > 0 && env.flow.now() - lastTimeout < 10 * 60_000
       ? '<p><b>Warning:</b> a Mark live republish timed out in the last 10 minutes and its deploy may still finish with this domain on the site. Wait a few minutes before refunding, or the site could keep showing a domain that was refunded.</p>' : '';
     return page(`Can't get ${row.domain}`, `${facts}${warn}<p>Pressing the button cancels the $39 subscription, refunds it in full and emails the customer to pick another name. This cannot be undone.</p>${form(t, "Can't get this name: refund $39")}`);
   }
@@ -542,7 +542,8 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
       } catch (e) {
         console.error(`[domains/manual] ${key}: republish on Mark live failed or timed out (row unchanged):`, errMsg(e));
         if (e instanceof TimeoutError) {
-          await repo.update(key, ['awaiting_setup'], { last_error: `${MARK_LIVE_TIMEOUT}${iso(now())}` }).catch(() => {});
+          // Its own alerts_sent key (never last_error: that may hold the 'own detached name / re-attach only' note).
+          await setMarker(repo, key, `${MARK_LIVE_TIMEOUT}${iso(now())}`, iso(now()), null);
           return msg('Republish still running', 'The republish is taking longer than this page can wait. Nothing was changed on the order; it may finish on its own. Press the link again in a few minutes (it is safe to repeat).', 504);
         }
         return msg('Republish failed', 'The site could not be republished on the new address. Nothing was changed; press the link again in a minute.', 502);
