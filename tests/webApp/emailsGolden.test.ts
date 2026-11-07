@@ -99,6 +99,7 @@ describe('signup nudge emails', () => {
       expect(hrefs).toHaveLength(2);
       for (const h of hrefs) expect(h.startsWith(O)).toBe(true);
       expect(m.html).not.toMatch(/<img/i);
+      expect(m.html).toMatch(/<td[^>]*bgcolor="#0b57d0"[^>]*><a href="[^"]+" style="display:inline-block;padding:13px 26px;background-color:#0b57d0;border-radius:8px;color:#ffffff/); // a real button, still one <a>
       expect(m.text).toContain(`Finish my website: ${v.continueUrl}`);
       expect(m.text).toContain(`Unsubscribe: ${v.unsubscribeUrl}`);
       expect(m.headers!['List-Unsubscribe']).toBe(`<${v.unsubscribeUrl}>, <mailto:support@davoxa.com?subject=unsubscribe>`);

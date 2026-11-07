@@ -150,7 +150,7 @@ export function renderPlain(l: PlainLayout): { html: string; text: string } {
   const unsub = l.unsubscribe ? `<br><a href="${esc(l.unsubscribe.href)}" style="color:#666">${esc(l.unsubscribe.label)}</a>` : '';
   const html = `<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
 ${pre}${paras}
-<p style="margin:0 0 16px;font-size:15px"><a href="${esc(l.cta.href)}" style="color:#0b57d0">${esc(l.cta.label)}</a></p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px"><tr><td align="center" bgcolor="#0b57d0" style="background-color:#0b57d0;border-radius:8px"><a href="${esc(l.cta.href)}" style="display:inline-block;padding:13px 26px;background-color:#0b57d0;border-radius:8px;color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;text-decoration:none">${esc(l.cta.label)}</a></td></tr></table>
 ${closing}<p style="margin:0;font-size:12px;line-height:18px;color:#666">${foot}${unsub}</p>
 </body></html>`;
   const text = [
