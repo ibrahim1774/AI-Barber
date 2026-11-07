@@ -282,7 +282,7 @@ We never email passwords.",
 }
 `;
 
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 1 anon no shop 1`] = `
+exports[`signup nudge emails > golden: named + shop, anon + no shop > step 1 anon no shop 1`] = `
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
@@ -323,7 +323,7 @@ P.S. If you'd rather not hear from me about this, just reply "stop" and I won't 
 }
 `;
 
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 1 named shop 1`] = `
+exports[`signup nudge emails > golden: named + shop, anon + no shop > step 1 named shop 1`] = `
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
@@ -364,51 +364,7 @@ P.S. If you'd rather not hear from me about this, just reply "stop" and I won't 
 }
 `;
 
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 1 postal 1`] = `
-{
-  "from": "Ibrahim from Prime Barber <support@davoxa.com>",
-  "html": "<!doctype html><html><body>
-<p>Hi Jake,</p>
-<p>Your website for Jake's Cuts is saved in your account. Nothing is lost.</p>
-<p>When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online.</p>
-<p><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN">Finish my website</a></p>
-<p>If you have a question, just reply to this email.</p>
-<p>Ibrahim<br>Prime Barber</p>
-<p style="color:#777777;font-size:13px">P.S. If you'd rather not hear from me about this, just reply &quot;stop&quot; and I won't email you about it again.</p>
-<p style="color:#777777;font-size:13px">Prime Barber, PO Box 1, Town, ST 12345</p>
-</body></html>",
-  "replyTo": "support@davoxa.com",
-  "subject": "Jake, your Jake's Cuts website is saved",
-  "tags": [
-    {
-      "name": "kind",
-      "value": "signup_nudge",
-    },
-    {
-      "name": "step",
-      "value": "1",
-    },
-  ],
-  "text": "Hi Jake,
-
-Your website for Jake's Cuts is saved in your account. Nothing is lost.
-
-When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online.
-
-Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
-
-If you have a question, just reply to this email.
-
-Ibrahim
-Prime Barber
-
-P.S. If you'd rather not hear from me about this, just reply "stop" and I won't email you about it again.
-
-Prime Barber, PO Box 1, Town, ST 12345",
-}
-`;
-
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 2 anon no shop 1`] = `
+exports[`signup nudge emails > golden: named + shop, anon + no shop > step 2 anon no shop 1`] = `
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
@@ -449,7 +405,7 @@ P.S. If you'd rather not hear from me about this, just reply "stop" and I won't 
 }
 `;
 
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 2 named shop 1`] = `
+exports[`signup nudge emails > golden: named + shop, anon + no shop > step 2 named shop 1`] = `
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
@@ -490,7 +446,7 @@ P.S. If you'd rather not hear from me about this, just reply "stop" and I won't 
 }
 `;
 
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 3 anon no shop 1`] = `
+exports[`signup nudge emails > golden: named + shop, anon + no shop > step 3 anon no shop 1`] = `
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
@@ -531,7 +487,7 @@ P.S. If you'd rather not hear from me about this, just reply "stop" and I won't 
 }
 `;
 
-exports[`signup nudge emails > golden: named + shop, anon + no shop, with postal address > step 3 named shop 1`] = `
+exports[`signup nudge emails > golden: named + shop, anon + no shop > step 3 named shop 1`] = `
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>

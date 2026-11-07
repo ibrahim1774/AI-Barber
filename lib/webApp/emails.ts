@@ -173,7 +173,6 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
       'Tap the link below to sign back in and open it.'];
     closing = ["If you decided it's not for you, no problem. You won't get any more emails about it."];
   }
-  const postal = process.env.WEB_APP_POSTAL_ADDRESS?.trim();
   const optOut = 'P.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.';
   const linkLabel = 'Finish my website';
   const p = (t: string) => `<p>${esc(t)}</p>`;
@@ -185,7 +184,6 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
     ...closing.map(p),
     '<p>Ibrahim<br>Prime Barber</p>',
     grey(optOut),
-    ...(postal ? [grey(`Prime Barber, ${postal}`)] : []),
     '</body></html>',
   ].join('\n');
   const text = [
@@ -194,7 +192,6 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
     ...closing.flatMap((x) => [x, '']),
     'Ibrahim', 'Prime Barber', '',
     optOut,
-    ...(postal ? ['', `Prime Barber, ${postal}`] : []),
   ].join('\n');
   return {
     subject, html, text, replyTo: replyToAddress(), from: nudgeFrom(),

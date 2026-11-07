@@ -15,7 +15,6 @@ New:
 - `WEB_APP_NUDGES_SINCE`: ISO time. Only accounts created at or after it are ever emailed. Unset or invalid = the sweep does nothing.
 - `WEB_APP_NUDGE_SECRET`: random 32+ bytes, signs the sign-in and unsubscribe links. Use a DIFFERENT value in Preview and Production.
 - `WEB_APP_NUDGE_FROM`: optional sender override (for example `Prime Barber <hello@primebarber.org>`). Falls back to `WEB_APP_EMAIL_FROM`, then `support@davoxa.com`. Only the address is used; the display name is always "Ibrahim from Prime Barber".
-- `WEB_APP_POSTAL_ADDRESS`: optional footer line (plain last line under the P.S.; needed for CAN-SPAM before production).
 - `RESEND_WEBHOOK_SECRET`: Svix signing secret (`whsec_...`) of the Resend webhook.
 - `WEB_APP_NUDGE_SCHEDULE_MINUTES`: staging only, for example `2,5,8`. Ignored when the Stripe key is live or the value is not three increasing positive numbers.
 
@@ -24,7 +23,7 @@ Existing, used here: `RESEND_API_KEY`, `WEB_APP_EMAIL_FROM`, `WEB_APP_REPLY_TO`,
 ## Rollout order (each step needs the owner's go)
 1. Merge with every flag unset. Everything is a no-op; the links answer with the expired or invalid page until the secret exists.
 2. Apply migration 031 to production (additive: two new tables).
-3. Set `WEB_APP_NUDGE_SECRET`, `WEB_APP_POSTAL_ADDRESS`, optionally `WEB_APP_NUDGE_FROM`. Create the Resend webhook (events: bounced, complained, delivered) pointing at `https://www.primebarber.org/api/web-app/email-events`, then set `RESEND_WEBHOOK_SECRET`.
+3. Set `WEB_APP_NUDGE_SECRET`, optionally `WEB_APP_NUDGE_FROM`. Create the Resend webhook (events: bounced, complained, delivered) pointing at `https://www.primebarber.org/api/web-app/email-events`, then set `RESEND_WEBHOOK_SECRET`.
 4. Run the staging checklist below.
 5. Production: set `WEB_APP_NUDGES_SINCE` to the switch-on time, then `WEB_APP_NUDGES=1`, redeploy. Watch the lapse cron JSON (`nudges: {enrolled, sent, stopped, skipped, errors}`) and the Resend dashboard for the first day.
 6. DNS housekeeping (owner): add `rua=mailto:...` to `_dmarc.davoxa.com`; after 2 to 4 weeks consider `p=quarantine`.

@@ -71,11 +71,9 @@ describe('signup nudge emails', () => {
   const inp = { email: 'jake@gmail.com', firstName: 'Jake Lee', shopName: "Jake's Cuts", continueUrl: `${O}/api/web-app/continue?t=TOKEN` };
   const steps = [1, 2, 3] as const;
 
-  it('golden: named + shop, anon + no shop, with postal address', () => {
+  it('golden: named + shop, anon + no shop', () => {
     for (const s of steps) expect(signupNudgeEmail(s, inp)).toMatchSnapshot(`step ${s} named shop`);
     for (const s of steps) expect(signupNudgeEmail(s, { ...inp, firstName: null, shopName: null })).toMatchSnapshot(`step ${s} anon no shop`);
-    process.env.WEB_APP_POSTAL_ADDRESS = 'PO Box 1, Town, ST 12345';
-    expect(signupNudgeEmail(1, inp)).toMatchSnapshot('step 1 postal');
   });
 
   it('subjects follow the approved patterns', () => {
@@ -108,7 +106,7 @@ describe('signup nudge emails', () => {
       expect(m.replyTo).toBe('support@davoxa.com');
       expect(m.from).toBe('Ibrahim from Prime Barber <support@davoxa.com>');
       expect(m.text).toContain('Ibrahim\nPrime Barber\n\nP.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.');
-      expect(m.text.trimEnd().endsWith('again.')).toBe(true); // no footer after the P.S. (postal line unset)
+      expect(m.text.trimEnd().endsWith('again.')).toBe(true); // nothing after the P.S.
       expect(m.html).toContain('Ibrahim<br>Prime Barber');
       expect(m.html).toContain('color:#777777');
     }
@@ -122,13 +120,11 @@ describe('signup nudge emails', () => {
     expect(signupNudgeEmail(1, inp).from).toBe('Ibrahim from Prime Barber <n@x.co>');
   });
 
-  it('postal line only when configured, plain and last, under the P.S.', () => {
-    expect(signupNudgeEmail(1, inp).text).not.toContain('PO Box');
+  it('never adds a postal address line, even if an env var is set', () => {
     process.env.WEB_APP_POSTAL_ADDRESS = 'PO Box 1';
     const m = signupNudgeEmail(1, inp);
-    expect(m.text.trimEnd().endsWith('again.\n\nPrime Barber, PO Box 1')).toBe(true);
-    expect(m.html.indexOf('PO Box 1')).toBeGreaterThan(m.html.indexOf('P.S.'));
-    expect(m.html.trimEnd().endsWith('</body></html>')).toBe(true);
+    expect(`${m.html}\n${m.text}`).not.toContain('PO Box');
+    expect(m.text.trimEnd().endsWith('again.')).toBe(true);
   });
 
   it('escapes a hostile shop name', () => {
