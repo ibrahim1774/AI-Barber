@@ -121,7 +121,7 @@ export const DomainManager: React.FC<DomainManagerProps> = ({ site }) => {
         <div className={box}>
           {view.domain && <p className="text-white font-mono text-sm mb-2">{view.domain}</p>}
           <ol className="text-sm space-y-1">
-            {(['registering', 'linking', 'pointing'] as const).map((s) => (
+            {(view.step === 'awaiting' ? (['awaiting'] as const) : (['registering', 'linking', 'pointing'] as const)).map((s) => (
               <li key={s} className={s === view.step ? 'text-white font-bold' : 'text-[#666]'}>{STEP_LABEL[s]}</li>
             ))}
           </ol>

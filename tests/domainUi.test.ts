@@ -3,13 +3,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   DOMAIN_DISCLOSURE, DOMAIN_PRICE_LABEL, clearDomainCheckout, comDomainFrom, domainSiteId, panelView,
-  rememberDomainCheckout, takeDomainCheckout,
+  rememberDomainCheckout, takeDomainCheckout, STEP_LABEL,
 } from '../services/domainUi';
 import { webDomainPanelStatus, webDomainPortal } from '../lib/webDomains';
 import { fakeDomainsRepo, blankRow } from './ios/fakeDomainsRepo';
 
 const src = fs.readFileSync(path.join(process.cwd(), 'components/DomainManager.tsx'), 'utf8');
 const app = fs.readFileSync(path.join(process.cwd(), 'App.tsx'), 'utf8');
+
+describe('manual fulfilment state in the legacy panel', () => {
+  it('awaiting-setup shows the by-hand message as the only step; no offer', () => {
+    expect(panelView({ domain: 'freshcuts.com', state: 'awaiting-setup' })).toEqual({ kind: 'progress', step: 'awaiting', domain: 'freshcuts.com' });
+    expect(src).toMatch(/view\.step === 'awaiting'/);
+    expect(STEP_LABEL.awaiting).toMatch(/by hand, usually within 1 business day, up to 3 business days/);
+  });
+});
 
 describe('DomainManager (source checks)', () => {
   it('shows $39/year and the exact disclosure; never a monthly equivalent', () => {

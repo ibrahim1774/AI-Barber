@@ -299,7 +299,10 @@ export async function manualClaim(
       return await refuse(row ? 'slot-in-use' : 'domain-taken');
     }
     if (!row) return { kind: 'retry' };
-    if (ownName) await repo.update(key, ['awaiting_setup'], { last_error: 'own detached name: already on the Vercel team, re-attach only' }).catch(() => {});
+    if (ownName) {
+      await repo.update(key, ['awaiting_setup'], { last_error: 'own detached name: already on the Vercel team, re-attach only' }).catch(() => {});
+      return { kind: 'row', row: (await repo.get(key).catch(() => null)) ?? row, created: ins === 'ok' };
+    }
     return { kind: 'row', row, created: ins === 'ok' };
   } catch (e: any) {
     console.error('[PurchaseDomain] manual claim failed:', e?.code || e?.message || e);
@@ -474,6 +477,7 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
   }
 
   if (p.a === 'cant') {
+    if (row.state === 'failed' && row.alerts_sent?.['manual-refund'] && row.refunded_at) return msg('Already done', `${row.domain} was already closed and refunded.`);
     if (row.state === 'awaiting_setup') {
       const moved = await repo.update(key, ['awaiting_setup'], {
         state: 'failed', failure_reason: 'taken', last_error: "manual: operator could not register this name", auto_renew: false,

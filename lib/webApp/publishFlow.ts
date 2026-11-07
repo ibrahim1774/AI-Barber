@@ -104,7 +104,8 @@ export function customDomainOf(
   row?: { simulated?: boolean; dns_ready_at?: string | null } | null,
 ): WebCustomDomain | null {
   if (!b?.domain) return null;
-  if (!/^(registering|linking|live|cancelled-until:)/.test(b.state)) return null; // none, failed:*, expired, transferred
+  if (!/^(registering|linking|live|cancelled-until:|awaiting-setup)/.test(b.state)) return null; // none, failed:*, expired, transferred
+  // awaiting-setup (manual fulfilment, lib/webApp/domainManual.ts): paid, being set up by hand: no address, never ready.
   const sandbox = b.sandbox === true || row?.simulated === true;
   return {
     domain: b.domain, state: b.state, url: sandbox ? null : b.url ?? null, paidUntil: b.paidUntil ?? null, autoRenew: b.autoRenew === true,

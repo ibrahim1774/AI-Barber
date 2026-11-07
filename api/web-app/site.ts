@@ -1,6 +1,6 @@
 // POST + Authorization: Bearer <supabase jwt> -> the caller's web-app site (the web twin of /api/ios/site). 404 unless WEB_APP_ENTITLEMENTS=1.
 import { customDomainOf, liveWebPublishDeps, runWebSiteLookup } from '../../lib/webApp/publishFlow.js';
-import { statusBody } from '../../lib/ios/domainFlow.js';
+import { webStatusBody } from '../../lib/webApp/domainManual.js';
 import { supabaseDomains } from '../../lib/ios/domainsRepo.js';
 import { serviceClient } from '../../lib/bookings/repo.js';
 import { webRowFor } from '../../lib/webDomains.js';
@@ -23,7 +23,7 @@ export default async function handler(req: any, res: any) {
       // The site's website-bought domain (plain status, no probe: the dashboard's status call carries the probe).
       domainOf: async (slug) => {
         const row = await webRowFor(slug, { flow: { repo: supabaseDomains(serviceClient()) } });
-        return customDomainOf(statusBody(row), row);
+        return customDomainOf(webStatusBody(row), row);
       },
     }, { authorization: req.headers?.authorization });
     res.setHeader('Cache-Control', 'no-store');

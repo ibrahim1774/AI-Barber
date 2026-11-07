@@ -51,7 +51,7 @@ export function domainSiteId(site: { deployedUrl: string | null; data: { shopNam
 
 export type PanelView =
   | { kind: 'none' }
-  | { kind: 'progress'; step: 'registering' | 'linking' | 'pointing'; domain: string }
+  | { kind: 'progress'; step: 'registering' | 'linking' | 'pointing' | 'awaiting'; domain: string }
   | { kind: 'live'; domain: string; cancelledUntil: string | null }
   | { kind: 'refunded'; domain: string | null; message: string }
   | { kind: 'failed'; domain: string | null; reason: string }
@@ -67,6 +67,7 @@ export function panelView(b: any): PanelView {
   if (!domain || state === 'none') return { kind: 'none' };
   if (state === 'registering') return { kind: 'progress', step: 'registering', domain };
   if (state === 'linking') return { kind: 'progress', step: 'linking', domain };
+  if (state === 'awaiting-setup') return { kind: 'progress', step: 'awaiting', domain }; // web app orders set up by hand (lib/webApp/domainManual.ts)
   if (state === 'live') {
     // Live but DNS/SSL not ready yet → "live in a few minutes".
     if (b?.vercel && (b.vercel.dnsOk === false || b.vercel.ssl === 'pending')) return { kind: 'progress', step: 'pointing', domain };
@@ -78,4 +79,6 @@ export function panelView(b: any): PanelView {
   return { kind: 'none' };
 }
 
-export const STEP_LABEL = { registering: 'Registering your domain…', linking: 'Linking it to your site…', pointing: 'Live in a few minutes (setting up the address and security)…' } as const;
+export const STEP_LABEL = { registering: 'Registering your domain…', linking: 'Linking it to your site…', pointing: 'Live in a few minutes (setting up the address and security)…',
+  awaiting: "We're setting up your domain by hand, usually within 1 business day, up to 3 business days. You'll get an email when it's live. Your current address keeps working meanwhile.",
+} as const;
