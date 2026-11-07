@@ -191,8 +191,9 @@ describe('step selection', () => {
     const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(30 * HOUR) })]]), users: new Map([['u1', user({ createdAt: ago(30 * HOUR) })]]) });
     await run(m.deps);
     const t = decodeURIComponent(/continue\?t=(\S+)/.exec(m.world.sent[0].text)![1]);
-    expect(verifyContinueToken(t, { now: NOW, secret: SECRET, expect: { userId: 'u1', step: 2 } }).ok).toBe(true);
-    expect(verifyContinueToken(t, { now: NOW, secret: SECRET, expect: { userId: 'u1', step: 1 } }).ok).toBe(false);
+    expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'test', expect: { userId: 'u1', step: 2 } }).ok).toBe(true);
+    expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'test', expect: { userId: 'u1', step: 1 } }).ok).toBe(false);
+    expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'live' })).toEqual({ ok: false, reason: 'wrong_mode' });
   });
 });
 

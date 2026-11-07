@@ -203,7 +203,7 @@ export async function sweepSignupNudges(
     if (await deps.stripePaid(email, uid)) return stop('paid'); // last check, immediately before the send
 
     const origin = APP_ORIGIN();
-    const t = signContinueToken(uid, step, deps.now(), env.WEB_APP_NUDGE_SECRET);
+    const t = signContinueToken(uid, step, mode, deps.now(), env.WEB_APP_NUDGE_SECRET);
     const mail = signupNudgeEmail(step, {
       email, firstName: firstNameOf(user.name), shopName: draft.shopName,
       continueUrl: `${origin}/api/web-app/continue?t=${encodeURIComponent(t)}`,
