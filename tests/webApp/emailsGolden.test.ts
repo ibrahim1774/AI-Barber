@@ -77,11 +77,27 @@ describe('signup nudge emails', () => {
   });
 
   it('subjects follow the approved patterns', () => {
-    expect(signupNudgeEmail(1, inp).subject).toBe("Jake, your Jake's Cuts website is saved");
-    expect(signupNudgeEmail(1, { ...inp, firstName: null }).subject).toBe("Your Jake's Cuts website is saved");
-    expect(signupNudgeEmail(1, { ...inp, firstName: null, shopName: null }).subject).toBe('Your website is saved');
-    expect(signupNudgeEmail(2, inp).subject).toBe("Your Jake's Cuts website is still waiting");
+    const anon = { ...inp, firstName: null };
+    expect(signupNudgeEmail(1, inp).subject).toBe("Your Jake's Cuts website");
+    expect(signupNudgeEmail(1, { ...inp, shopName: null }).subject).toBe('Your website');
+    expect(signupNudgeEmail(2, inp).subject).toBe("Did you get stuck on Jake's Cuts?");
+    expect(signupNudgeEmail(2, { ...inp, shopName: null }).subject).toBe('Did you get stuck on your website?');
     expect(signupNudgeEmail(3, inp).subject).toBe("Still want your Jake's Cuts website?");
+    expect(signupNudgeEmail(3, { ...inp, shopName: null }).subject).toBe('Still want your website?');
+    expect(signupNudgeEmail(1, anon).text.startsWith('Hi there,')).toBe(true);
+    expect(signupNudgeEmail(2, anon).text.startsWith('Hi there,')).toBe(true);
+    expect(signupNudgeEmail(1, inp).text.startsWith('Hi Jake,')).toBe(true);
+  });
+
+  it('steps 1 and 2 use the approved body copy, with and without a shop', () => {
+    const t1 = signupNudgeEmail(1, inp).text;
+    expect(t1).toContain("I saw you started a website for Jake's Cuts earlier today. It's still there whenever you want to finish it.\n\nHere's the link to pick up where you left off:\n\nFinish my website: ");
+    expect(t1).toContain('If anything got in the way, just reply and let me know.\n\nIbrahim\nPrime Barber');
+    expect(signupNudgeEmail(1, { ...inp, shopName: null }).text).toContain('I saw you started a website earlier today.');
+    const t2 = signupNudgeEmail(2, inp).text;
+    expect(t2).toContain("Just checking in. Your Jake's Cuts website is still right where you left it, and it only takes a minute to finish.\n\nHere's the link to jump back in:\n\nFinish my website: ");
+    expect(t2).toContain("If something wasn't clear, reply and tell me. I read every email.");
+    expect(signupNudgeEmail(2, { ...inp, shopName: null }).text).toContain('Just checking in. Your website is still right where you left it');
   });
 
   it('content rules: plain letter, one link, no unsubscribe machinery, no prices, no banned words, no em dash', () => {

@@ -286,16 +286,16 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 1 ano
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
-<p>Hi,</p>
-<p>Your website is saved in your account. Nothing is lost.</p>
-<p>When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online.</p>
+<p>Hi there,</p>
+<p>I saw you started a website earlier today. It's still there whenever you want to finish it.</p>
+<p>Here's the link to pick up where you left off:</p>
 <p><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN">Finish my website</a></p>
-<p>If you have a question, just reply to this email.</p>
+<p>If anything got in the way, just reply and let me know.</p>
 <p>Ibrahim<br>Prime Barber</p>
 <p style="color:#777777;font-size:13px">P.S. If you'd rather not hear from me about this, just reply &quot;stop&quot; and I won't email you about it again.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Your website is saved",
+  "subject": "Your website",
   "tags": [
     {
       "name": "kind",
@@ -306,15 +306,15 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 1 ano
       "value": "1",
     },
   ],
-  "text": "Hi,
+  "text": "Hi there,
 
-Your website is saved in your account. Nothing is lost.
+I saw you started a website earlier today. It's still there whenever you want to finish it.
 
-When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online.
+Here's the link to pick up where you left off:
 
 Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
 
-If you have a question, just reply to this email.
+If anything got in the way, just reply and let me know.
 
 Ibrahim
 Prime Barber
@@ -328,15 +328,15 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 1 nam
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
 <p>Hi Jake,</p>
-<p>Your website for Jake's Cuts is saved in your account. Nothing is lost.</p>
-<p>When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online.</p>
+<p>I saw you started a website for Jake's Cuts earlier today. It's still there whenever you want to finish it.</p>
+<p>Here's the link to pick up where you left off:</p>
 <p><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN">Finish my website</a></p>
-<p>If you have a question, just reply to this email.</p>
+<p>If anything got in the way, just reply and let me know.</p>
 <p>Ibrahim<br>Prime Barber</p>
 <p style="color:#777777;font-size:13px">P.S. If you'd rather not hear from me about this, just reply &quot;stop&quot; and I won't email you about it again.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Jake, your Jake's Cuts website is saved",
+  "subject": "Your Jake's Cuts website",
   "tags": [
     {
       "name": "kind",
@@ -349,13 +349,13 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 1 nam
   ],
   "text": "Hi Jake,
 
-Your website for Jake's Cuts is saved in your account. Nothing is lost.
+I saw you started a website for Jake's Cuts earlier today. It's still there whenever you want to finish it.
 
-When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online.
+Here's the link to pick up where you left off:
 
 Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
 
-If you have a question, just reply to this email.
+If anything got in the way, just reply and let me know.
 
 Ibrahim
 Prime Barber
@@ -368,16 +368,16 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 2 ano
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
-<p>Hi,</p>
-<p>Your website is still saved, with all your pages, services and photos.</p>
-<p>It takes about a minute to finish and go live. Tap the link below to sign back in and pick up where you left off.</p>
+<p>Hi there,</p>
+<p>Just checking in. Your website is still right where you left it, and it only takes a minute to finish.</p>
+<p>Here's the link to jump back in:</p>
 <p><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN">Finish my website</a></p>
-<p>Stuck on something? Reply and tell me what's in the way. I read every email.</p>
+<p>If something wasn't clear, reply and tell me. I read every email.</p>
 <p>Ibrahim<br>Prime Barber</p>
 <p style="color:#777777;font-size:13px">P.S. If you'd rather not hear from me about this, just reply &quot;stop&quot; and I won't email you about it again.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Your website is still waiting",
+  "subject": "Did you get stuck on your website?",
   "tags": [
     {
       "name": "kind",
@@ -388,15 +388,15 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 2 ano
       "value": "2",
     },
   ],
-  "text": "Hi,
+  "text": "Hi there,
 
-Your website is still saved, with all your pages, services and photos.
+Just checking in. Your website is still right where you left it, and it only takes a minute to finish.
 
-It takes about a minute to finish and go live. Tap the link below to sign back in and pick up where you left off.
+Here's the link to jump back in:
 
 Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
 
-Stuck on something? Reply and tell me what's in the way. I read every email.
+If something wasn't clear, reply and tell me. I read every email.
 
 Ibrahim
 Prime Barber
@@ -410,15 +410,15 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 2 nam
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
 <p>Hi Jake,</p>
-<p>Your Jake's Cuts website is still saved, with all your pages, services and photos.</p>
-<p>It takes about a minute to finish and go live. Tap the link below to sign back in and pick up where you left off.</p>
+<p>Just checking in. Your Jake's Cuts website is still right where you left it, and it only takes a minute to finish.</p>
+<p>Here's the link to jump back in:</p>
 <p><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN">Finish my website</a></p>
-<p>Stuck on something? Reply and tell me what's in the way. I read every email.</p>
+<p>If something wasn't clear, reply and tell me. I read every email.</p>
 <p>Ibrahim<br>Prime Barber</p>
 <p style="color:#777777;font-size:13px">P.S. If you'd rather not hear from me about this, just reply &quot;stop&quot; and I won't email you about it again.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "Your Jake's Cuts website is still waiting",
+  "subject": "Did you get stuck on Jake's Cuts?",
   "tags": [
     {
       "name": "kind",
@@ -431,13 +431,13 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 2 nam
   ],
   "text": "Hi Jake,
 
-Your Jake's Cuts website is still saved, with all your pages, services and photos.
+Just checking in. Your Jake's Cuts website is still right where you left it, and it only takes a minute to finish.
 
-It takes about a minute to finish and go live. Tap the link below to sign back in and pick up where you left off.
+Here's the link to jump back in:
 
 Finish my website: https://www.aibarber.org/api/web-app/continue?t=TOKEN
 
-Stuck on something? Reply and tell me what's in the way. I read every email.
+If something wasn't clear, reply and tell me. I read every email.
 
 Ibrahim
 Prime Barber

@@ -155,18 +155,19 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
   const shop = (i.shopName || '').replace(/\s+/g, ' ').trim();
   const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
   const hi = first ? `Hi ${first},` : 'Hi,';
+  const hiThere = first ? `Hi ${first},` : 'Hi there,'; // steps 1 and 2
   const site = shop ? `your ${shop} website` : 'your website';
   let subject: string; let paragraphs: string[]; let closing: string[];
   if (step === 1) {
-    subject = first ? `${first}, ${site} is saved` : `${cap(site)} is saved`;
-    paragraphs = [hi, `Your website${shop ? ` for ${shop}` : ''} is saved in your account. Nothing is lost.`,
-      "When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online."];
-    closing = ['If you have a question, just reply to this email.'];
+    subject = shop ? `Your ${shop} website` : 'Your website';
+    paragraphs = [hiThere, `I saw you started a website${shop ? ` for ${shop}` : ''} earlier today. It's still there whenever you want to finish it.`,
+      "Here's the link to pick up where you left off:"];
+    closing = ['If anything got in the way, just reply and let me know.'];
   } else if (step === 2) {
-    subject = `${cap(site)} is still waiting`;
-    paragraphs = [hi, `${cap(site)} is still saved, with all your pages, services and photos.`,
-      'It takes about a minute to finish and go live. Tap the link below to sign back in and pick up where you left off.'];
-    closing = ["Stuck on something? Reply and tell me what's in the way. I read every email."];
+    subject = shop ? `Did you get stuck on ${shop}?` : 'Did you get stuck on your website?';
+    paragraphs = [hiThere, `Just checking in. ${cap(site)} is still right where you left it, and it only takes a minute to finish.`,
+      "Here's the link to jump back in:"];
+    closing = ['If something wasn\'t clear, reply and tell me. I read every email.'];
   } else {
     subject = `Still want ${site}?`;
     paragraphs = [hi, `This is the last reminder from me. ${cap(site)} is still saved and ready to finish whenever you want.`,
