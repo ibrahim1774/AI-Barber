@@ -122,7 +122,7 @@ describe('eligibility matrix (one stop/skip per row)', () => {
   it('MX lookup failing (null) skips without stopping', () => skipped({ flags: { mx: null } }));
   it('admin 5xx: nothing sent, row not stopped, claim released', async () => {
     const m = await skipped({ users: new Map([['u1', new Error('admin 503')]]) });
-    expect(m.world.calls).toContain('release');
+    expect(m.world.calls.some((c) => c.startsWith('release'))).toBe(true);
   });
   it('Stripe error: nothing sent, row not stopped, claim released', async () => {
     const m = one({ flags: { stripePaid: new Error('stripe 500') } }); const out = await run(m.deps);

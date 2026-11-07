@@ -12,7 +12,7 @@ function res() {
   return r;
 }
 const call = async (req: any) => { const r = res(); await handler({ headers: {}, query: {}, ...req }, r); return r; };
-const stub = (status = 200) => { const f = vi.fn(async () => new Response('null', { status })); vi.stubGlobal('fetch', f); return f; };
+const stub = (status = 200) => { const f = vi.fn(async (..._a: any[]) => new Response('null', { status })); vi.stubGlobal('fetch', f); return f; };
 const bodyOf = (f: any, i = 0) => JSON.parse(f.mock.calls[i][1].body);
 
 beforeEach(() => { vi.stubEnv('WEB_APP_NUDGE_SECRET', S); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc'); vi.spyOn(console, 'error').mockImplementation(() => {}); });

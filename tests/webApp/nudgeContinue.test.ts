@@ -8,7 +8,7 @@ const U = 'user-1';
 const NOW = 1_800_000_000_000;
 const tok = (step: 1 | 2 | 3 = 1, mode: 'live' | 'test' = 'test', uid = U, at = NOW) => signContinueToken(uid, step, mode, at, S);
 
-function deps(o: { row?: Partial<ContinueRow> | null; email?: string | null | Error; paid?: boolean | Error; now?: number; gen?: () => Promise<string>; consume?: any } = {}) {
+function deps(o: { row?: Partial<ContinueRow> | null; email?: string | null | Error; paid?: boolean | Error; now?: number; gen?: (e: string) => Promise<string>; consume?: any } = {}) {
   const calls: string[] = [];
   const row: ContinueRow | null = o.row === null ? null : { step1_sent_at: '2026-11-10T00:00:00Z', step2_sent_at: null, step3_sent_at: null, links_used: null, ...o.row };
   const d: ContinueDeps = {

@@ -82,7 +82,7 @@ describe('/api/web-app/email-events', () => {
   beforeEach(() => { vi.stubEnv('RESEND_WEBHOOK_SECRET', SECRET); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc'); vi.spyOn(console, 'error').mockImplementation(() => {}); });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   const signed = (body: string) => { const ts = nowSec(); return { 'svix-id': 'msg_1', 'svix-timestamp': String(ts), 'svix-signature': sign('msg_1', ts, body) }; };
-  const stub = (status = 200) => { const f = vi.fn(async () => new Response('null', { status })); vi.stubGlobal('fetch', f); return f; };
+  const stub = (status = 200) => { const f = vi.fn(async (..._a: any[]) => new Response('null', { status })); vi.stubGlobal('fetch', f); return f; };
   const bounce = JSON.stringify({ type: 'email.bounced', data: { to: ['Bad@x.co'], bounce: { type: 'Permanent' } } });
 
   it('missing secret -> 503, nothing written', async () => {
