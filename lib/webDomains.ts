@@ -422,6 +422,8 @@ export interface DomainEventResult {
   purchaseObject?: { id: string; amount_total: number; currency: string };
 }
 
+/** S5: a manual claim still failing this long after its Stripe event alerts support. */
+export const STUCK_CLAIM_ALERT_MS = 6 * 3600_000;
 const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.paid']);
 
 /**
@@ -516,6 +518,15 @@ export async function handleDomainStripeEvent(
       if (r.kind === 'refunded') return { handled: true, status: 200, body: { received: true, domain: false, refused: 'refunded', refunded: true }, purchase };
       if (r.kind === 'needs-support') return { handled: true, status: 200, body: { received: true, domain: false, refused: r.code, needsSupport: true }, purchase };
       if (r.kind === 'inactive') return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
+      // S5: a paid subscription that still cannot be claimed hours after the event (migration 030 not applied, a DB
+      // outage, a missing registrar token) would silently run out of Stripe retries (~3 days): tell support, subject + id only.
+      // Sent on the failing deliveries between 6 and 48 hours old (a few mails at most, never the customer's data).
+      const ageMs = deps.flow.now() - Number(event.created) * 1000;
+      if (Number.isFinite(ageMs) && ageMs >= STUCK_CLAIM_ALERT_MS && ageMs < 8 * STUCK_CLAIM_ALERT_MS) {
+        await Promise.resolve(deps.notifySupport?.('Paid domain order cannot be claimed',
+          `A paid $39.00 website domain order has not been claimed for over ${Math.round(STUCK_CLAIM_ALERT_MS / 3600_000)} hours (${r.kind}). Check that migration 030 is applied and the database and Vercel token are healthy; Stripe keeps retrying for about 3 days, after that the order has no row and no refund.\n\nSubscription: ${subId}`))
+          .catch((e: any) => console.error('[domains/web] stuck-claim support email failed:', e?.message || e));
+      }
       return { handled: true, status: 500, body: { error: r.kind === 'unavailable' ? 'domains-unavailable' : 'temporarily-unavailable' } };
     }
     const reserved = await reserveSlot(c, deps.flow);

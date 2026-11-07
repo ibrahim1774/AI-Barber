@@ -716,6 +716,23 @@ describe('S3: an owner who deletes the account while the order waits is refunded
   });
 });
 
+describe('S5: a paid order that cannot be claimed for hours alerts support (subject + id only)', () => {
+  const ev = (w: W, ageH: number) => handleDomainStripeEvent({ type: 'checkout.session.completed', created: Math.floor(w.flow.now() / 1000) - ageH * 3600, data: { object: { id: 'cs_1', payment_status: 'paid', mode: 'subscription', subscription: 'sub_m1', metadata: { type: 'domain_purchase', app: DOMAIN_SESSION_APP } } } }, () => ({ getSubscription: w.getSubscription, flow: w.flow, secret: SECRET, cancelAndRefund: w.cancelAndRefund, notifySupport: w.notifySupport, manual: w.fm.deps }) as any);
+
+  it('a failing claim (migration 030 missing) answers 500; fresh = no alert, 7 h old = one support mail without customer data', async () => {
+    const w = world();
+    w.repo.insertAwaitingSetup = async () => { throw Object.assign(new Error('check violation'), { code: '23514' }); };
+    expect((await ev(w, 0.1)).status).toBe(500);
+    expect(w.notifySupport).not.toHaveBeenCalled();
+    expect((await ev(w, 7)).status).toBe(500);
+    expect(w.notifySupport).toHaveBeenCalledTimes(1);
+    const [subject, text] = w.notifySupport.mock.calls[0];
+    expect(subject).toMatch(/cannot be claimed/);
+    expect(text).toContain('sub_m1');
+    expect(text).not.toMatch(/@|shop@customer/);
+  });
+});
+
 describe('B2: Mark live fits the function budget and never hangs the page', () => {
   const ready = async (w: W) => { await w.claim(); await w.attach(); };
 
