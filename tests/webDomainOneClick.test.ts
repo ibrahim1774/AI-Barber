@@ -7,7 +7,7 @@ import {
 } from '../lib/webDomains.js';
 import { cardOnFile, oneClickCard, oneClickDomainPurchase, oneClickFlagOn, type OneClickDeps, type StripeFn } from '../lib/webApp/domainOneClick.js';
 import type { DomainFlowDeps } from '../lib/ios/domainFlow.js';
-import { makePayer, domainTestRealSubs } from '../lib/ios/domainLive.js';
+import { makePayer, domainTestRealSites } from '../lib/ios/domainLive.js';
 import { fakeRegistrar } from './ios/fakeRegistrar.js';
 import { fakeDomainsRepo, blankRow } from './ios/fakeDomainsRepo.js';
 
@@ -107,10 +107,11 @@ function world(opts: { livemode?: boolean; priceId?: string; flow?: Partial<Doma
   const deps: OneClickDeps = {
     authorize, flow, secret: SECRET, priceId: PRICE, stripe: st.fn,
     planOf: vi.fn(async () => ({ customer: 'cus_plan0001', subscriptionId: 'sub_plan0001' })),
+    ownsWebSite: vi.fn(async (slug: string, userId: string) => slug === 'fresh-cuts' && userId === 'u1'),
     cancelAndRefund, notifySupport, enabled: true,
     ...opts.deps,
   };
-  const webhookDeps = { getSubscription: async (id: string) => (st.subs.has(id) ? structuredClone(st.subs.get(id)) : null), flow, secret: SECRET, priceId: deps.priceId, cancelAndRefund, notifySupport, testRealSubs: deps.testRealSubs };
+  const webhookDeps = { getSubscription: async (id: string) => (st.subs.has(id) ? structuredClone(st.subs.get(id)) : null), flow, secret: SECRET, priceId: deps.priceId, cancelAndRefund, notifySupport, testRealSites: deps.testRealSites };
   return {
     reg, repo, st, deps, flow, hooks, cancelAndRefund, notifySupport,
     buy: (body: any = { domain: 'freshcuts.com', siteId: 'fresh-cuts' }, auth: unknown = OWNER) => oneClickDomainPurchase(body, auth, deps),
@@ -329,15 +330,15 @@ describe('one-click buy: the claim (shared state machine)', () => {
     expect(w.reg.api.addProjectDomain).not.toHaveBeenCalled();
   });
 
-  it('DOMAINS_TEST_REAL_SUBS flips simulated only for the listed ids', async () => {
-    const real = world({ livemode: false, deps: { testRealSubs: new Set(['sub_oneclick1']) } });
+  it('DOMAINS_TEST_REAL_SITES flips simulated only for the listed site slugs', async () => {
+    const real = world({ livemode: false, deps: { testRealSites: new Set(['fresh-cuts']) } });
     await real.buy();
     expect(real.repo.rows.get('stripe:sub_oneclick1')?.simulated).toBe(false);
-    const other = world({ livemode: false, deps: { testRealSubs: new Set(['sub_other0001']) } });
+    const other = world({ livemode: false, deps: { testRealSites: new Set(['other-site']) } });
     await other.buy();
     expect(other.repo.rows.get('stripe:sub_oneclick1')?.simulated).toBe(true);
     // the list means nothing for a live subscription: it is real either way
-    const live = world({ livemode: true, deps: { testRealSubs: new Set() } });
+    const live = world({ livemode: true, deps: { testRealSites: new Set() } });
     await live.buy();
     expect(live.repo.rows.get('stripe:sub_oneclick1')?.simulated).toBe(false);
   });
@@ -539,10 +540,58 @@ describe('Stripe webhook: one-click sale report and the staging list', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect((await forged.event('customer.subscription.created', f)).purchase).toBeFalsy();
   });
-  it('domainTestRealSubs honours DOMAINS_TEST_REAL_SUBS only with DOMAINS_BUY_DISABLED=1 and never in production', () => {
-    const base = { DOMAINS_TEST_REAL_SUBS: 'sub_a, sub_b' };
-    expect(domainTestRealSubs(base).size).toBe(0);
-    expect([...domainTestRealSubs({ ...base, DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview' })]).toEqual(['sub_a', 'sub_b']);
-    expect(domainTestRealSubs({ ...base, DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'production' }).size).toBe(0);
+  it('domainTestRealSites honours DOMAINS_TEST_REAL_SITES only with DOMAINS_BUY_DISABLED=1 and never in production', () => {
+    const base = { DOMAINS_TEST_REAL_SITES: 'site-a, site-b', STRIPE_SECRET_KEY: 'sk_test_x' };
+    expect(domainTestRealSites(base).size).toBe(0);
+    expect([...domainTestRealSites({ ...base, DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview' })]).toEqual(['site-a', 'site-b']);
+    expect(domainTestRealSites({ ...base, DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'production' }).size).toBe(0);
+    // B1: a LIVE Stripe key (or none) never opens the staging list, even with the buy gate on
+    expect(domainTestRealSites({ ...base, DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview', STRIPE_SECRET_KEY: 'sk_live_x' }).size).toBe(0);
+    expect(domainTestRealSites({ DOMAINS_TEST_REAL_SITES: 'site-a', DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview' }).size).toBe(0);
+  });
+});
+
+
+describe('review B fixes', () => {
+  it('S1: a concurrent double tap (Stripe 409 idempotency_error), a 429 and a connection error are NOT card failures: 503, no fallback offered', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const [status, err] of [[409, { type: 'idempotency_error', code: 'idempotency_key_in_use' }], [429, { type: 'rate_limit_error', code: 'rate_limit' }], [400, { type: 'invalid_request_error', code: 'parameter_invalid' }]] as const) {
+      const w = world();
+      const base = w.deps.stripe;
+      w.deps.stripe = async (m, p, o) => (m === 'POST' && p === '/v1/subscriptions' ? { ok: false, status, data: { error: err } } : base(m, p, o));
+      const r = await w.buy();
+      expect(r.status).toBe(503);
+      expect(r.body).not.toHaveProperty('fallback');
+      expect(w.rows()).toHaveLength(0);
+    }
+  });
+
+  it('S5: a stranger with a plan cannot one-click a slug that is not their own web_app_sites row (no Stripe call at all)', async () => {
+    const w = world({ deps: { ownsWebSite: vi.fn(async () => false) } });
+    const r = await w.buy();
+    expect(r.status).toBe(403);
+    expect(w.st.calls).toHaveLength(0);
+    expect(w.repo.rows.size).toBe(0);
+    // an outage of the ownership lookup refuses too, without charging
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const o = world({ deps: { ownsWebSite: vi.fn(async () => { throw new Error('db down'); }) } });
+    expect((await o.buy()).status).toBe(503);
+    expect(o.st.calls).toHaveLength(0);
+  });
+
+  it('N1: an orphan claim for a different domain than the one typed says so (claimedOther)', async () => {
+    const w = world();
+    const first = await w.buy({ domain: 'freshcuts.com', siteId: 'fresh-cuts' });
+    expect(first.status).toBeLessThan(300);
+    // a paid subscription of this site for ANOTHER domain, with no row: the next call claims it
+    const sub = structuredClone(w.st.subs.get('sub_oneclick1'));
+    sub.id = 'sub_orphan0001';
+    sub.metadata = { ...sub.metadata, domain: 'othername.com', sig: domainSig(SECRET, 'othername.com', 'fresh-cuts') };
+    w.st.subs.set(sub.id, sub);
+    w.st.subs.get('sub_oneclick1').status = 'canceled';
+    w.repo.rows.clear();
+    const r = await w.buy({ domain: 'freshcuts2.com', siteId: 'fresh-cuts' });
+    expect(w.st.posts()).toHaveLength(1); // no second charge
+    expect(r.body).toMatchObject({ claimedOther: true });
   });
 });

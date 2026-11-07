@@ -11,7 +11,8 @@
 //   STRIPE_DOMAIN_PRODUCT_ID   optional; with no price id, one-click uses price_data on this product
 //   WEB_DOMAIN_ONECLICK        '0' turns the web app's one-click purchase off (default on; hosted Checkout stays)
 //   DOMAINS_BUY_DISABLED       staging only (ignored in production): the registrar refuses every buy without calling Vercel
-//   DOMAINS_TEST_REAL_SUBS     staging only, needs DOMAINS_BUY_DISABLED=1: test-mode sub ids that run the real attach path
+//   DOMAINS_TEST_REAL_SITES    staging only, needs DOMAINS_BUY_DISABLED=1 + a test Stripe key: site slugs whose test purchases run the real attach path
+//   DOMAINS_STAGING_OWNED      staging only, same gates: the ONLY team-owned names reported as available (explicit allow-list)
 import { liveGetUser } from '../bookings/auth.js';
 import { publicLimiter } from '../bookings/rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from '../bookings/repo.js';
@@ -28,6 +29,7 @@ import type { DomainNotificationSink } from './notifications.js';
 import { supabasePurchases } from './purchases.js';
 import { DOMAIN_PRODUCT_ID } from './tiers.js';
 import { domainsBuyDisabled, liveVercelDomains, registrantContact } from './vercelDomains.js';
+import { keyMode } from '../webApp/stripeCore.js';
 import { sbRest, webAppEntitlementsOn } from '../webApp/webAppServer.js';
 import { stripePayerStatus, type WebDomainDeps } from '../webDomains.js';
 import { isEntitledStatus, type Interval, type Tier } from '../webApp/stripeCore.js';
@@ -38,13 +40,13 @@ export function sandboxRealOtids(raw: string | undefined = process.env.DOMAINS_S
 }
 
 /**
- * Staging: test-mode subscription ids that run the real attach/link path (DOMAINS_TEST_REAL_SUBS).
- * Honoured ONLY while DOMAINS_BUY_DISABLED=1 off production, so a test subscription can never reach
- * the real registrar; empty otherwise (and in production).
+ * Staging: site slugs whose test-mode purchases run the real attach/link path (DOMAINS_TEST_REAL_SITES).
+ * Honoured ONLY while DOMAINS_BUY_DISABLED=1 off production with a test Stripe key, so a test
+ * subscription can never reach the real registrar; empty otherwise (and in production).
  */
-export function domainTestRealSubs(env: Record<string, string | undefined> = process.env): Set<string> {
-  if (!domainsBuyDisabled(env)) return new Set();
-  return new Set((env.DOMAINS_TEST_REAL_SUBS || '').split(',').map((x) => x.trim()).filter(Boolean));
+export function domainTestRealSites(env: Record<string, string | undefined> = process.env): Set<string> {
+  if (!domainsBuyDisabled(env) || keyMode(env.STRIPE_SECRET_KEY) !== 'test') return new Set();
+  return new Set((env.DOMAINS_TEST_REAL_SITES || '').split(',').map((x) => x.trim()).filter(Boolean));
 }
 
 export async function probeHttps(domain: string): Promise<boolean> {
@@ -247,7 +249,7 @@ export function liveWebDomainDeps(authorize: WebDomainDeps['authorize']): WebDom
     priceId: process.env.STRIPE_DOMAIN_PRICE_ID || undefined,
     cancelAndRefund: (subId) => stripeCancelAndRefund(subId),
     notifySupport: (subject, text) => notifySupportEmail(subject, text),
-    testRealSubs: domainTestRealSubs(),
+    testRealSites: domainTestRealSites(),
   };
 }
 

@@ -18,6 +18,8 @@
 // MUST use the same scope as the projects, and the registrar must register into that same scope,
 // so every call here uses VERCEL_DOMAINS_TEAM_ID only when it is set (default: none, like deploys).
 
+import { keyMode } from '../webApp/stripeCore.js';
+
 export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) =>
   Promise<{ ok: boolean; status: number; json(): Promise<any>; text?(): Promise<string> }>;
 
@@ -290,27 +292,40 @@ export function domainsBuyDisabled(env: Record<string, string | undefined> = pro
   return env.DOMAINS_BUY_DISABLED === '1' && env.VERCEL_ENV !== 'production';
 }
 
-/** Staging only: the price shown for a name the team already owns when Vercel quotes none (inside the standard-price cap). */
+/** Staging only: the price shown for an allow-listed owned name when Vercel quotes none (inside the standard-price cap). */
 const STAGING_OWNED_PRICE = 10;
 
 /**
- * The same registrar with `buy` answering a definite refusal (no network call), and a name the
- * team ALREADY OWNS reported as available at a standard price: the purchase flow's precheck would
- * otherwise refuse an owned name as taken, and staging could never reach the owned-name path
- * (reserved → bought with no purchase → attach → link) that proves the switch with zero spend.
+ * Staging only: the explicit allow-list (env DOMAINS_STAGING_OWNED, comma separated) of names the
+ * team owns that the staging flow may treat as available. Empty unless the buy gate is on, off
+ * production, AND the Stripe key is a test key, so it can never apply next to real money.
  */
-export function withBuyDisabled(api: VercelDomains): VercelDomains {
+export function stagingOwnedNames(env: Record<string, string | undefined> = process.env): Set<string> {
+  if (!domainsBuyDisabled(env) || keyMode(env.STRIPE_SECRET_KEY) !== 'test') return new Set();
+  return new Set((env.DOMAINS_STAGING_OWNED || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * The same registrar with `buy` answering a definite refusal (no network call). Only the names on
+ * `stagingOwned` that the team already owns are reported as available at a standard price (the
+ * purchase flow's precheck would otherwise refuse an owned name as taken, and staging could never
+ * reach the owned-name path: reserved -> bought with no purchase -> attach -> link). EVERY other
+ * name, owned or not, keeps its real answer: a live customer's domain must never look available,
+ * because the flow would then drive the real registrar on it (auto-renew, attach).
+ */
+export function withBuyDisabled(api: VercelDomains, stagingOwned: ReadonlySet<string> = new Set()): VercelDomains {
+  const listed = (d: string) => stagingOwned.has(d.toLowerCase());
   return {
     ...api,
     async availability(domains) {
       const out = await api.availability(domains);
-      for (const d of domains) if (out.get(d) !== true && (await api.owned(d))) out.set(d, true);
+      for (const d of domains) if (out.get(d) !== true && listed(d) && (await api.owned(d))) out.set(d, true);
       return out;
     },
     async prices(domains) {
       let out = new Map<string, DomainPrice>();
-      try { out = await api.prices(domains); } catch { /* a taken name may not be quotable: owned names get the staging price below */ }
-      for (const d of domains) if (!out.has(d) && (await api.owned(d))) out.set(d, { purchasePrice: STAGING_OWNED_PRICE, renewalPrice: STAGING_OWNED_PRICE });
+      try { out = await api.prices(domains); } catch { /* a taken name may not be quotable: listed owned names get the staging price below */ }
+      for (const d of domains) if (!out.has(d) && listed(d) && (await api.owned(d))) out.set(d, { purchasePrice: STAGING_OWNED_PRICE, renewalPrice: STAGING_OWNED_PRICE });
       return out;
     },
     async buy() {
@@ -325,5 +340,5 @@ export function liveVercelDomains(env: Record<string, string | undefined> = proc
   const token = env.VERCEL_TOKEN;
   if (!token) return null;
   const api = makeVercelDomains({ token, teamId: env.VERCEL_DOMAINS_TEAM_ID || undefined, fetch: fetchFn });
-  return domainsBuyDisabled(env) ? withBuyDisabled(api) : api;
+  return domainsBuyDisabled(env) ? withBuyDisabled(api, stagingOwnedNames(env)) : api;
 }

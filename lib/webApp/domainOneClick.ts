@@ -41,9 +41,11 @@ export interface OneClickDeps {
   /** STRIPE_SECRET_KEY calls (the domain key). */
   stripe: StripeFn;
   planOf(userId: string): Promise<WebPlan | null>;
+  /** True only when `slug` is a web_app_sites row of exactly this user (the site the plan pays for). Throws on an outage. */
+  ownsWebSite(slug: string, userId: string): Promise<boolean>;
   cancelAndRefund(subscriptionId: string): Promise<void>;
   notifySupport?(subject: string, text: string): Promise<void>;
-  testRealSubs?: ReadonlySet<string>;
+  testRealSites?: ReadonlySet<string>;
   /** False = one-click off (env flag, key mismatch, no price): Checkout only. */
   enabled: boolean;
 }
@@ -140,14 +142,21 @@ export async function oneClickCard(body: any, authorization: unknown, deps: OneC
   }
 }
 
-/** Stripe's error → a SAFE reason code for the client (never Stripe's message). */
-function failReason(data: any): 'authentication' | 'declined' | 'no-card' | 'unavailable' {
+/**
+ * Stripe's error → a SAFE reason code for the client (never Stripe's message), or null when the
+ * failure is NOT a card failure (idempotency conflict from a concurrent double tap, rate limit,
+ * connection / API error, anything unclassified): the first charge may still succeed, so the
+ * client must NOT be told to pay again on Stripe.
+ */
+function failReason(status: number, data: any): 'authentication' | 'declined' | 'no-card' | null {
   const err = data?.error || {};
   const code = String(err.code || '');
+  if (err.type === 'idempotency_error' || err.type === 'rate_limit_error' || err.type === 'api_error' || err.type === 'api_connection_error') return null;
+  if (status === 409 || status === 429 || status < 400) return null;
   if (/requires_action|authentication/.test(code) || err.payment_intent?.status === 'requires_action') return 'authentication';
   if (code === 'resource_missing') return 'no-card';
   if (err.type === 'card_error') return 'declined';
-  return 'unavailable';
+  return null;
 }
 
 /** The subscription's form: signed metadata, server price, the saved card, no client field but the domain. */
@@ -204,6 +213,14 @@ export async function oneClickDomainPurchase(body: any, authorization: unknown, 
   if (auth.actor === 'app-owner') return { status: 403, body: { error: 'app-site' } };
   if (auth.actor !== 'web-user' || !auth.userId) return { status: 403, body: { error: 'owner-only' } };
   const slug = auth.target;
+  // An off-session charge only for the owner's OWN web site (the interim `sites`-claim rule also grants
+  // web-user on an unowned legacy slug; a stranger with a plan must not attach a paid domain to it).
+  try {
+    if (!(await deps.ownsWebSite(slug, auth.userId))) return { status: 403, body: { error: 'not-authorized' } };
+  } catch (e: any) {
+    console.error('[web-domain/buy] site ownership lookup failed:', e?.message || e);
+    return { status: 503, body: { error: 'Try again shortly' } };
+  }
 
   const refusal = await domainSaleRefusal(deps.flow, slug, domain);
   if (refusal) return refusal;
@@ -232,7 +249,9 @@ export async function oneClickDomainPurchase(body: any, authorization: unknown, 
       const v = verifyDomainSubscription(s, deps.secret, deps.priceId);
       if (!v || v.slug !== slug) continue;
       if (await deps.flow.repo.get(`stripe:${v.subscriptionId}`)) continue; // already has its row
-      return claimDomainSubscription(s, v, isTestMode(s) && !(deps.testRealSubs?.has(v.subscriptionId) ?? false), claimDeps);
+      const claimed = await claimDomainSubscription(s, v, isTestMode(s) && !(deps.testRealSites?.has(v.slug) ?? false), claimDeps);
+      // The paid-for domain may differ from the one typed: say so, the client shows the returned one.
+      return v.domain === domain ? claimed : { ...claimed, body: { ...claimed.body, claimedOther: true } };
     }
   } catch (e: any) {
     console.error('[web-domain/buy] existing subscription check failed:', e?.message || e);
@@ -254,8 +273,9 @@ export async function oneClickDomainPurchase(body: any, authorization: unknown, 
     return { status: 503, body: { error: 'Try again shortly', message: 'We could not confirm the payment yet. You will not be charged twice; try again in a minute.' } };
   }
   if (!created.ok) {
-    const reason = failReason(created.data);
+    const reason = failReason(created.status, created.data);
     console.error(`[web-domain/buy] charge not made: ${created.status} ${created.data?.error?.code || created.data?.error?.type || ''}`);
+    if (!reason) return { status: 503, body: { error: 'Try again shortly', message: 'We could not confirm the payment yet. You will not be charged twice; check the status in a minute.' } };
     return reason === 'no-card' ? fallback('no-card') : fallback('card-failed', reason);
   }
 
@@ -272,7 +292,7 @@ export async function oneClickDomainPurchase(body: any, authorization: unknown, 
     // Paid but not a valid domain subscription (a wrong STRIPE_DOMAIN_PRICE_ID): refund it, tell support.
     return refundUnverifiable(sub, domain, slug, deps);
   }
-  return claimDomainSubscription(sub, v, isTestMode(sub) && !(deps.testRealSubs?.has(v.subscriptionId) ?? false), claimDeps);
+  return claimDomainSubscription(sub, v, isTestMode(sub) && !(deps.testRealSites?.has(v.slug) ?? false), claimDeps);
 }
 
 async function dropUnpaid(sub: any, invoice: any, deps: OneClickDeps): Promise<void> {

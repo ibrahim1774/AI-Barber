@@ -68,7 +68,9 @@ export async function planWebCancellations(userId: string, listForCustomer: (cus
   for (const c of (await discover(userId)).customers) customers.add(c);
   for (const c of customers) {
     for (const sub of await listForCustomer(c)) {
-      if (sub?.metadata?.app === WEB_APP_TAG && typeof sub.id === 'string' && (isEntitledStatus(String(sub.status)) || sub.status === 'unpaid' || sub.status === 'paused' || sub.status === 'incomplete')) ids.add(sub.id);
+      // The domain subscription sits on the same customer since one-click: it must stop billing with the account.
+      const isDomain = sub?.metadata?.type === 'domain_purchase' && sub?.metadata?.app === 'aibarber-domain';
+      if ((sub?.metadata?.app === WEB_APP_TAG || isDomain) && typeof sub.id === 'string' && (isEntitledStatus(String(sub.status)) || sub.status === 'unpaid' || sub.status === 'paused' || sub.status === 'incomplete')) ids.add(sub.id);
     }
   }
   return [...ids];

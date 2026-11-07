@@ -230,18 +230,18 @@ export interface WebDomainDeps {
   /** Email support@davoxa.com (domain, site, amount only). Best effort. */
   notifySupport?(subject: string, text: string): Promise<void>;
   /**
-   * Staging only (env DOMAINS_TEST_REAL_SUBS, honoured only with DOMAINS_BUY_DISABLED=1 off production):
+   * Staging only (env DOMAINS_TEST_REAL_SITES, honoured only with DOMAINS_BUY_DISABLED=1 off production):
    * test-mode subscription ids that run the real attach/link path instead of the simulation.
    */
-  testRealSubs?: ReadonlySet<string>;
+  testRealSites?: ReadonlySet<string>;
 }
 
 /** Stripe test mode, from Stripe's own livemode flag (never the key prefix). */
 export const isTestMode = (...objs: any[]) => objs.some((o) => o && o.livemode === false);
 
 /** A test-mode subscription is simulated (Vercel never called) unless it is on the staging list. */
-const simulatedSub = (subId: string, deps: Pick<WebDomainDeps, 'testRealSubs'>, ...objs: any[]) =>
-  isTestMode(...objs) && !(deps.testRealSubs?.has(subId) ?? false);
+const simulatedSub = (slug: string, deps: Pick<WebDomainDeps, 'testRealSites'>, ...objs: any[]) =>
+  isTestMode(...objs) && !(deps.testRealSites?.has(slug) ?? false);
 
 const badSession: WebResult = { status: 400, body: { error: 'Invalid checkout session' } };
 
@@ -278,7 +278,7 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   }
   const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
   if (!v || v.slug !== md.slug || v.domain !== md.domain) return { status: 400, body: { error: 'Not a paid domain purchase' } };
-  return claimDomainSubscription(sub, v, simulatedSub(v.subscriptionId, deps, session, sub), deps);
+  return claimDomainSubscription(sub, v, simulatedSub(v.slug, deps, session, sub), deps);
 }
 
 /**
@@ -483,7 +483,7 @@ export async function handleDomainStripeEvent(
     }
     const payer = stripePayerStatus(sub, deps.flow.now());
     if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
-    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: simulatedSub(subId, deps, obj, sub), slug: v.slug, domain: v.domain, payer };
+    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: simulatedSub(v.slug, deps, obj, sub), slug: v.slug, domain: v.domain, payer };
     const reserved = await reserveSlot(c, deps.flow);
     if (reserved.result) {
       const refused = await recordRefusedPaidSlot(c, reserved.result, deps);

@@ -157,7 +157,7 @@ describe('registrantContact (env VERCEL_REGISTRANT_CONTACT)', () => {
   ])('rejects %s', (raw) => expect(registrantContact(raw as any)).toBeNull());
 });
 
-import { domainsBuyDisabled, liveVercelDomains, withBuyDisabled } from '../../lib/ios/vercelDomains.js';
+import { domainsBuyDisabled, liveVercelDomains, stagingOwnedNames, withBuyDisabled } from '../../lib/ios/vercelDomains.js';
 
 describe('DOMAINS_BUY_DISABLED staging gate', () => {
   const env = (over: Record<string, string>) => ({ VERCEL_TOKEN: 'tok', ...over });
@@ -197,12 +197,53 @@ describe('DOMAINS_BUY_DISABLED staging gate', () => {
       if (url.includes('/v5/domains/mine.com')) return { status: 200, body: { domain: { boughtAt: 1, expiresAt: Date.now() + 1e9, renew: false } } };
       return { status: 404, body: {} };
     });
-    const v = withBuyDisabled(makeVercelDomains({ token: 't', fetch: f }));
+    const v = withBuyDisabled(makeVercelDomains({ token: 't', fetch: f }), new Set(['mine.com']));
     const a = await v.availability(['mine.com', 'theirs.com', 'free.com']);
     expect([a.get('mine.com'), a.get('theirs.com'), a.get('free.com')]).toEqual([true, false, true]);
     const p = await v.prices(['mine.com', 'theirs.com']);
     expect(p.get('mine.com')).toEqual({ purchasePrice: 10, renewalPrice: 10 });
     expect(p.has('theirs.com')).toBe(false);
+  });
+
+  it('B1: a team-owned name that is NOT on the allow-list stays taken (a live customer\'s domain never looks available), and is not even looked up', async () => {
+    const { f, calls } = fakeFetch((url) => {
+      if (url.includes('/registrar/domains/availability')) return { status: 200, body: { results: [{ domain: 'customer.com', available: false }, { domain: 'mine.com', available: false }] } };
+      if (url.includes('/registrar/domains/price')) return { status: 400, body: { code: 'domain_not_available' } };
+      if (url.includes('/v5/domains/')) return { status: 200, body: { domain: { boughtAt: 1, expiresAt: Date.now() + 1e9, renew: true } } };
+      return { status: 404, body: {} };
+    });
+    const v = withBuyDisabled(makeVercelDomains({ token: 't', fetch: f }), new Set(['mine.com']));
+    const a = await v.availability(['customer.com', 'mine.com']);
+    expect([a.get('customer.com'), a.get('mine.com')]).toEqual([false, true]);
+    const p = await v.prices(['customer.com', 'mine.com']);
+    expect(p.has('customer.com')).toBe(false);
+    expect(p.get('mine.com')).toEqual({ purchasePrice: 10, renewalPrice: 10 });
+    expect(calls.some((c) => c.url.includes('/v5/domains/customer.com'))).toBe(false);
+    // no allow-list at all: nothing owned is ever shimmed
+    const none = withBuyDisabled(makeVercelDomains({ token: 't', fetch: f }));
+    expect((await none.availability(['mine.com'])).get('mine.com')).toBe(false);
+  });
+
+  it('B1: stagingOwnedNames needs the buy gate, off production, AND a test Stripe key', () => {
+    const e = { DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview', STRIPE_SECRET_KEY: 'sk_test_x', DOMAINS_STAGING_OWNED: ' Mine.com, other.com ' };
+    expect([...stagingOwnedNames(e)]).toEqual(['mine.com', 'other.com']);
+    expect(stagingOwnedNames({ ...e, STRIPE_SECRET_KEY: 'sk_live_x' }).size).toBe(0);
+    expect(stagingOwnedNames({ ...e, STRIPE_SECRET_KEY: undefined }).size).toBe(0);
+    expect(stagingOwnedNames({ ...e, VERCEL_ENV: 'production' }).size).toBe(0);
+    expect(stagingOwnedNames({ ...e, DOMAINS_BUY_DISABLED: undefined }).size).toBe(0);
+  });
+
+  it('B1: liveVercelDomains wires the allow-list: an owned name off the list is taken, on the list available (test key only)', async () => {
+    const { f } = fakeFetch((url) => {
+      if (url.includes('/registrar/domains/availability')) return { status: 200, body: { results: [{ domain: 'customer.com', available: false }, { domain: 'mine.com', available: false }] } };
+      if (url.includes('/v5/domains/')) return { status: 200, body: { domain: { boughtAt: 1, expiresAt: Date.now() + 1e9, renew: true } } };
+      return { status: 404, body: {} };
+    });
+    const e = { VERCEL_TOKEN: 't', DOMAINS_BUY_DISABLED: '1', VERCEL_ENV: 'preview', DOMAINS_STAGING_OWNED: 'mine.com' };
+    const ok = await liveVercelDomains({ ...e, STRIPE_SECRET_KEY: 'sk_test_x' }, f)!.availability(['customer.com', 'mine.com']);
+    expect([ok.get('customer.com'), ok.get('mine.com')]).toEqual([false, true]);
+    const live = await liveVercelDomains({ ...e, STRIPE_SECRET_KEY: 'sk_live_x' }, f)!.availability(['customer.com', 'mine.com']);
+    expect([live.get('customer.com'), live.get('mine.com')]).toEqual([false, false]);
   });
 
   it('withBuyDisabled keeps this-bound helpers working (owned uses lookup)', async () => {

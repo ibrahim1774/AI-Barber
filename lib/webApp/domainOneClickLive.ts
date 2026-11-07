@@ -2,7 +2,7 @@
 // lookup of api/create-domain-checkout for `app: 'web'`). The logic is in lib/webApp/domainOneClick.ts
 // and lib/webDomains.ts; this file only binds Stripe (STRIPE_SECRET_KEY, the domain key), Supabase and Vercel.
 import { STRIPE_API_VERSION } from '../stripeVersion.js';
-import { liveDomainDeps, domainTestRealSubs, notifySupportEmail, probeHttps, stripe, stripeCancelAndRefund, stripeSubscription } from '../ios/domainLive.js';
+import { liveDomainDeps, domainTestRealSites, notifySupportEmail, probeHttps, stripe, stripeCancelAndRefund, stripeSubscription } from '../ios/domainLive.js';
 import { liveVercelDomains } from '../ios/vercelDomains.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { serviceClient } from '../bookings/repo.js';
@@ -24,6 +24,12 @@ export async function webPlanOf(userId: string): Promise<WebPlan | null> {
   return ent ? { customer: ent.stripe_customer_id as string, subscriptionId: ent.stripe_subscription_id } : null;
 }
 
+/** The web site `slug` belongs to exactly this user (web_app_sites.user_id). Throws on an outage (the caller answers 503). */
+export async function ownsWebSite(slug: string, userId: string): Promise<boolean> {
+  const rows: Array<{ user_id: string | null }> = (await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(slug)}&select=user_id&limit=1`)) ?? [];
+  return rows.length === 1 && rows[0].user_id === userId;
+}
+
 /**
  * One-click is possible only when both Stripe keys are the same mode (the plan's customer must be
  * visible to the domain key; Step 0 confirms the same ACCOUNT, a Stripe 404 on the customer falls
@@ -43,9 +49,10 @@ export function liveOneClickDeps(authorize: AuthorizeOwner): OneClickDeps {
     productId: process.env.STRIPE_DOMAIN_PRODUCT_ID || undefined,
     stripe,
     planOf: webPlanOf,
+    ownsWebSite,
     cancelAndRefund: (id) => stripeCancelAndRefund(id),
     notifySupport: (subject, text) => notifySupportEmail(subject, text),
-    testRealSubs: domainTestRealSubs(),
+    testRealSites: domainTestRealSites(),
     enabled: oneClickEnabled(),
   };
 }

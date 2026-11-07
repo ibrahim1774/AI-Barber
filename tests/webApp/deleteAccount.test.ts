@@ -70,6 +70,18 @@ describe('web delete-account helpers', () => {
     expect(await cancelWebSubscriptions('u1', cancel, undefined, list)).toEqual(['sub_live', 'sub_unrecorded']);
     expect(list).toHaveBeenCalledWith('cus_1');
   });
+  it('S4 (domain): a one-click domain_purchase subscription on the user\'s customer is cancelled with the account; an unrelated one is not', async () => {
+    set([row('sub_plan', 'active', 'live')]);
+    rows[0].stripe_customer_id = 'cus_1';
+    const list = vi.fn(async () => [
+      { id: 'sub_plan', status: 'active', metadata: { app: 'aibarber-app' } },
+      { id: 'sub_domain', status: 'active', metadata: { type: 'domain_purchase', app: 'aibarber-domain', domain: 'a.com', siteId: 's' } },
+      { id: 'sub_domain_old', status: 'canceled', metadata: { type: 'domain_purchase', app: 'aibarber-domain' } },
+      { id: 'sub_foreign', status: 'active', metadata: { type: 'domain_purchase', app: 'something-else' } },
+    ]);
+    const cancel = vi.fn(async () => {});
+    expect(await cancelWebSubscriptions('u1', cancel, undefined, list)).toEqual(['sub_plan', 'sub_domain']);
+  });
   it('S4: a test key still refuses before listing or cancelling anything when a live row is entitled', async () => {
     vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
     set([row('sub_live', 'active', 'live')]);

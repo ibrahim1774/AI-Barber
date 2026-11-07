@@ -81,9 +81,20 @@ describe('DOMAINS_BUY_DISABLED on a Stripe row (staging gate)', () => {
     expect(w.reg.api.buy).not.toHaveBeenCalled();
     expect(w.reg.charges).toHaveLength(0);
   });
+  it('B1: an owned name NOT on the staging allow-list is refused as taken: no row advances, nothing refunded-and-renewal-touched, registrar never asked', async () => {
+    quiet();
+    const w = world();
+    w.flow.vercel = withBuyDisabled(w.reg.api, new Set(['someother.com']));
+    w.reg.seed('freshcuts.com', 1, true);
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+    expect(w.reg.api.setAutoRenew).not.toHaveBeenCalled();
+    expect(w.reg.projects.size).toBe(0);
+    expect(row(w)?.state).not.toBe('live');
+  });
   it('a name the team already owns goes through attach and link with no buy and no charge', async () => {
     const w = world();
-    w.flow.vercel = withBuyDisabled(w.reg.api);
+    w.flow.vercel = withBuyDisabled(w.reg.api, new Set(['freshcuts.com']));
     w.reg.seed('freshcuts.com', 1, false);
     const r = await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
     expect(r.status).toBe(200);
