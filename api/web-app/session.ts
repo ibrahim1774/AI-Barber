@@ -9,19 +9,11 @@
 import { clientIp, memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, webAppCheckoutOn, webAppCors, webAppOriginAllowed } from '../../lib/webApp/webAppServer.js';
 
-export const COOKIE = 'pb_rt';
-export const COOKIE_PATH = '/api/web-app/session';
-export const COOKIE_MAX_AGE = 400 * 24 * 60 * 60; // 400 days, the most browsers allow
+import { COOKIE, COOKIE_PATH, COOKIE_MAX_AGE, HINT, hintFor, clearHint, cookieFor, clearCookie } from '../../lib/webApp/sessionCookie.js';
+export { COOKIE, COOKIE_PATH, COOKIE_MAX_AGE, HINT, hintFor, clearHint, cookieFor, clearCookie };
 export const SESSION_PER_MINUTE = 30;
 const limiter = memoryStore();
 
-// Non-HttpOnly hint so the client only asks for a restore when there is something to restore.
-export const HINT = 'pb_has';
-export const hintFor = () => `${HINT}=1; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE}`;
-export const clearHint = () => `${HINT}=; Secure; SameSite=Lax; Path=/; Max-Age=0`;
-const attrs = `HttpOnly; Secure; SameSite=Lax; Path=${COOKIE_PATH}`;
-export const cookieFor = (token: string) => `${COOKIE}=${encodeURIComponent(token)}; ${attrs}; Max-Age=${COOKIE_MAX_AGE}`;
-export const clearCookie = () => `${COOKIE}=; ${attrs}; Max-Age=0`;
 
 function cookieOf(header: unknown): string | null {
   if (typeof header !== 'string') return null;
