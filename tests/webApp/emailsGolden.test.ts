@@ -68,7 +68,7 @@ describe('signup nudge emails', () => {
   const saved: Record<string, string | undefined> = {};
   beforeEach(() => { for (const k of ENV_KEYS) { saved[k] = process.env[k]; delete process.env[k]; } });
   afterEach(() => { for (const k of ENV_KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
-  const inp = { email: 'jake@gmail.com', firstName: 'Jake Lee', shopName: "Jake's Cuts", continueUrl: `${O}/api/web-app/continue?t=TOKEN`, unsubscribeUrl: `${O}/api/web-app/unsubscribe?t=UTOKEN` };
+  const inp = { email: 'jake@gmail.com', firstName: 'Jake Lee', shopName: "Jake's Cuts", continueUrl: `${O}/api/web-app/continue?t=TOKEN` };
   const steps = [1, 2, 3] as const;
 
   it('golden: named + shop, anon + no shop, with postal address', () => {
@@ -86,7 +86,7 @@ describe('signup nudge emails', () => {
     expect(signupNudgeEmail(3, inp).subject).toBe("Still want your Jake's Cuts website?");
   });
 
-  it('content rules: no prices, no banned words, no em dash, one origin link, text mirrors, headers', () => {
+  it('content rules: plain letter, one link, no unsubscribe machinery, no prices, no banned words, no em dash', () => {
     for (const s of steps) for (const v of [inp, { ...inp, firstName: null, shopName: null }]) {
       const m = signupNudgeEmail(s, v);
       const all = `${m.subject}\n${m.html}\n${m.text}`;
@@ -94,32 +94,41 @@ describe('signup nudge emails', () => {
       expect(all).not.toMatch(/\b(free|urgent|act now|limited time|offer|discount)\b/i);
       expect(all).not.toMatch(/[\u2013\u2014]/);
       expect(all).not.toMatch(/tattoo/i);
+      expect(all).not.toMatch(/unsubscribe/i);
+      expect(all).not.toMatch(/\bbutton\b/i);
       expect(m.subject).not.toMatch(/!|[A-Z]{4,}/);
       const hrefs = [...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1]);
-      expect(hrefs).toHaveLength(2);
-      for (const h of hrefs) expect(h.startsWith(O)).toBe(true);
-      expect(m.html).not.toMatch(/<img/i);
-      expect(m.html).toMatch(/<td[^>]*bgcolor="#0b57d0"[^>]*><a href="[^"]+" style="display:inline-block;padding:13px 26px;background-color:#0b57d0;border-radius:8px;color:#ffffff/); // a real button, still one <a>
+      expect(hrefs).toEqual([v.continueUrl]); // exactly one link, on the app origin
+      expect(hrefs[0].startsWith(O)).toBe(true);
+      expect(m.html).not.toMatch(/<img|<table|<td|<button|<div|bgcolor|background/i);
       expect(m.text).toContain(`Finish my website: ${v.continueUrl}`);
-      expect(m.text).toContain(`Unsubscribe: ${v.unsubscribeUrl}`);
-      expect(m.headers!['List-Unsubscribe']).toBe(`<${v.unsubscribeUrl}>, <mailto:support@davoxa.com?subject=unsubscribe>`);
-      expect(m.headers!['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+      expect(m.text.match(/https?:\/\//g)).toHaveLength(1);
+      expect(m.headers).toBeUndefined();
       expect(m.tags).toEqual([{ name: 'kind', value: 'signup_nudge' }, { name: 'step', value: String(s) }]);
       expect(m.replyTo).toBe('support@davoxa.com');
-      expect(m.text).toContain('Ibrahim\nPrime Barber');
+      expect(m.from).toBe('Ibrahim from Prime Barber <support@davoxa.com>');
+      expect(m.text).toContain('Ibrahim\nPrime Barber\n\nP.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.');
+      expect(m.text.trimEnd().endsWith('again.')).toBe(true); // no footer after the P.S. (postal line unset)
+      expect(m.html).toContain('Ibrahim<br>Prime Barber');
+      expect(m.html).toContain('color:#777777');
     }
   });
 
-  it('postal line only when configured; sender chain NUDGE_FROM > EMAIL_FROM > default', () => {
+  it('From keeps the display name and takes the address from NUDGE_FROM > EMAIL_FROM > default', () => {
+    expect(signupNudgeEmail(1, inp).from).toBe('Ibrahim from Prime Barber <support@davoxa.com>');
+    process.env.WEB_APP_EMAIL_FROM = 'Prime Barber <e@x.co>';
+    expect(signupNudgeEmail(1, inp).from).toBe('Ibrahim from Prime Barber <e@x.co>');
+    process.env.WEB_APP_NUDGE_FROM = 'n@x.co';
+    expect(signupNudgeEmail(1, inp).from).toBe('Ibrahim from Prime Barber <n@x.co>');
+  });
+
+  it('postal line only when configured, plain and last, under the P.S.', () => {
     expect(signupNudgeEmail(1, inp).text).not.toContain('PO Box');
     process.env.WEB_APP_POSTAL_ADDRESS = 'PO Box 1';
-    expect(signupNudgeEmail(1, inp).text).toContain('Prime Barber, PO Box 1');
-    expect(signupNudgeEmail(1, inp).html).toContain('Prime Barber, PO Box 1');
-    expect(signupNudgeEmail(1, inp).from).toBe('Prime Barber <support@davoxa.com>');
-    process.env.WEB_APP_EMAIL_FROM = 'E <e@x.co>';
-    expect(signupNudgeEmail(1, inp).from).toBe('E <e@x.co>');
-    process.env.WEB_APP_NUDGE_FROM = 'N <n@x.co>';
-    expect(signupNudgeEmail(1, inp).from).toBe('N <n@x.co>');
+    const m = signupNudgeEmail(1, inp);
+    expect(m.text.trimEnd().endsWith('again.\n\nPrime Barber, PO Box 1')).toBe(true);
+    expect(m.html.indexOf('PO Box 1')).toBeGreaterThan(m.html.indexOf('P.S.'));
+    expect(m.html.trimEnd().endsWith('</body></html>')).toBe(true);
   });
 
   it('escapes a hostile shop name', () => {

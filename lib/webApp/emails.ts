@@ -129,97 +129,75 @@ export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   return { subject, html, text, replyTo: replyToAddress() };
 }
 
-export interface PlainLayout {
-  preheader?: string;
-  /** Body paragraphs, plain text (escaped for HTML here). */
-  paragraphs: string[];
-  cta: { label: string; href: string };
-  /** Plain lines after the button (e.g. the sign-off). */
-  closing?: string[];
-  /** Small grey footer lines; `unsubscribe` is rendered as a link in HTML and "Unsubscribe: url" in text. */
-  footer: string[];
-  unsubscribe?: { label: string; href: string };
-}
-
-/** The failed-payment look (white page, dark text, one button link, text part mirrors HTML) for any plain mail. */
-export function renderPlain(l: PlainLayout): { html: string; text: string } {
-  const pre = l.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(l.preheader)}</div>\n` : '';
-  const paras = l.paragraphs.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:22px">${esc(p)}</p>`).join('\n');
-  const closing = (l.closing ?? []).length ? `<p style="margin:0 0 16px;font-size:15px;line-height:22px">${(l.closing ?? []).map(esc).join('<br>')}</p>\n` : '';
-  const foot = l.footer.map((f) => esc(f)).join('<br>');
-  const unsub = l.unsubscribe ? `<br><a href="${esc(l.unsubscribe.href)}" style="color:#666">${esc(l.unsubscribe.label)}</a>` : '';
-  const html = `<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111">
-${pre}${paras}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px"><tr><td align="center" bgcolor="#0b57d0" style="background-color:#0b57d0;border-radius:8px"><a href="${esc(l.cta.href)}" style="display:inline-block;padding:13px 26px;background-color:#0b57d0;border-radius:8px;color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;text-decoration:none">${esc(l.cta.label)}</a></td></tr></table>
-${closing}<p style="margin:0;font-size:12px;line-height:18px;color:#666">${foot}${unsub}</p>
-</body></html>`;
-  const text = [
-    ...l.paragraphs.flatMap((p) => [p, '']),
-    `${l.cta.label}: ${l.cta.href}`, '',
-    ...(l.closing ?? []), ...((l.closing ?? []).length ? [''] : []),
-    ...l.footer, ...(l.unsubscribe ? [`Unsubscribe: ${l.unsubscribe.href}`] : []),
-  ].join('\n');
-  return { html, text };
-}
-
 export interface NudgeInput {
   email: string;
   firstName?: string | null;
   /** Shop name from the draft; omitted phrasing when blank. */
   shopName?: string | null;
-  /** Signed one-tap sign-in link (on the app origin). */
+  /** Signed one-tap sign-in link (on the app origin). The only link in the mail. */
   continueUrl: string;
-  /** One-click unsubscribe URL (on the app origin). */
-  unsubscribeUrl: string;
+}
+
+/** "Ibrahim from Prime Barber <addr>": the address comes from WEB_APP_NUDGE_FROM, else WEB_APP_EMAIL_FROM, else support@davoxa.com. */
+export function nudgeFrom(): string {
+  const raw = process.env.WEB_APP_NUDGE_FROM?.trim() || process.env.WEB_APP_EMAIL_FROM?.trim() || 'support@davoxa.com';
+  const addr = raw.match(/<([^>]+)>/)?.[1] ?? raw;
+  return `Ibrahim from Prime Barber <${addr}>`;
 }
 
 /**
- * Unpaid sign-up reminder, step 1 (1 h), 2 (24 h) or 3 (72 h). Plain tone, ONE action link plus an unsubscribe link,
- * no prices, no images or tracking. Carries RFC 8058 List-Unsubscribe headers and a sender override.
+ * Unpaid sign-up reminder, step 1 (1 h), 2 (24 h) or 3 (72 h). A plain personal letter, built to reach the Primary tab:
+ * no logo, header, button or table, ONE plain text link, no footer, no List-Unsubscribe headers and no unsubscribe link (the opt-out
+ * is a grey P.S. line: reply "stop"), no prices, no images or tracking. The text part mirrors the HTML.
  */
 export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
   const first = firstOf(i.firstName);
   const shop = (i.shopName || '').replace(/\s+/g, ' ').trim();
+  const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
   const hi = first ? `Hi ${first},` : 'Hi,';
-  const sign = ['Ibrahim', 'Prime Barber'];
   const site = shop ? `your ${shop} website` : 'your website';
-  let subject: string; let preheader: string; let paragraphs: string[]; let closing: string[];
+  let subject: string; let paragraphs: string[]; let closing: string[];
   if (step === 1) {
-    subject = first ? `${first}, ${site} is saved` : `${site.charAt(0).toUpperCase()}${site.slice(1)} is saved`;
-    preheader = 'Pick up where you left off. One tap signs you back in.';
+    subject = first ? `${first}, ${site} is saved` : `${cap(site)} is saved`;
     paragraphs = [hi, `Your website${shop ? ` for ${shop}` : ''} is saved in your account. Nothing is lost.`,
-      "When you're ready, tap the button below. It signs you back in and opens your site so you can finish it and put it online."];
-    closing = ['If you have a question, just reply to this email.', '', ...sign];
+      "When you're ready, tap the link below. It signs you back in and opens your site so you can finish it and put it online."];
+    closing = ['If you have a question, just reply to this email.'];
   } else if (step === 2) {
-    subject = `${site.charAt(0).toUpperCase()}${site.slice(1)} is still waiting`;
-    preheader = 'Your pages, services and photos are all saved.';
-    paragraphs = [hi, `${site.charAt(0).toUpperCase()}${site.slice(1)} is still saved, with all your pages, services and photos.`,
-      'It takes about a minute to finish and go live. Tap below to sign back in and pick up where you left off.'];
-    closing = ["Stuck on something? Reply and tell me what's in the way. I read every email.", '', ...sign];
+    subject = `${cap(site)} is still waiting`;
+    paragraphs = [hi, `${cap(site)} is still saved, with all your pages, services and photos.`,
+      'It takes about a minute to finish and go live. Tap the link below to sign back in and pick up where you left off.'];
+    closing = ["Stuck on something? Reply and tell me what's in the way. I read every email."];
   } else {
     subject = `Still want ${site}?`;
-    preheader = 'This is the last reminder. Your draft stays saved.';
-    paragraphs = [hi, `This is the last reminder from me. ${site.charAt(0).toUpperCase()}${site.slice(1)} is still saved and ready to finish whenever you want.`,
-      'Tap below to sign back in and open it.'];
-    closing = ["If you decided it's not for you, no problem. You won't get any more emails about it.", '', ...sign];
+    paragraphs = [hi, `This is the last reminder from me. ${cap(site)} is still saved and ready to finish whenever you want.`,
+      'Tap the link below to sign back in and open it.'];
+    closing = ["If you decided it's not for you, no problem. You won't get any more emails about it."];
   }
-  const footer = [`You're getting this because you started a website at primebarber.org with ${i.email}.`];
   const postal = process.env.WEB_APP_POSTAL_ADDRESS?.trim();
-  const { html, text } = renderPlain({
-    preheader, paragraphs, cta: { label: 'Finish my website', href: i.continueUrl }, closing,
-    footer, unsubscribe: { label: 'Unsubscribe', href: i.unsubscribeUrl },
-  });
-  // Postal line goes after the unsubscribe link, only when configured.
-  const html2 = postal ? html.replace(/<\/p>\n<\/body>/, `<br>${esc(`Prime Barber, ${postal}`)}</p>\n</body>`) : html;
-  const text2 = postal ? `${text}\nPrime Barber, ${postal}` : text;
-  const mailto = replyToAddress();
+  const optOut = 'P.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.';
+  const linkLabel = 'Finish my website';
+  const p = (t: string) => `<p>${esc(t)}</p>`;
+  const grey = (t: string) => `<p style="color:#777777;font-size:13px">${esc(t)}</p>`;
+  const html = [
+    '<!doctype html><html><body>',
+    ...paragraphs.map(p),
+    `<p><a href="${esc(i.continueUrl)}">${linkLabel}</a></p>`,
+    ...closing.map(p),
+    '<p>Ibrahim<br>Prime Barber</p>',
+    grey(optOut),
+    ...(postal ? [grey(`Prime Barber, ${postal}`)] : []),
+    '</body></html>',
+  ].join('\n');
+  const text = [
+    ...paragraphs.flatMap((x) => [x, '']),
+    `${linkLabel}: ${i.continueUrl}`, '',
+    ...closing.flatMap((x) => [x, '']),
+    'Ibrahim', 'Prime Barber', '',
+    optOut,
+    ...(postal ? ['', `Prime Barber, ${postal}`] : []),
+  ].join('\n');
   return {
-    subject, html: html2, text: text2, replyTo: mailto,
-    from: process.env.WEB_APP_NUDGE_FROM?.trim() || process.env.WEB_APP_EMAIL_FROM?.trim() || 'Prime Barber <support@davoxa.com>',
-    headers: {
-      'List-Unsubscribe': `<${i.unsubscribeUrl}>, <mailto:${mailto}?subject=unsubscribe>`,
-      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    },
+    subject, html, text, replyTo: replyToAddress(), from: nudgeFrom(),
     tags: [{ name: 'kind', value: 'signup_nudge' }, { name: 'step', value: String(step) }],
   };
 }
