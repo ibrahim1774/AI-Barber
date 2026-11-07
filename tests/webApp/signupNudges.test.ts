@@ -32,10 +32,10 @@ function make(w: Partial<World> = {}) {
     insertRow: async (r) => { world.calls.push('insert'); if (!world.rows.has(r.user_id)) world.rows.set(r.user_id, row(r.user_id, { signup_at: r.signup_at, email: r.email, stopped_at: r.stopped_at ?? null, stop_reason: r.stop_reason ?? null })); },
     claim: async (uid, step) => {
       world.calls.push('claim'); const r = world.rows.get(uid)!;
-      if (world.flags.claimLost || (r as any)[`step${step}_sent_at`] || r.stopped_at || r.claimed_at) return false;
-      r.claimed_step = step; r.claimed_at = 'x'; return true;
+      if (world.flags.claimLost || (r as any)[`step${step}_sent_at`] || r.stopped_at || r.claimed_at) return null;
+      r.claimed_step = step; r.claimed_at = 'x'; world.flags.onClaim?.(r); return { ...r };
     },
-    release: async (uid) => { world.calls.push('release'); const r = world.rows.get(uid)!; r.claimed_step = null; r.claimed_at = null; },
+    release: async (uid, at) => { world.calls.push('release:' + at); const r = world.rows.get(uid)!; r.claimed_step = null; r.claimed_at = null; },
     markSent: async (uid, step, _id, at) => { world.calls.push('markSent'); const r = world.rows.get(uid)!; (r as any)[`step${step}_sent_at`] = at; r.claimed_at = null; },
     stop: async (uid, reason, at) => { world.calls.push('stop:' + reason); const r = world.rows.get(uid)!; r.stopped_at = at; r.stop_reason = reason; r.claimed_at = null; },
     stampChecked: async () => { world.calls.push('stamp'); },
@@ -214,6 +214,41 @@ describe('claims and idempotency', () => {
   });
 });
 
+describe('claim hygiene (C2 fixes)', () => {
+  it('an error BEFORE the claim never releases a claim (it may be another run\'s)', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]) });
+    m.deps.stampChecked = async () => { throw new Error('transient 5xx'); };
+    const out = await run(m.deps);
+    expect(out.errors).toBe(1); expect(m.world.calls.filter((c) => c.startsWith('release'))).toEqual([]);
+  });
+  it('an error after our claim releases it, naming our claim stamp', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]), flags: { stripePaid: new Error('stripe 500') } });
+    await run(m.deps);
+    expect(m.world.calls.filter((c) => c.startsWith('release'))).toEqual([`release:${new Date(NOW).toISOString()}`]);
+  });
+  it('overlapping runs near 24 h cannot send step 1 and then step 2 minutes apart: the claimed row is re-checked', async () => {
+    // Run B read the row (age 24h01, so step 2 is due) before run A's step 1 landed; step 1 is on the row at claim time.
+    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(24 * HOUR + 60_000) })]]), users: new Map([['u1', user({ createdAt: ago(24 * HOUR + 60_000) })]]),
+      flags: { onClaim: (r: NudgeRow) => { r.step1_sent_at = ago(2 * 60_000); } } });
+    const out = await run(m.deps);
+    expect(m.world.sent).toEqual([]); expect(out.skipped).toBe(1);
+    expect(m.world.rows.get('u1')!.claimed_at).toBeNull(); expect(m.world.rows.get('u1')!.stopped_at).toBeNull();
+  });
+  it('an earlier step is not sent once a later one is on the claimed row', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]), flags: { onClaim: (r: NudgeRow) => { r.step2_sent_at = ago(HOUR); } } });
+    await run(m.deps); expect(m.world.sent).toEqual([]);
+  });
+  it('an unreadable activity timestamp counts as busy', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]), draft: { updatedAt: 'garbage' } });
+    await run(m.deps); expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stopped_at).toBeNull();
+  });
+  it('error logs carry no provider message text', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]), flags: { stripePaid: Object.assign(new Error('Invalid email address: secret@leak.co'), { type: 'invalid_request_error' }) } });
+    await run(m.deps);
+    expect(JSON.stringify((console.error as any).mock.calls)).not.toMatch(/leak|Invalid email/);
+  });
+});
+
 describe('enrollment', () => {
   it('a recent draft without a row gets one with signup_at from the account', async () => {
     const created = ago(5 * HOUR);
@@ -288,11 +323,16 @@ describe('live deps', () => {
   it('claim is one conditional PATCH (unsent, not stopped, no fresh claim) in this mode and returns whether a row came back', async () => {
     const rest = vi.fn(async () => [{ user_id: 'u1' }]);
     const d = liveSignupNudgeDeps('test', rest as any);
-    expect(await d.claim('u1', 2, '2026-11-10T12:00:00.000Z', '2026-11-10T11:45:00.000Z')).toBe(true);
+    expect(await d.claim('u1', 2, '2026-11-10T12:00:00.000Z', '2026-11-10T11:45:00.000Z')).toEqual({ user_id: 'u1' });
     const [path, init] = rest.mock.calls[0] as any[];
     expect(path).toContain('user_id=eq.u1'); expect(path).toContain('environment=eq.test');
     expect(path).toContain('step2_sent_at=is.null'); expect(path).toContain('stopped_at=is.null'); expect(path).toContain('claimed_at.is.null'); expect(path).toContain('claimed_at.lt.');
     expect(init).toMatchObject({ method: 'PATCH', prefer: 'return=representation' });
-    expect(await liveSignupNudgeDeps('test', (async () => []) as any).claim('u1', 1, 'a', 'b')).toBe(false);
+    expect(await liveSignupNudgeDeps('test', (async () => []) as any).claim('u1', 1, 'a', 'b')).toBeNull();
+  });
+  it('release only matches OUR claim stamp', async () => {
+    const rest = vi.fn(async () => null);
+    await liveSignupNudgeDeps('test', rest as any).release('u1', '2026-11-10T12:00:00.000Z');
+    expect((rest.mock.calls[0] as any[])[0]).toContain('claimed_at=eq.2026-11-10T12%3A00%3A00.000Z');
   });
 });

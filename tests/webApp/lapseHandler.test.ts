@@ -61,8 +61,23 @@ describe('/api/web-app/lapse sign-up reminders', () => {
     const r = await call({ authorization: 'Bearer s3cret' });
     expect(r.code).toBe(200);
     expect(sweepSignupNudges).toHaveBeenCalledTimes(1);
-    expect((sweepSignupNudges.mock.calls[0] as any[])[1]).toEqual({ mode: 'test' });
+    const o = (sweepSignupNudges.mock.calls[0] as any[])[1];
+    expect(o.mode).toBe('test'); expect(o.deadlineMs).toBeGreaterThan(260_000); expect(o.deadlineMs).toBeLessThanOrEqual(270_000);
     expect(r.body.nudges).toEqual({ enrolled: 0, sent: 0, stopped: 0, skipped: 0, errors: 0 });
+  });
+  it('the nudge deadline is what is left of the budget after the other sweeps; skipped when under 20 s', async () => {
+    vi.stubEnv('WEB_APP_NUDGES', '1');
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(1_800_000_000_000);
+    try {
+      sweepWebApp.mockImplementationOnce(async () => { vi.setSystemTime(Date.now() + 100_000); return { checked: 0 }; });
+      await call({ authorization: 'Bearer s3cret' });
+      const d = (sweepSignupNudges.mock.calls[0] as any[])[1].deadlineMs;
+      expect(d).toBeGreaterThan(169_000); expect(d).toBeLessThanOrEqual(170_000);
+      sweepSignupNudges.mockClear();
+      sweepWebApp.mockImplementationOnce(async () => { vi.setSystemTime(Date.now() + 255_000); return { checked: 0 }; });
+      const r = await call({ authorization: 'Bearer s3cret' });
+      expect(sweepSignupNudges).not.toHaveBeenCalled(); expect(r.code).toBe(200); expect(r.body.nudges).toBeNull();
+    } finally { vi.useRealTimers(); }
   });
   it('a nudge sweep that throws never fails the lapse job', async () => {
     vi.stubEnv('WEB_APP_NUDGES', '1');

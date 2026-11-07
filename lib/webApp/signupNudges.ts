@@ -58,9 +58,10 @@ export interface SignupNudgeDeps {
   activeRows(limit: number): Promise<NudgeRow[]>;
   /** Insert-ignore-duplicates. */
   insertRow(row: { user_id: string; signup_at: string; email: string | null; stopped_at?: string; stop_reason?: StopReason }): Promise<void>;
-  /** Atomic: true only for the one caller that got the claim (step unsent, not stopped, no fresh claim). */
-  claim(userId: string, step: 1 | 2 | 3, nowIso: string, staleBeforeIso: string): Promise<boolean>;
-  release(userId: string): Promise<void>;
+  /** Atomic: the freshly claimed row (as the PATCH returned it) for the one caller that got the claim, else null. */
+  claim(userId: string, step: 1 | 2 | 3, nowIso: string, staleBeforeIso: string): Promise<NudgeRow | null>;
+  /** Gives the claim back; only when the row still carries OUR claim stamp (never another run's claim). */
+  release(userId: string, claimedAtIso: string): Promise<void>;
   markSent(userId: string, step: 1 | 2 | 3, resendId: string, nowIso: string): Promise<void>;
   stop(userId: string, reason: StopReason, nowIso: string): Promise<void>;
   stampChecked(userId: string, nowIso: string): Promise<void>;
@@ -90,6 +91,8 @@ export interface SignupNudgeSummary {
 }
 
 const isMissingTable = (e: any) => e?.status === 404;
+/** What is safe to log about an error: a status/code/type or a plain "resend 500", never provider message text (it can echo addresses). */
+const errTag = (e: any): string => e?.status ?? e?.code ?? e?.type ?? (/^(resend|supabase|admin lookup) \d{3}$/.test(e?.message ?? '') ? e.message : 'error');
 
 export async function sweepSignupNudges(
   deps: SignupNudgeDeps,
@@ -131,7 +134,7 @@ export async function sweepSignupNudges(
         out.enrolled++;
       } catch (e: any) {
         if (isMissingTable(e)) throw e;
-        out.errors++; console.error('[web-app nudges] enroll failed', uid, e?.message || e);
+        out.errors++; console.error('[web-app nudges] enroll failed', uid, errTag(e));
       }
     }
 
@@ -139,21 +142,23 @@ export async function sweepSignupNudges(
     const rows = await deps.activeRows(100);
     for (const row of rows) {
       if (deps.now() - start >= deadline || out.sent >= maxSends) break;
+      const ctx: { claimedAt: string | null } = { claimedAt: null };
       try {
-        await visit(row);
+        await visit(row, ctx);
       } catch (e: any) {
         if (isMissingTable(e)) throw e;
-        out.errors++; console.error('[web-app nudges] visit failed', row.user_id, e?.message || e);
-        await deps.release(row.user_id).catch(() => {});
+        out.errors++; console.error('[web-app nudges] visit failed', row.user_id, errTag(e));
+        // Only a claim THIS visit took is given back; an error before the claim must not free another run's claim.
+        if (ctx.claimedAt) await deps.release(row.user_id, ctx.claimedAt).catch(() => {});
       }
     }
   } catch (e: any) {
     if (isMissingTable(e)) return skip('no_table');
-    out.errors++; console.error('[web-app nudges] sweep failed', e?.message || e);
+    out.errors++; console.error('[web-app nudges] sweep failed', errTag(e));
   }
   return out;
 
-  async function visit(row: NudgeRow) {
+  async function visit(row: NudgeRow, ctx: { claimedAt: string | null }) {
     const uid = row.user_id;
     const nowMs = deps.now();
     await deps.stampChecked(uid, iso(nowMs));
@@ -167,15 +172,24 @@ export async function sweepSignupNudges(
     const step: 1 | 2 | 3 = age < d2 ? 1 : age < d3 ? 2 : 3;
     const sentAt = [row.step1_sent_at, row.step2_sent_at, row.step3_sent_at];
     if (sentAt[step - 1]) { out.skipped++; return; }
-    if (step > 1 && !sched.overridden) {
-      const prev = sentAt.slice(0, step - 1).filter(Boolean).map((x) => Date.parse(x as string));
-      if (prev.length && nowMs - Math.max(...prev) < MIN_GAP_MS[step as 2 | 3]) { out.skipped++; return; }
-    }
+    const gapBlocks = (r: NudgeRow, at: number) => {
+      if (step === 1 || sched.overridden) return false;
+      const prev = [r.step1_sent_at, r.step2_sent_at].slice(0, step - 1).filter(Boolean).map((x) => Date.parse(x as string));
+      return prev.length > 0 && at - Math.max(...prev) < MIN_GAP_MS[step as 2 | 3];
+    };
+    if (gapBlocks(row, nowMs)) { out.skipped++; return; }
     if (out.sent > 0 && nowMs - lastSendAt < PACE_MS) await deps.sleep(PACE_MS - (nowMs - lastSendAt));
 
     // Claim first: two overlapping sweeps can never both send this step.
-    if (!(await deps.claim(uid, step, iso(deps.now()), iso(deps.now() - STALE_CLAIM_MS)))) { out.skipped++; return; }
-    const back = async () => { await deps.release(uid); out.skipped++; };
+    const claimedAtIso = iso(deps.now());
+    const claimed = await deps.claim(uid, step, claimedAtIso, iso(deps.now() - STALE_CLAIM_MS));
+    if (!claimed) { out.skipped++; return; }
+    ctx.claimedAt = claimedAtIso;
+    const back = async () => { await deps.release(uid, claimedAtIso); ctx.claimedAt = null; out.skipped++; };
+    // The pre-claim list may be stale (an overlapping run can have sent the previous step meanwhile): redo the
+    // "already sent" and minimum-gap checks on the row the claim itself returned.
+    if (claimed.step3_sent_at) { await stop('done'); ctx.claimedAt = null; return; }
+    if (([claimed.step1_sent_at, claimed.step2_sent_at, claimed.step3_sent_at].slice(step - 1).some(Boolean)) || gapBlocks(claimed, deps.now())) return back();
 
     // Everything is checked again now, after the claim and before the send. Any thrown error lands in the caller's
     // catch: the claim is released, nothing is sent and the row is NOT stopped.
@@ -194,7 +208,7 @@ export async function sweepSignupNudges(
     if ((await deps.appStoreState(uid)) || (await deps.hasIosPurchase(uid)) || (await deps.hasLegacySite(uid))) return stop('not_web');
     if (await deps.isEntitled(uid)) return stop('paid');
     const recentAt = Math.max(draft.updatedAt ? Date.parse(draft.updatedAt) : 0, user.lastSignInAt ? Date.parse(user.lastSignInAt) : 0);
-    if (deps.now() - recentAt < BUSY_MS) return back(); // never mail someone mid-edit
+    if (!Number.isFinite(recentAt) || deps.now() - recentAt < BUSY_MS) return back(); // an unreadable timestamp counts as busy // never mail someone mid-edit
     if (!row.step1_sent_at && !row.step2_sent_at && !row.step3_sent_at) {
       const mx = await deps.hasMx(email);
       if (mx === null) return back();
@@ -211,7 +225,7 @@ export async function sweepSignupNudges(
     });
     let id: string;
     try { id = await deps.send(email, mail, `aibarber-app:nudge:${uid}:${mode}:${step}`); }
-    catch (e: any) { await deps.release(uid).catch(() => {}); out.errors++; console.error('[web-app nudges] send failed', uid, step, e?.message || e); return; }
+    catch (e: any) { await deps.release(uid, claimedAtIso).catch(() => {}); ctx.claimedAt = null; out.errors++; console.error('[web-app nudges] send failed', uid, step, errTag(e)); return; }
     lastSendAt = deps.now();
     out.sent++;
     await deps.markSent(uid, step, id, iso(lastSendAt));
@@ -259,12 +273,12 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
       await rest(`${T}?on_conflict=user_id,environment`, { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { ...r, environment: mode } });
     },
     async claim(uid, step, nowIso, staleBeforeIso) {
-      const got = await rest(`${row(uid)}&step${step}_sent_at=is.null&stopped_at=is.null&or=(claimed_at.is.null,claimed_at.lt.${enc(staleBeforeIso)})`, {
+      const got = await rest(`${row(uid)}&step${step}_sent_at=is.null&stopped_at=is.null&or=(claimed_at.is.null,claimed_at.lt.${enc(staleBeforeIso)})&select=${COLS}`, {
         method: 'PATCH', prefer: 'return=representation', body: { claimed_step: step, claimed_at: nowIso, updated_at: nowIso },
       });
-      return Array.isArray(got) && got.length > 0;
+      return Array.isArray(got) && got.length > 0 ? (got[0] as NudgeRow) : null;
     },
-    async release(uid) { await rest(row(uid), { method: 'PATCH', prefer: 'return=minimal', body: { claimed_step: null, claimed_at: null } }); },
+    async release(uid, claimedAtIso) { await rest(`${row(uid)}&claimed_at=eq.${enc(claimedAtIso)}`, { method: 'PATCH', prefer: 'return=minimal', body: { claimed_step: null, claimed_at: null } }); },
     async markSent(uid, step, id, nowIso) {
       await rest(row(uid), { method: 'PATCH', prefer: 'return=minimal', body: { [`step${step}_sent_at`]: nowIso, [`step${step}_resend_id`]: id, claimed_step: null, claimed_at: null, updated_at: nowIso } });
     },
@@ -310,8 +324,8 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
     async isPublished(uid) { return ((await rest(`web_app_sites?user_id=eq.${enc(uid)}&environment=eq.${mode}&published_at=not.is.null&removed_at=is.null&taken_down_at=is.null&select=slug&limit=1`)) ?? []).length > 0; },
     isSuppressed: (email) => isSuppressed(email),
     async hasMx(email) {
-      const domain = email.split('@')[1]?.toLowerCase();
-      if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return false;
+      const domain = email.split('@')[1]?.toLowerCase().replace(/\.$/, '');
+      if (!domain || !/^[a-z0-9.-]+\.[a-z0-9-]{2,}$/.test(domain)) return false;
       const dead = (e: any) => e?.code === 'ENOTFOUND' || e?.code === 'ENODATA';
       try { if ((await dns.resolveMx(domain)).length) return true; } catch (e: any) { if (!dead(e)) return null; }
       for (const f of [dns.resolve4, dns.resolve6]) {
