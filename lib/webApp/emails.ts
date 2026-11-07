@@ -154,18 +154,17 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
   const first = firstOf(i.firstName);
   const shop = (i.shopName || '').replace(/\s+/g, ' ').trim();
   const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
-  const hi = first ? `Hi ${first},` : 'Hi,';
-  const hiThere = first ? `Hi ${first},` : 'Hi there,'; // steps 1 and 2
+  const hi = first ? `Hi ${first},` : 'Hi there,';
   const site = shop ? `your ${shop} website` : 'your website';
   let subject: string; let paragraphs: string[]; let closing: string[];
   if (step === 1) {
     subject = shop ? `Your ${shop} website` : 'Your website';
-    paragraphs = [hiThere, `I saw you started a website${shop ? ` for ${shop}` : ''} earlier today. It's still there whenever you want to finish it.`,
+    paragraphs = [hi, `I saw you started a website${shop ? ` for ${shop}` : ''} earlier today. It's still there whenever you want to finish it.`,
       "Here's the link to pick up where you left off:"];
     closing = ['If anything got in the way, just reply and let me know.'];
   } else if (step === 2) {
     subject = shop ? `Did you get stuck on ${shop}?` : 'Did you get stuck on your website?';
-    paragraphs = [hiThere, `Just checking in. ${cap(site)} is still right where you left it, and it only takes a minute to finish.`,
+    paragraphs = [hi, `Just checking in. ${cap(site)} is still right where you left it, and it only takes a minute to finish.`,
       "Here's the link to jump back in:"];
     closing = ['If something wasn\'t clear, reply and tell me. I read every email.'];
   } else {

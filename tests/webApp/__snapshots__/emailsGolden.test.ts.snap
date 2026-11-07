@@ -450,7 +450,7 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 3 ano
 {
   "from": "Ibrahim from Prime Barber <support@davoxa.com>",
   "html": "<!doctype html><html><body>
-<p>Hi,</p>
+<p>Hi there,</p>
 <p>This is the last reminder from me. Your website is still saved and ready to finish whenever you want.</p>
 <p>Tap the link below to sign back in and open it.</p>
 <p><a href="https://www.aibarber.org/api/web-app/continue?t=TOKEN">Finish my website</a></p>
@@ -470,7 +470,7 @@ exports[`signup nudge emails > golden: named + shop, anon + no shop > step 3 ano
       "value": "3",
     },
   ],
-  "text": "Hi,
+  "text": "Hi there,
 
 This is the last reminder from me. Your website is still saved and ready to finish whenever you want.
 
