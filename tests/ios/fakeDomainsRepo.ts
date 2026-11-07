@@ -57,6 +57,14 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
       rows.set(r.original_transaction_id, r);
       return 'ok';
     },
+    async insertAwaitingSetup(n) {
+      if (rows.has(n.original_transaction_id)) return 'conflict';
+      const t = stamp();
+      const r = blankRow({ ...n, state: 'awaiting_setup', created_at: t, updated_at: t });
+      if (violates(r)) return 'conflict';
+      rows.set(r.original_transaction_id, r);
+      return 'ok';
+    },
     async insertFailed(n, reason) {
       if (rows.has(n.original_transaction_id)) return 'conflict';
       const t = stamp();

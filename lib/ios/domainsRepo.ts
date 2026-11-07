@@ -7,12 +7,14 @@ import type { IosEnv } from './appleVerify.js';
 
 export const DOMAIN_STATES = [
   'reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'unlinking', 'detached', 'failed', 'transferred',
+  // migration 030: a Stripe-paid domain Ibrahim buys and attaches by hand (machine-inert)
+  'awaiting_setup', 'manual_live',
 ] as const;
 export type DomainState = (typeof DOMAIN_STATES)[number];
 export type DomainSource = 'apple' | 'stripe';
 
 /** States in which a site's domain slot is taken (one per site; partial unique index in 012). */
-export const SITE_HOLDING_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'unlinking'];
+export const SITE_HOLDING_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'unlinking', 'awaiting_setup', 'manual_live'];
 /** States the sweep resumes (a step is still due). */
 export const RESUMABLE_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'detaching', 'unlinking'];
 /** The registration may be ours (until it runs out): auto-renew is managed for these. */
@@ -83,6 +85,8 @@ export interface DomainsRepo {
   byDomain(domain: string): Promise<DomainRow | null>;
   /** Insert a reserved row. 'conflict' when the otid, the domain or the site slot is already taken. */
   insertReserved(row: NewDomainRow): Promise<'ok' | 'conflict'>;
+  /** Insert a paid row parked for manual setup (state awaiting_setup, never bought by the machine). Same conflicts as insertReserved. */
+  insertAwaitingSetup(row: NewDomainRow): Promise<'ok' | 'conflict'>;
   /**
    * Record a PAID slot that was refused before anything was bought (website: the name was taken
    * between checkout and payment, or the site already has a domain), so it is visible to the
@@ -173,6 +177,15 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
       if (error) {
         if ((error as { code?: string }).code === '23505') return 'conflict';
         fail('insertReserved', error);
+      }
+      return 'ok';
+    },
+
+    async insertAwaitingSetup(row) {
+      const { error } = await db().from(TABLE).insert({ ...row, state: 'awaiting_setup' });
+      if (error) {
+        if ((error as { code?: string }).code === '23505') return 'conflict';
+        fail('insertAwaitingSetup', error);
       }
       return 'ok';
     },
