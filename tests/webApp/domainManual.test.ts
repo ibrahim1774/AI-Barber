@@ -678,6 +678,44 @@ describe('B1: a web-app site never reaches the registrar, whatever the client se
 
 
 // ─── B2 / S4: the republish is long; Mark live and Can't never interleave ───
+describe('S3: an owner who deletes the account while the order waits is refunded and Ibrahim is told', () => {
+  it('webhook-only claim (no order mail yet), then owner-removed: refund once, one void mail that says refunded', async () => {
+    const w = world();
+    await w.event('checkout.session.completed', { id: 'cs_1', payment_status: 'paid', mode: 'subscription', subscription: 'sub_m1', metadata: { type: 'domain_purchase', app: DOMAIN_SESSION_APP } });
+    expect(w.row().alerts_sent?.order).toBeUndefined(); // the sweep has not mailed yet
+    await w.repo.update(KEY, null, { state: 'detached', failure_reason: 'owner-removed' });
+    await w.sweep(); await w.sweep();
+    expect(w.cancelAndRefund).toHaveBeenCalledTimes(1);
+    expect(w.cancelAndRefund).toHaveBeenCalledWith('sub_m1');
+    expect(w.row().refunded_at).toBeTruthy();
+    const v = w.fm.sent.filter((s) => /^Domain order void/.test(s.mail.subject));
+    expect(v).toHaveLength(1);
+    expect(v[0].mail.text).toMatch(/refunded in full automatically/);
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+  });
+
+  it('a refund that fails is retried on the next sweep, still one refund and one mail', async () => {
+    const w = world();
+    await w.claim();
+    await w.repo.update(KEY, null, { state: 'detached', failure_reason: 'owner-removed' });
+    w.cancelAndRefund.mockRejectedValueOnce(new Error('stripe down'));
+    await w.sweep();
+    expect(w.row().refunded_at).toBeNull();
+    await w.sweep(); await w.sweep();
+    expect(w.row().refunded_at).toBeTruthy();
+    expect(w.cancelAndRefund).toHaveBeenCalledTimes(2); // 1 failed + 1 done
+    expect(w.fm.sent.filter((s) => /^Domain order void/.test(s.mail.subject))).toHaveLength(1);
+  });
+
+  it('a live manual domain (linked) is never refunded by this rule', async () => {
+    const w = world();
+    await w.claim();
+    await w.repo.update(KEY, null, { state: 'detached', failure_reason: 'owner-removed', linked_at: new Date(T0).toISOString() });
+    await w.sweep();
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+  });
+});
+
 describe('B2: Mark live fits the function budget and never hangs the page', () => {
   const ready = async (w: W) => { await w.claim(); await w.attach(); };
 

@@ -93,13 +93,15 @@ export function orderReminderEmail(f: OrderFacts, links: OrderLinks | null): Mai
   ]);
 }
 
-export function orderVoidEmail(f: OrderFacts, links: OrderLinks | null, why: 'subscription' | 'owner-removed'): Mail {
+export function orderVoidEmail(f: OrderFacts, links: OrderLinks | null, why: 'subscription' | 'owner-removed', refunded?: boolean): Mail {
   return textMail(`Domain order void: ${f.domain} - do not buy`, [
     why === 'owner-removed'
       ? `The owner removed the site or deleted the account while this order was waiting. Do not buy ${f.domain}.`
       : `The subscription for ${f.domain} is no longer active (cancelled now, refunded, or the account was deleted). Do not buy it.`,
     'If you already bought it, remove it from the Vercel project and let it lapse.',
-    `Check Stripe: if the $39 was not refunded already, refund it.${links ? " The Can't get this name link below cancels and refunds in one step (safe to repeat) and closes the order." : ''}`,
+    why === 'owner-removed'
+      ? (refunded ? 'The subscription was cancelled and the $39 refunded in full automatically (nothing was bought by the system).' : 'The system is cancelling the subscription and refunding the $39 (retried every 10 minutes). Check Stripe if you do not see the refund soon.')
+      : `Check Stripe: if the $39 was not refunded already, refund it.${links ? " The Can't get this name link below cancels and refunds in one step (safe to repeat) and closes the order." : ''}`,
     '', ...factLines(f),
     ...(links ? ['', links.cant] : []),
   ]);

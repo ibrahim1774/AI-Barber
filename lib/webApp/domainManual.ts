@@ -615,7 +615,7 @@ async function sendRefundedMail(row: DomainRow, env: ManualEnv): Promise<boolean
 
 export interface ManualSweepSummary {
   orderMails: string[]; customerMails: string[]; reminders: string[]; voids: string[]; ended: string[]; renewalDue: string[];
-  refundMails: string[]; liveMails: string[]; alerted: string[]; refreshed: string[]; errors: string[];
+  refundMails: string[]; refunded: string[]; liveMails: string[]; alerted: string[]; refreshed: string[]; errors: string[];
 }
 
 /**
@@ -625,7 +625,7 @@ export interface ManualSweepSummary {
 export async function sweepManualDomains(env: ManualEnv, deadline: number): Promise<ManualSweepSummary> {
   const { repo, now } = env.flow;
   const m = env.manual;
-  const out: ManualSweepSummary = { orderMails: [], customerMails: [], reminders: [], voids: [], ended: [], renewalDue: [], refundMails: [], liveMails: [], alerted: [], refreshed: [], errors: [] };
+  const out: ManualSweepSummary = { orderMails: [], customerMails: [], reminders: [], voids: [], ended: [], renewalDue: [], refundMails: [], refunded: [], liveMails: [], alerted: [], refreshed: [], errors: [] };
   const all = await repo.all();
   const alertDeps = { repo, now, notifySupport: env.notifySupport ?? env.flow.notifySupport };
   const unsent = async (row: DomainRow, event: string, since: string | null, what: string) => {
@@ -699,9 +699,28 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
       }
 
       // The owner removed the site / deleted the account while the order was waiting (releaseDomainsForRemoval).
-      if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED && !row.linked_at && row.alerts_sent?.order && !row.alerts_sent['order-void']) {
-        const f = await factsFor(row, env);
-        if (await sendRowMailOnce(row, 'order-void', m.ordersEmail, () => orderVoidEmail(f, null, 'owner-removed'), env)) out.voids.push(row.domain);
+      // Nothing was bought by the system (never linked): cancel and refund in full, once (the Stripe idempotency key
+      // domain-refund-<sub> makes a repeat harmless), then tell Ibrahim. The notice does not depend on the order mail having gone out.
+      if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED && !row.linked_at) {
+        let cur = row;
+        let refunded = !!cur.refunded_at || !!cur.alerts_sent?.['owner-removed-refund'];
+        if (!refunded) {
+          try {
+            await env.cancelAndRefund(subOf(cur));
+            await repo.update(cur.original_transaction_id, ['detached'], { refunded_at: iso(now()), last_error: 'REFUNDED (owner-removed): the paid subscription ended without a domain; cancelled and refunded in full' });
+            await setMarker(repo, cur.original_transaction_id, 'owner-removed-refund', iso(now()), cur);
+            cur = (await repo.get(cur.original_transaction_id)) ?? cur;
+            refunded = true;
+            out.refunded.push(cur.domain);
+          } catch (e) {
+            out.errors.push(`${cur.original_transaction_id}: owner-removed refund ${errMsg(e)}`);
+            console.error(`[domains/manual] ${cur.original_transaction_id}: refund after owner removal failed (retried next sweep):`, errMsg(e));
+          }
+        }
+        if (!cur.alerts_sent?.['order-void']) {
+          const f = await factsFor(cur, env);
+          if (await sendRowMailOnce(cur, 'order-void', m.ordersEmail, () => orderVoidEmail(f, null, 'owner-removed', refunded), env)) out.voids.push(cur.domain);
+        }
       }
     } catch (e) {
       const why = e instanceof PayerFailure ? `payer ${e.code}` : errMsg(e);
