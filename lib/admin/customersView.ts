@@ -45,9 +45,23 @@ export function filterRows(rows: CustomerRow[], f: Filters): CustomerRow[] {
   });
 }
 
-/** Names of sources that are not fully ok, e.g. ["stripe: partial", "pro: skipped"]. Empty = no banner. */
+/** Sources that failed or were cut short, e.g. ["stripe: partial"]. Empty = no banner. 'skipped' never counts. */
 export function sourceBanner(sources: SourceStatus | null | undefined): string[] {
-  return Object.entries(sources || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`);
+  return Object.entries(sources || {}).filter(([, v]) => v === 'error' || v === 'partial').map(([k, v]) => `${k}: ${v}`);
+}
+
+/** Sources that are simply not configured (e.g. PrimeHub Pro): a muted note, never a warning. */
+export function skippedSources(sources: SourceStatus | null | undefined): string[] {
+  return Object.entries(sources || {}).filter(([, v]) => v === 'skipped').map(([k]) => k);
+}
+
+/** Only http(s) URLs become links; anything else (javascript:, data:, bare text) is shown as plain text. */
+export const safeHttpUrl = (u: string | null | undefined): string | null => (typeof u === 'string' && /^https?:\/\//i.test(u.trim()) ? u.trim() : null);
+
+/** The Stripe dashboard link, only when its customer id looks like a Stripe id. */
+export function safeStripeUrl(r: Pick<CustomerRow, 'stripeCustomerUrl' | 'stripeCustomerId'>): string | null {
+  const m = /^https:\/\/dashboard\.stripe\.com\/(?:test\/)?customers\/(cus_[A-Za-z0-9]+)$/.exec(r.stripeCustomerUrl || '');
+  return m && m[1] === r.stripeCustomerId ? r.stripeCustomerUrl : null;
 }
 
 export interface EmailCell { label: string; value: string | null; same: boolean }

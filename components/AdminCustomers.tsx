@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { CustomerFamily, CustomerRow, SourceStatus } from '../lib/admin/customers';
 import {
-  FAMILY_LABEL, FAMILY_ORDER, canSendReset, countsByFamily, emailCells, filterRows, isTestRow, planLabel, sourceBanner,
+  FAMILY_LABEL, FAMILY_ORDER, canSendReset, countsByFamily, emailCells, filterRows, isTestRow, planLabel, safeHttpUrl, safeStripeUrl, skippedSources, sourceBanner,
 } from '../lib/admin/customersView';
 
 /*
@@ -49,7 +49,7 @@ const CSS = `
 .cx-row { border-bottom: 1px solid rgba(148,158,180,0.07); font-size: 13px; }
 .cx-cell { min-width: 0; overflow-wrap: anywhere; }
 .cx-lab { display: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: ${FAINT}; margin-right: 6px; }
-@media (max-width: 1100px) {
+@media (max-width: 1440px) {
   .cx-head { display: none; }
   .cx-row { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 12px; margin: 8px; border: 1px solid ${LINE}; border-radius: 10px; background: ${PANEL_2}; }
   .cx-cell { flex: 1 1 200px; }
@@ -62,7 +62,10 @@ const badge = (color: string): React.CSSProperties => ({
   border: `1px solid ${color}55`, background: `${color}1a`, whiteSpace: 'nowrap',
 });
 
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+const fmtDate = (iso: string | null) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+};
 
 async function token(): Promise<string> {
   const { data } = await supabase.auth.getSession();
@@ -122,10 +125,11 @@ export const AdminCustomers: React.FC = () => {
   useEffect(() => { load(); }, []);
 
   const visible = useMemo(() => filterRows(rows || [], { q, families, noPhone, showTest }), [rows, q, families, noPhone, showTest]);
-  const counts = useMemo(() => countsByFamily(rows || []), [rows]);
+  const counts = useMemo(() => countsByFamily((rows || []).filter((r) => showTest || !isTestRow(r))), [rows, showTest]);
   const hiddenTest = useMemo(() => (rows || []).filter(isTestRow).length, [rows]);
   const noPhoneCount = useMemo(() => (rows || []).filter((r) => r.flags.includes('no-phone')).length, [rows]);
   const banner = sourceBanner(sources);
+  const skipped = skippedSources(sources);
 
   const toggleFamily = (f: CustomerFamily) => setFamilies((s) => { const n = new Set(s); if (n.has(f)) n.delete(f); else n.add(f); return n; });
 
@@ -159,6 +163,7 @@ export const AdminCustomers: React.FC = () => {
           Some data is missing or incomplete: {banner.join(', ')}. Rows may be incomplete.
         </div>
       )}
+      {skipped.length > 0 && banner.length === 0 && <div style={{ fontSize: 11.5, color: FAINT }}>Not connected: {skipped.join(', ')}</div>}
       {err && <div style={{ ...panel, padding: 14, color: BAD }}>{err}</div>}
       {notice && <div style={{ ...panel, padding: '10px 14px', color: notice.kind === 'ok' ? OK : BAD, fontSize: 13 }}>{notice.text}</div>}
 
@@ -179,7 +184,7 @@ export const AdminCustomers: React.FC = () => {
         <span style={{ marginLeft: 'auto', fontSize: 12, color: FAINT }}>{visible.length} of {(rows || []).length}</span>
       </div>
 
-      <div style={{ ...panel, overflow: 'hidden' }}>
+      <div style={{ ...panel, overflowX: 'auto' }}>
         <div className="cx-head" aria-hidden>
           <div>Family</div><div>Contact email</div><div>Stripe email</div><div>Account email</div><div>Sign-up email</div>
           <div>Site</div><div>Phone</div><div>Plan</div><div>Status</div><div>Dates</div><div>Actions</div>
@@ -197,7 +202,7 @@ export const AdminCustomers: React.FC = () => {
               </Cell>
               {em.map((c) => <Cell key={c.label} label={c.label}><Email v={c.value} same={c.same} /></Cell>)}
               <Cell label="Site">
-                {r.siteUrl ? <a href={r.siteUrl} target="_blank" rel="noreferrer" style={{ color: ACCENT }}>{r.siteUrl.replace(/^https?:\/\//, '')}</a> : <span style={{ color: FAINT }}>-</span>}
+                {safeHttpUrl(r.siteUrl) ? <a href={safeHttpUrl(r.siteUrl)!} target="_blank" rel="noreferrer" style={{ color: ACCENT }}>{r.siteUrl!.trim().replace(/^https?:\/\//i, '')}</a> : r.siteUrl ? <span>{r.siteUrl}</span> : <span style={{ color: FAINT }}>-</span>}
               </Cell>
               <Cell label="Phone">
                 {r.phone ? (
@@ -214,8 +219,8 @@ export const AdminCustomers: React.FC = () => {
               </Cell>
               <Cell label="Actions">
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {r.stripeCustomerUrl && <a style={ghostBtn} href={r.stripeCustomerUrl} target="_blank" rel="noreferrer">Stripe{isTestRow(r) ? ' (test)' : ''}</a>}
-                  {r.siteUrl && <a style={ghostBtn} href={r.siteUrl} target="_blank" rel="noreferrer">Open site</a>}
+                  {safeStripeUrl(r) && <a style={ghostBtn} href={safeStripeUrl(r)!} target="_blank" rel="noreferrer">Stripe{isTestRow(r) ? ' (test)' : ''}</a>}
+                  {safeHttpUrl(r.siteUrl) && <a style={ghostBtn} href={safeHttpUrl(r.siteUrl)!} target="_blank" rel="noreferrer">Open site</a>}
                   {canSendReset(r) && <button style={ghostBtn} onClick={() => sendReset(r)}>Send password reset</button>}
                 </div>
               </Cell>
