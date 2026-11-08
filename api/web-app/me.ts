@@ -35,7 +35,7 @@ export default async function handler(req: any, res: any) {
     const phone = flag ? await savedPhoneOf(caller.id) : null; // flag off: no extra reads on every /me
     const needs = needsPhone({ flag, phone, entitlementRows: rows });
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ phone, needsPhone: needs, appStore, entitled: !!live, tier: row?.tier ?? null, interval: row?.billing_interval ?? null, status: row?.status ?? null, subscriptionId: row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
+    return res.status(200).json({ phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live, tier: row?.tier ?? null, interval: row?.billing_interval ?? null, status: row?.status ?? null, subscriptionId: row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
   } catch (e: any) {
     console.error('[web-app me]', e.message);
     return res.status(502).json({ error: 'lookup_failed' });

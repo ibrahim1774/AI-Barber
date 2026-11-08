@@ -36,12 +36,12 @@ describe('GET /api/web-app/me phone fields', () => {
   const get = async () => { const r = res(); await me({ method: 'GET', headers: { authorization: 'Bearer t' } }, r); return r.body; };
   it('flag off: phone null, needsPhone false even for a paid user', async () => {
     stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
-    expect(await get()).toMatchObject({ phone: null, needsPhone: false, entitled: true });
+    expect(await get()).toMatchObject({ phone: null, needsPhone: false, phoneGate: false, entitled: true });
   });
   it('flag on: a paid user with no phone needs one', async () => {
     vi.stubEnv('WEB_APP_PHONE_GATE', '1');
     stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
-    expect(await get()).toMatchObject({ phone: null, needsPhone: true });
+    expect(await get()).toMatchObject({ phone: null, needsPhone: true, phoneGate: true });
   });
   it('flag on: a lapsed customer with a kept site row is not gated', async () => {
     vi.stubEnv('WEB_APP_PHONE_GATE', '1'); extra.sites = [{ slug: 'x' }];
