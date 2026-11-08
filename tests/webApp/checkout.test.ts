@@ -43,6 +43,7 @@ beforeEach(() => {
   stripe.handler = (path: string, body: any, method: string, opts: any) => {
     if (path === 'customers') { const k = opts.idempotencyKey; if (!keyed.has(k)) keyed.set(k, { id: `cus_${keyed.size + 1}` }); return keyed.get(k); }
     if (path.startsWith('subscriptions?')) return { data: subs };
+    if (path.startsWith('subscriptions/')) { const id = decodeURIComponent(path.split('?')[0].split('/')[1]); const f = subs.find((x) => x.id === id); if (!f) throw new Error('no sub'); return f; }
     if (path.startsWith('checkout/sessions?')) return { data: open };
     // Stripe replays the FIRST response for a repeated key: the create response always says 'open'. Real state is only visible via GET.
     if (path === 'checkout/sessions') { const id = nextId.shift() ?? `cs_${Math.random()}`; real[id] ??= { id, status: 'open', url: `https://stripe.test/${id}` }; return { id, status: 'open', url: `https://stripe.test/${id}` }; }
@@ -173,6 +174,39 @@ describe('POST /api/web-app/checkout', () => {
     const r = await run();
     expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
     expect(created()).toHaveLength(0);
+  });
+
+  const incompleteWith = (pi: any, ageSec = 60) => [{ id: 'sub_1', status: 'incomplete', created: Math.floor(Date.now() / 1000) - ageSec, metadata: { app: 'aibarber-app' }, latest_invoice: { id: 'in_1', payment_intent: pi } }];
+
+  it('FIX1: a declined card (payment intent requires_payment_method) does not block: a session URL is returned, no duplicate subscription, nothing cancelled', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    const r = await run();
+    expect(r.code).toBe(200); expect(r.body.url).toMatch(/^https:\/\/stripe\.test\//);
+    expect(stripe.calls.some((c) => c.method === 'DELETE' || /subscriptions\/sub_1$/.test(c.path) && c.method === 'POST')).toBe(false);
+    expect(created()).toHaveLength(1);
+  });
+
+  it('FIX1: the still-open stored session is reused (its URL returned) after a decline, none created', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    (globalThis as any).__cs = 'cs_open';
+    real.cs_open = { id: 'cs_open', status: 'open', url: 'https://stripe.test/cs_open', mode: 'subscription', metadata: { app: 'aibarber-app', tier: 'website', interval: 'month' } };
+    const r = await run();
+    expect(r.code).toBe(200); expect(r.body).toEqual({ url: 'https://stripe.test/cs_open' });
+    expect(created()).toHaveLength(0);
+  });
+
+  it('FIX1: payment intent requires_action (3DS in progress) or processing still blocks with payment_processing', async () => {
+    for (const status of ['requires_action', 'processing', 'requires_confirmation']) {
+      subs = incompleteWith({ id: 'pi_1', status });
+      const r = await run();
+      expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
+    }
+    expect(created()).toHaveLength(0);
+  });
+
+  it('FIX1: an incomplete sub whose payment state cannot be read keeps blocking (fail closed)', async () => {
+    subs = incompleteWith(null);
+    expect((await run()).body.error).toBe('payment_processing');
   });
 
   it('other open tagged sessions are expired once the new one exists; untagged and the new one are left alone', async () => {

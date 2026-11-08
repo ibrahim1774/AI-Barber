@@ -62,6 +62,7 @@ export default async function handler(req: any, res: any) {
         }
       } catch (e: any) { console.error('[web-app checkout] recent-payment lookup failed:', e?.message || e); } // best effort; the duplicate handler is the backstop
     }
+    let declined = false;
     for (const c of toCheck) {
       // Stripe is the authority on "already paying" (the webhook may not have landed yet).
       const subs = await stripeCall(`subscriptions?customer=${encodeURIComponent(c)}&status=all&limit=20`, null, 'GET');
@@ -70,7 +71,23 @@ export default async function handler(req: any, res: any) {
       // An incomplete subscription is a payment still being confirmed (3DS, slow card) for a while; after an hour it is abandoned
       // (Stripe expires it itself at 23 h) and must not lock the user out. Ignored, never cancelled: no Stripe write.
       const stale = Math.floor(Date.now() / 1000) - 3600;
-      if (ours.some((x) => x.status === 'incomplete' && Number(x.created) > stale)) return res.status(409).json({ error: 'payment_processing' });
+      // ...but only while the payment is really in flight. A DECLINED card also leaves an incomplete subscription; its latest payment
+      // intent then sits in requires_payment_method and the customer must be able to retry at once. Anything not provably declined
+      // (3DS requires_action, processing, an unreadable state) keeps blocking.
+      for (const x of ours.filter((y) => y.status === 'incomplete' && Number(y.created) > stale)) {
+        if (await paymentDeclined(x)) declined = true;
+        else return res.status(409).json({ error: 'payment_processing' });
+      }
+    }
+
+    // After a decline the customer's Checkout page is usually still open: hand back that same URL (no second session, no second
+    // subscription). A publish-with-checkout always goes on to make its own session, which links its immutable submission.
+    if (declined && !plan) {
+      const stored = await storedSessionId(caller.id, mode).catch(() => null);
+      if (stored) {
+        const prev = await stripeCall(`checkout/sessions/${encodeURIComponent(stored)}`, null, 'GET').catch(() => null);
+        if (prev?.status === 'open' && prev.url && prev.mode === 'subscription' && prev.metadata?.tier === tier && prev.metadata?.interval === interval) return res.status(200).json({ url: prev.url });
+      }
     }
 
     // Existing Stripe billing is checked before superseding any recoverable publish submission.
@@ -155,4 +172,13 @@ async function knownCustomer(mode: 'live' | 'test', uid: string, entRows: any[])
   if (!legacy) return undefined;
   await sbRest('web_app_customers?on_conflict=user_id,environment', { method: 'POST', body: { user_id: decodeURIComponent(uid), environment: mode, stripe_customer_id: legacy }, prefer: 'resolution=ignore-duplicates,return=minimal' });
   return (await read()) ?? legacy; // a lost race converges on whichever row won
+}
+
+// True only when the incomplete subscription's latest payment intent is in requires_payment_method (the card was declined).
+async function paymentDeclined(sub: any): Promise<boolean> {
+  try {
+    const full = await stripeCall(`subscriptions/${encodeURIComponent(sub.id)}?expand[0]=latest_invoice.payment_intent`, null, 'GET');
+    const pi = full?.latest_invoice?.payment_intent;
+    return typeof pi === 'object' && pi?.status === 'requires_payment_method';
+  } catch (e: any) { console.error('[web-app checkout] payment state lookup failed:', e?.message || e); return false; }
 }
