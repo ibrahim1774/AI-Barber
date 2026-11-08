@@ -43,14 +43,20 @@ export async function contactFor(userId: string | null, customerId: string): Pro
  * usually sent within seconds of payment, before the first publish): the mail then leaves the link out.
  * A custom domain cannot exist yet at this point (it is bought after the first publish), so none is consulted.
  */
+export const LIVE_URL_TIMEOUT_MS = 3_000;
 export async function liveSiteUrlFor(slug: string | null, userId: string | null, env: 'live' | 'test'): Promise<string | null> {
-  try {
+  const lookup = async (): Promise<string | null> => {
     if (slug) return await stampedSiteUrl(slug);
     if (!userId) return null;
-    const r = await sbRest(`web_app_sites?user_id=eq.${enc(userId)}&environment=eq.${env}&published_at=not.is.null&taken_down_at=is.null&removed_at=is.null&select=slug&order=created_at.desc&limit=1`);
+    const r = await sbRest(`web_app_sites?user_id=eq.${enc(userId)}&environment=eq.${env}&published_at=not.is.null&taken_down_at=is.null&removed_at=is.null&select=slug&order=created_at.desc&limit=1`, { timeoutMs: LIVE_URL_TIMEOUT_MS });
     const found = r?.[0]?.slug;
     return typeof found === 'string' && found ? await stampedSiteUrl(found) : null;
-  } catch { return null; }
+  };
+  // A slow or failing lookup must never hold the webhook or the mail: after ~3 s the mail goes out without the link.
+  let t: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([lookup(), new Promise<null>((res) => { t = setTimeout(() => res(null), LIVE_URL_TIMEOUT_MS); })]);
+  } catch { return null; } finally { clearTimeout(t); }
 }
 
 /** The Stripe-hosted page where this customer can pay / replace the card for the open invoice. */
