@@ -4,6 +4,7 @@ const guard = vi.hoisted(() => ({ state: 'active' as any, err: false }));
 const dup = vi.hoisted(() => ({ handle: vi.fn(async () => ({ found: 0, alerted: 0, refunded: 0, errors: 0 })) }));
 const stored = vi.hoisted(() => ({ rows: [] as any[] }));
 const sbCalls = vi.hoisted(() => [] as any[]);
+const extra = vi.hoisted(() => ({ contacts: [] as any[], sites: [] as any[], contactsErr: false }));
 
 vi.mock('../../lib/webApp/appStoreGuard.js', () => ({ appStoreStateOf: async () => { if (guard.err) throw new Error('x'); return guard.state; } }));
 vi.mock('../../lib/webApp/duplicates.js', () => ({ handleDuplicates: dup.handle, liveDupDeps: () => ({}) }));
@@ -17,7 +18,7 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
   callerFrom: async () => ({ id: 'u1', email: 'a@example.com' }),
   readRawBody: async () => JSON.stringify({ type: 'customer.subscription.created', livemode: false, data: { object: { id: 'sub_1', metadata: { app: 'aibarber-app' } } } }),
   stripeCall: async () => ({ id: 'sub_1', status: 'active', customer: 'cus_1', metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website' }, items: { data: [{ price: { id: 'price_x' } }] } }),
-  sbRest: async (path: string, init: any = {}) => { sbCalls.push({ path, ...init }); return path.startsWith('web_app_entitlements?user_id=') ? stored.rows : []; },
+  sbRest: async (path: string, init: any = {}) => { sbCalls.push({ path, ...init }); if (path.startsWith('customer_contacts?')) { if (extra.contactsErr) throw Object.assign(new Error('relation missing'), { status: 404 }); return extra.contacts; } if (path.startsWith('web_app_sites?')) return extra.sites; return path.startsWith('web_app_entitlements?user_id=') ? stored.rows : []; },
 }));
 
 import me from '../../api/web-app/me.js';
@@ -27,9 +28,57 @@ const res = () => { const r: any = { code: 0, body: null }; r.status = (c: numbe
 
 beforeEach(() => {
   vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_WEBHOOK_SECRET', 'whsec');
-  guard.state = 'active'; guard.err = false; dup.handle.mockClear(); sbCalls.length = 0; stored.rows = [];
+  guard.state = 'active'; guard.err = false; dup.handle.mockClear(); sbCalls.length = 0; stored.rows = []; extra.contacts = []; extra.sites = []; extra.contactsErr = false;
 });
 afterEach(() => vi.unstubAllEnvs());
+
+describe('GET /api/web-app/me phone fields', () => {
+  const get = async () => { const r = res(); await me({ method: 'GET', headers: { authorization: 'Bearer t' } }, r); return r.body; };
+  it('flag off: phone null, needsPhone false even for a paid user', async () => {
+    stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
+    expect(await get()).toMatchObject({ phone: null, needsPhone: false, phoneGate: false, entitled: true });
+  });
+  it('flag on: a paid user with no phone needs one', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1');
+    stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
+    expect(await get()).toMatchObject({ phone: null, needsPhone: true, phoneGate: true });
+  });
+  it('flag on but customer_contacts unreadable (migration 032 missing): fails open, phoneGate false, needsPhone false', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1'); extra.contactsErr = true;
+    stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await get()).toMatchObject({ phone: null, needsPhone: false, phoneGate: false, entitled: true });
+    await get();
+    expect(err.mock.calls.filter((c) => String(c[0]).includes('contacts read failed')).length).toBeLessThanOrEqual(1);
+    err.mockRestore();
+  });
+  it('flag on: a lapsed customer with a kept site row is not gated', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1'); extra.sites = [{ slug: 'x' }];
+    stored.rows = [{ stripe_subscription_id: 's', status: 'canceled', created_at: '2026-10-01' }];
+    expect(await get()).toMatchObject({ needsPhone: false, entitled: false });
+  });
+  it('flag on: junk or non-E.164 values do not count as a saved phone (auth/metadata fallback)', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1'); vi.stubEnv('SUPABASE_URL', 'http://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
+    stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
+    const f = vi.fn(async () => ({ status: 200, json: async () => ({ phone: '', user_metadata: { phone: 'n/a' } }) }));
+    vi.stubGlobal('fetch', f);
+    expect(await get()).toMatchObject({ phone: null, needsPhone: true });
+    f.mockImplementation(async () => ({ status: 200, json: async () => ({ phone: '15552345678', user_metadata: { phone: 'n/a' } }) }));
+    expect(await get()).toMatchObject({ phone: '+15552345678', needsPhone: false });
+    f.mockImplementation(async () => ({ status: 200, json: async () => ({ phone: '', user_metadata: { phone: '(555) 234-5678' } }) }));
+    expect(await get()).toMatchObject({ phone: '+15552345678', needsPhone: false });
+    vi.unstubAllGlobals();
+  });
+  it('flag on: a user who never paid does not need one', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1');
+    expect(await get()).toMatchObject({ phone: null, needsPhone: false });
+  });
+  it('returns the saved phone and needsPhone false once saved', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1'); extra.contacts = [{ phone_e164: '+15552345678' }];
+    stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
+    expect(await get()).toMatchObject({ phone: '+15552345678', needsPhone: false });
+  });
+});
 
 describe('GET /api/web-app/me', () => {
   it('adds appStore and keeps the existing fields', async () => {

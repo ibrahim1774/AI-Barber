@@ -2,6 +2,8 @@
 // Read-only; the answer comes from web_app_entitlements for this deployment's Stripe mode.
 import { isEntitledStatus, keyMode } from '../../lib/webApp/stripeCore.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
+import { needsPhone } from '../../lib/webApp/phoneGate.js';
+import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
@@ -28,8 +30,14 @@ export default async function handler(req: any, res: any) {
     // Read-only App Store lookup; fails open (null) so /me never breaks on it.
     let appStore: AppStoreState = null;
     try { appStore = await appStoreStateOf(caller.id, mode); } catch (e: any) { console.error('[web-app me] app store lookup failed:', e?.message || e); }
+    // Required-phone state (server truth for the client gate). Fails soft: a lookup problem never breaks /me.
+    const envOn = process.env.WEB_APP_PHONE_GATE === '1';
+    const st = envOn ? await savedPhoneState(caller.id) : { phone: null, contactsOk: true }; // flag off: no extra reads on every /me
+    const flag = envOn && st.contactsOk; // contacts table unreadable (migration 032 missing): fail open, no gate
+    const phone = st.phone;
+    const needs = needsPhone({ flag, phone, entitlementRows: rows });
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ appStore, entitled: !!live, tier: row?.tier ?? null, interval: row?.billing_interval ?? null, status: row?.status ?? null, subscriptionId: row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
+    return res.status(200).json({ phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live, tier: row?.tier ?? null, interval: row?.billing_interval ?? null, status: row?.status ?? null, subscriptionId: row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
   } catch (e: any) {
     console.error('[web-app me]', e.message);
     return res.status(502).json({ error: 'lookup_failed' });
