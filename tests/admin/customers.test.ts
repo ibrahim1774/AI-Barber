@@ -6,7 +6,7 @@ const empty = (): MainData => ({ users: [], webEntitlements: [], webCustomers: [
 const user = (id: string, email: string, extra: any = {}) => ({ id, email, created_at: '2026-01-01T00:00:00Z', last_sign_in_at: '2026-11-01T00:00:00Z', identities: [{ provider: 'email', identity_data: { email } }], ...extra });
 const sub = (id: string, cus: any, product: string, over: any = {}) => ({ id, status: 'active', created: 1_760_000_000, customer: cus, plan: { interval: 'month', product: { name: product } }, ...over });
 
-function sources(over: Partial<CustomerSources> & { main?: Partial<MainData> } = {}): CustomerSources {
+function sources(over: any = {}): CustomerSources {
   const { main, ...rest } = over;
   return {
     now: NOW, main: { ...empty(), ...main }, stripe: { customers: [], subs: [] },
