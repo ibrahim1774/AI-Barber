@@ -20,7 +20,8 @@ export interface Mail {
   /** Optional Resend tags. Only sent to Resend when present. */ tags?: { name: string; value: string }[];
 }
 
-const TIER_NAME: Record<string, string> = { website: 'Custom site', bookings: 'Custom site + booking', store: 'Custom site, booking + your own store' };
+// Same names as the paywall and the app's Plan screen (aibarber-ios src/lib/plan.ts planLabel): Website / Bookings / Store.
+export const TIER_NAME: Record<string, string> = { website: 'Website', bookings: 'Bookings', store: 'Store' };
 /** What the plan includes, in a few words. */
 const WHAT: Record<string, string> = { website: 'website hosting', bookings: 'website hosting + bookings', store: 'website hosting + bookings + store' };
 /** Plan names used in subjects, kept short. */
