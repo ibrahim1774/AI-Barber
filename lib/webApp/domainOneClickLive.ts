@@ -41,6 +41,17 @@ export function oneClickEnabled(env: Record<string, string | undefined> = proces
   return oneClickFlagOn(env) && !!mode && mode === keyMode(env.STRIPE_WEBAPP_SECRET_KEY) && !!(env.STRIPE_DOMAIN_PRICE_ID || env.STRIPE_DOMAIN_PRODUCT_ID);
 }
 
+/** POST /v1/subscriptions/<id> cancel_at_period_end (the domain key). Only ever the one domain subscription. */
+export async function stripeSetRenewal(subscriptionId: string, cancelAtPeriodEnd: boolean, idempotencyKey: string) {
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY || ''}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION, 'Idempotency-Key': idempotencyKey },
+    body: new URLSearchParams({ cancel_at_period_end: String(cancelAtPeriodEnd) }).toString(),
+    signal: AbortSignal.timeout(10_000),
+  });
+  return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
+}
+
 export function liveOneClickDeps(authorize: AuthorizeOwner): OneClickDeps {
   return {
     authorize,
@@ -66,15 +77,7 @@ export function livePanelDeps(authorize: AuthorizeOwner): PanelDeps {
     authorize,
     flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
     getSubscription: stripeSubscription,
-    async setRenewal(subscriptionId, cancelAtPeriodEnd, idempotencyKey) {
-      const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION, 'Idempotency-Key': idempotencyKey },
-        body: new URLSearchParams({ cancel_at_period_end: String(cancelAtPeriodEnd) }).toString(),
-        signal: AbortSignal.timeout(10_000),
-      });
-      return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
-    },
+    setRenewal: (id, cancel, idem) => stripeSetRenewal(id, cancel, idem),
     async createPortalSession(customer, returnUrl, subscriptionId) {
       const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
         method: 'POST',

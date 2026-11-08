@@ -12,6 +12,7 @@ import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webA
 import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
+import { livePlanEndDeps, onPlanEnded, onPlanResumed } from '../../lib/webApp/domainPlanEnd.js';
 import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
 
 export const config = { api: { bodyParser: false } };
@@ -112,6 +113,17 @@ export default async function handler(req: any, res: any) {
     if (webAppCheckoutOn() && row.user_id && isEntitledStatus(row.status)) {
       try { await handleDuplicates(row.user_id, liveDupDeps(mode)); }
       catch (e: any) { console.error('[web-app webhook dup check]', e?.message || e); }
+    }
+    // The plan's effect on the site's custom domain. Best effort: NEVER changes the response.
+    if (row.site_slug) {
+      try {
+        if (event.type === 'customer.subscription.deleted' && !isEntitledStatus(row.status)) {
+          const other = row.user_id ? await sbRest(`web_app_entitlements?user_id=eq.${enc(row.user_id)}&environment=eq.${mode}&status=in.(active,trialing,past_due)&stripe_subscription_id=neq.${enc(row.stripe_subscription_id)}&select=stripe_subscription_id&limit=1`) : [];
+          if (!other?.length) await onPlanEnded(row.site_slug, row.user_id ?? null, await livePlanEndDeps(mode));
+        } else if (isEntitledStatus(row.status)) {
+          await onPlanResumed(row.site_slug, await livePlanEndDeps(mode));
+        }
+      } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
     }
     return res.status(200).json({ ok: true });
   } catch (e: any) {

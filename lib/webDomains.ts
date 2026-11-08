@@ -645,7 +645,10 @@ export async function webDomainRenewal(action: 'cancel-renewal' | 'resume-renewa
     return { status: 502, body: { error: 'renewal-unavailable' } };
   }
   const want = !cancel;
-  const patch: Partial<typeof row> = { auto_renew: want };
+  const marks = { ...(row.alerts_sent ?? {}) };
+  if (cancel) marks['renewal-off-customer'] = new Date(now()).toISOString(); // the customer's own choice: a new plan never turns it back on
+  else { delete marks['renewal-off-customer']; delete marks['renewal-off-plan-ended']; delete marks['plan-ended-mail']; }
+  const patch: Partial<typeof row> = { auto_renew: want, alerts_sent: marks };
   if (row.state === 'live' || row.state === 'manual_live') patch.auto_renew_synced = false;
   const updated = (await deps.flow.repo.update(row.original_transaction_id, [row.state], patch)) ?? { ...row, ...patch };
   return { status: 200, body: { ...webStatusBody(updated) } };

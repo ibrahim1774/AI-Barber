@@ -30,6 +30,8 @@ export interface WebSweepDeps {
   clearTakenDown(slug: string): Promise<void>;
   deployOffline(slug: string): Promise<void>;
   publish(slug: string, opts: { force: boolean }): Promise<PublishOutcome>;
+  /** Best effort, never throws: the plan has ended, so the site's domain stops renewing (lib/webApp/domainPlanEnd.ts). */
+  planEnded?(row: WebSiteRow): Promise<void>;
   now(): number;
 }
 
@@ -90,6 +92,7 @@ export async function sweepWebApp(deps: WebSweepDeps, opts: { limit?: number; de
         continue;
       }
       if (isEntitledStatus(status)) { out.stillActive.push(row.slug); continue; }
+      await deps.planEnded?.(row).catch((e: any) => console.error(`[Sweeper:web] domain renewal for ${row.slug}:`, e?.message || e));
       // Stamp first: a death mid-deploy leaves the flag set, so a later re-subscribe is restored.
       await deps.markTakenDown(row.slug);
       try {
@@ -151,6 +154,10 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
       await deployRenderedSite({ siteId: slug, html: offlineHtml(), subpages: shop ? { mode: 'manage-only' } : null });
     },
     publish: (slug, opts) => publishSite(slug, opts),
+    planEnded: async (row) => {
+      const { livePlanEndDeps, onPlanEnded } = await import('./domainPlanEnd.js');
+      await onPlanEnded(row.slug, row.user_id ?? null, await livePlanEndDeps(env));
+    },
     now: () => Date.now(),
   };
 }
