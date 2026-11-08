@@ -257,10 +257,15 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
   for (const e of m.webEntitlements || []) link(e.stripe_customer_id, e.user_id);
   for (const c of m.webCustomers || []) link(c.stripe_customer_id, c.user_id);
   for (const p of m.usersProfile || []) link(p.stripe_customer_id, p.id ?? p.user_id);
+  // Pro's Stripe customers belong to the Pro project: they never attach to a main account by email
+  // and never become Stripe-only rows.
+  const proCust = new Set<string>();
+  for (const e of src.pro?.entitlements || []) if (e?.stripe_customer_id) proCust.add(e.stripe_customer_id);
+  for (const c of src.pro?.customers || []) if (c?.stripe_customer_id) proCust.add(c.stripe_customer_id);
   const userByEmail = new Map<string, string>();
   for (const u of m.users || []) { const e = lc(u.email); if (e && !userByEmail.has(e)) userByEmail.set(e, u.id); }
   for (const c of sp.customers.values()) {
-    if (custToUser.has(c.id)) continue;
+    if (custToUser.has(c.id) || proCust.has(c.id)) continue;
     const uid = userByEmail.get(lc(c.email) ?? '');
     if (uid) custToUser.set(c.id, uid);
   }
@@ -403,7 +408,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
 
   // ---- Stripe-only customers: paid, but no account anywhere ---------------------------------------
   for (const c of sp.customers.values()) {
-    if (custToUser.has(c.id)) continue;
+    if (custToUser.has(c.id) || proCust.has(c.id)) continue;
     const cands: Candidate[] = [];
     for (const s of subsByCustomer.get(c.id) ?? []) {
       if (owned.has(s.id)) continue;
