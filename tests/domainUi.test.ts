@@ -5,7 +5,7 @@ import {
   DOMAIN_DISCLOSURE, DOMAIN_PRICE_LABEL, clearDomainCheckout, comDomainFrom, domainSiteId, panelView,
   rememberDomainCheckout, takeDomainCheckout, STEP_LABEL,
 } from '../services/domainUi';
-import { webDomainPanelStatus, webDomainPortal } from '../lib/webDomains';
+import { domainPortalForm, webDomainPanelStatus, webDomainPortal } from '../lib/webDomains';
 import { fakeDomainsRepo, blankRow } from './ios/fakeDomainsRepo';
 
 const src = fs.readFileSync(path.join(process.cwd(), 'components/DomainManager.tsx'), 'utf8');
@@ -109,13 +109,32 @@ describe('api/web-domain (owner only)', () => {
   it('a refunded row says refunded', async () => {
     const { deps, repo } = setup();
     repo.rows.set('stripe:sub_1', { ...repo.rows.get('stripe:sub_1')!, state: 'failed', failure_reason: 'taken', refunded_at: new Date().toISOString() });
-    expect(await webDomainPanelStatus({ siteId: 'fresh-cuts' }, 'Bearer owner', deps)).toMatchObject({ body: { refunded: true } });
+    expect(await webDomainPanelStatus({ siteId: 'fresh-cuts' }, 'Bearer owner', deps)).toMatchObject({ body: { refunded: true, paidUntil: null, autoRenew: false, canRetry: false } });
   });
 
   it("portal: the owner gets the portal of THIS domain subscription's customer; strangers 403", async () => {
     const { deps, createPortalSession } = setup();
     expect(await webDomainPortal({ siteId: 'fresh-cuts' }, 'Bearer owner', 'https://www.aibarber.org', deps)).toEqual({ status: 200, body: { url: 'https://billing.stripe.com/p' } });
-    expect(createPortalSession).toHaveBeenCalledWith('cus_1', 'https://www.aibarber.org');
+    expect(createPortalSession).toHaveBeenCalledWith('cus_1', 'https://www.aibarber.org', 'sub_1');
     expect((await webDomainPortal({ siteId: 'fresh-cuts' }, 'Bearer x', 'o', deps)).status).toBe(403);
+  });
+
+  it('portal: no domain subscription id means an error, never the general portal', async () => {
+    const { deps, repo, createPortalSession } = setup();
+    repo.rows.set('stripe:sub_1', { ...repo.rows.get('stripe:sub_1')!, original_transaction_id: 'stripe:' });
+    expect((await webDomainPortal({ siteId: 'fresh-cuts' }, 'Bearer owner', 'o', deps)).status).toBe(404);
+    expect(createPortalSession).not.toHaveBeenCalled();
+  });
+
+  it('portal form: cancel flow for the one domain subscription only, back to the domain screen', () => {
+    const f = new URLSearchParams(domainPortalForm('cus_1', 'https://app.test/app/domain', 'sub_1'));
+    expect(Object.fromEntries(f)).toEqual({
+      customer: 'cus_1',
+      return_url: 'https://app.test/app/domain',
+      'flow_data[type]': 'subscription_cancel',
+      'flow_data[subscription_cancel][subscription]': 'sub_1',
+      'flow_data[after_completion][type]': 'redirect',
+      'flow_data[after_completion][redirect][return_url]': 'https://app.test/app/domain',
+    });
   });
 });

@@ -559,7 +559,24 @@ export interface PanelDeps {
   flow: Pick<DomainFlowDeps, 'repo'> & Partial<Pick<DomainFlowDeps, 'vercel' | 'probeHttps'>>;
   getSubscription(id: string): Promise<any | null>;
   /** POST /v1/billing_portal/sessions → { url }. */
-  createPortalSession(customer: string, returnUrl: string): Promise<{ ok: boolean; data: any }>;
+  createPortalSession(customer: string, returnUrl: string, subscriptionId: string): Promise<{ ok: boolean; data: any }>;
+}
+
+/**
+ * The form body for the domain portal session. flow_data subscription_cancel deep-links the
+ * portal to cancelling THIS one subscription only (the domain renewal), so the customer cannot
+ * reach the hosting plan's cancel or any plan switch from here. After cancelling (or backing
+ * out) the customer returns to the domain screen.
+ */
+export function domainPortalForm(customer: string, returnUrl: string, subscriptionId: string): string {
+  return new URLSearchParams({
+    customer,
+    return_url: returnUrl,
+    'flow_data[type]': 'subscription_cancel',
+    'flow_data[subscription_cancel][subscription]': subscriptionId,
+    'flow_data[after_completion][type]': 'redirect',
+    'flow_data[after_completion][redirect][return_url]': returnUrl,
+  }).toString();
 }
 
 /** The site's website-bought domain row: the one holding the site, else the most recent. */
@@ -587,10 +604,12 @@ export async function webDomainPortal(body: any, authorization: unknown, returnU
   if (!auth.ok || !auth.target) return denied(auth);
   const row = await webRowFor(auth.target, deps);
   if (!row || row.refunded_at) return { status: 404, body: { error: 'no-domain-subscription' } };
-  const sub = await deps.getSubscription(row.original_transaction_id.replace(/^stripe:/, ''));
+  const subId = row.original_transaction_id.replace(/^stripe:/, '');
+  if (!subId) return { status: 404, body: { error: 'no-domain-subscription' } };
+  const sub = await deps.getSubscription(subId);
   const customer = typeof sub?.customer === 'string' ? sub.customer : sub?.customer?.id;
   if (!customer) return { status: 404, body: { error: 'no-domain-subscription' } };
-  const r = await deps.createPortalSession(customer, returnUrl);
+  const r = await deps.createPortalSession(customer, returnUrl, subId);
   if (!r.ok || !r.data?.url) return { status: 502, body: { error: 'portal-unavailable' } };
   return { status: 200, body: { url: r.data.url } };
 }

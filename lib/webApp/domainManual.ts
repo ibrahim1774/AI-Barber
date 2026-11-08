@@ -129,12 +129,17 @@ export function webStatusBody(row: DomainRow | null): DomainStatusBody {
   if (row.state === 'transferred' && row.transferred_by === 'manual-ended') {
     return { domain: row.domain, state: 'expired', paidUntil: row.paid_until ? iso(Date.parse(row.paid_until)) : null, autoRenew: false, ...(row.simulated ? { sandbox: true as const } : {}) };
   }
+  if (row.state === 'failed' && row.refunded_at) {
+    // Refunded: nothing is paid, nothing renews, and a retry would be a free reclaim (refused server-side).
+    return { ...statusBody(row), paidUntil: null, autoRenew: false, canRetry: false, refunded: true } as DomainStatusBody;
+  }
   return statusBody(row);
 }
 
 /** webStatusBody with the DNS / TLS probe on a live manual domain. */
 export async function webStatusWithProbe(row: DomainRow | null, flow: DomainFlowDeps): Promise<DomainStatusBody> {
   if (row?.state === 'manual_live') return statusWithProbe({ ...row, state: 'live' }, flow);
+  if (row?.state === 'failed' && row.refunded_at) return webStatusBody(row);
   if (row?.state === 'awaiting_setup' || (row?.state === 'transferred' && row.transferred_by === 'manual-ended')) return webStatusBody(row);
   return statusWithProbe(row, flow); // every other state: the existing status + probe
 }

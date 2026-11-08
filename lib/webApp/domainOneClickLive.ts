@@ -9,7 +9,7 @@ import { serviceClient } from '../bookings/repo.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest } from './webAppServer.js';
 import { oneClickFlagOn, type OneClickDeps, type WebPlan } from './domainOneClick.js';
-import type { AuthorizeOwner, PanelDeps } from '../webDomains.js';
+import { domainPortalForm, type AuthorizeOwner, type PanelDeps } from '../webDomains.js';
 import { liveManualDeps } from './domainManualEnv.js';
 
 /**
@@ -66,11 +66,11 @@ export function livePanelDeps(authorize: AuthorizeOwner): PanelDeps {
     authorize,
     flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
     getSubscription: stripeSubscription,
-    async createPortalSession(customer, returnUrl) {
+    async createPortalSession(customer, returnUrl, subscriptionId) {
       const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION },
-        body: new URLSearchParams({ customer, return_url: returnUrl }).toString(),
+        body: domainPortalForm(customer, returnUrl, subscriptionId),
       });
       return { ok: r.ok, data: await r.json().catch(() => null) };
     },
