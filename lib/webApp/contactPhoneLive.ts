@@ -45,18 +45,31 @@ export function liveContactPhoneDeps(mode: 'live' | 'test'): ContactPhoneDeps {
   };
 }
 
-/** The saved phone for /me as E.164: customer_contacts, then the auth phone, then user_metadata.phone (each validated). Fails soft to null. */
-export async function savedPhoneOf(userId: string): Promise<string | null> {
+let warned = false;
+/**
+ * The saved phone for /me as E.164: customer_contacts, then the auth phone, then user_metadata.phone (each validated).
+ * `contactsOk` is false when the customer_contacts read itself failed (e.g. migration 032 not applied yet): /me then
+ * fails open (no gate), so nobody is locked behind a step that cannot save. Logged once per process.
+ */
+export async function savedPhoneState(userId: string): Promise<{ phone: string | null; contactsOk: boolean }> {
+  let contactsOk = true;
   try {
     const c = (await sbRest(`customer_contacts?user_id=eq.${enc(userId)}&select=phone_e164&limit=1`))?.[0]?.phone_e164;
     const n = normalizePhoneE164(c);
-    if (n.ok) return n.e164;
-  } catch (e: any) { console.error('[web-app phone] contacts read failed:', e?.status ?? 'err'); }
+    if (n.ok) return { phone: n.e164, contactsOk };
+  } catch (e: any) {
+    contactsOk = false;
+    if (!warned) { warned = true; console.error('[web-app phone] contacts read failed, phone gate off until it works:', e?.status ?? 'err'); }
+  }
   try {
     const u = (await authAdmin(userId)).json;
     // Supabase stores auth.phone without '+'. Junk (free-text sign-up phone) must not count as a saved phone.
     const ap = typeof u?.phone === 'string' && /^\d+$/.test(u.phone.trim()) ? `+${u.phone.trim()}` : u?.phone;
-    for (const cand of [ap, u?.user_metadata?.phone]) { const n = normalizePhoneE164(cand); if (n.ok) return n.e164; }
+    for (const cand of [ap, u?.user_metadata?.phone]) { const n = normalizePhoneE164(cand); if (n.ok) return { phone: n.e164, contactsOk }; }
   } catch { /* fail soft */ }
-  return null;
+  return { phone: null, contactsOk };
+}
+
+export async function savedPhoneOf(userId: string): Promise<string | null> {
+  return (await savedPhoneState(userId)).phone;
 }
