@@ -21,17 +21,17 @@ describe('web app emails', () => {
     expect(m.text).toContain('Custom site + booking');
     expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).toContain('Custom site, booking + your own store');
   });
-  it('failed payment: calm subject, headline and lead; single Stripe action link; reply-to; text mirror', () => {
+  it('failed payment: calm subject, headline and lead; single sign-in link on our own site (never Stripe); reply-to; text mirror', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', firstName: 'Jack Smith', siteUrl: site, tier: 'website', updateUrl: 'https://invoice.stripe.com/i/x' }, O);
-    expect(m.subject).toBe("Jack, your payment didn't go through");
-    expect(m.html).toContain("Your payment didn't go through");
-    expect(m.text).toContain("We couldn't charge your card for your barber site hosting. Update your card to keep your site online.");
+    expect(m.subject).toBe('Jack, about your Prime Barber plan');
+    expect(m.html).toContain('Your renewal needs attention');
+    expect(m.text).toContain("The renewal for your barber site hosting didn't complete. To keep your site online, sign in and open Billing to check your details.");
     expect(m.html).toContain('joes.vercel.app');
     expect(m.html.match(/href="/g)).toHaveLength(1);
-    expect(m.html).toContain('href="https://invoice.stripe.com/i/x"');
-    expect(m.html).toContain('Update payment method');
-    expect(m.text).toContain('Update payment method: https://invoice.stripe.com/i/x');
-    expect(m.html).not.toContain(signInLink(O));
+    expect(m.html).toContain(`href="${signInLink(O)}"`);
+    expect(m.html + m.text).not.toContain('stripe.com');
+    expect(m.text).toContain(`Sign in to Prime Barber: ${signInLink(O)}`);
+    for (const t of [m.subject, m.html, m.text]) expect(t).not.toMatch(/didn't go through|update (your )?card|payment method|payment failed/i);
     expect(m.html).not.toContain(resetLink(O));
     expect(m.html).not.toContain('display:none');
     expect(m.html).not.toContain('Forgot your password');
@@ -42,10 +42,10 @@ describe('web app emails', () => {
   });
   it('failed payment: no name falls back, reminders are labelled, no update url falls back to sign-in', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'website', reminder: 2 }, O);
-    expect(m.subject).toBe("Reminder: Your payment didn't go through");
+    expect(m.subject).toBe('About your Prime Barber plan');
     expect(m.html).toContain(`href="${signInLink(O)}"`);
     expect(m.html.match(/href="/g)).toHaveLength(1);
-    expect(m.html).toContain("Your payment still hasn't gone through");
+    expect(m.html).toContain('Your renewal still needs attention');
   });
   it('omits the site row when there is no site yet', () => {
     expect(failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).not.toContain('Site:');

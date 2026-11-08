@@ -37,11 +37,11 @@ describe('golden email output (env unset)', () => {
 });
 
 describe('failed-payment html escaping', () => {
-  it('escapes hostile site, tier and update url', () => {
+  it('escapes hostile site and tier; a hostile update url is never used', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', siteUrl: 'https://x.app/<x>"', tier: 'nope<i>', updateUrl: 'https://s.co/i?a=1&b="c' }, O);
     expect(m.html).not.toContain('<x>');
     expect(m.html).not.toContain('<i>');
-    expect(m.html).toContain('href="https://s.co/i?a=1&amp;b=&quot;c"');
+    expect(m.html).not.toContain('s.co/i');
     expect(m.html.match(/href="/g)).toHaveLength(1);
   });
 });
