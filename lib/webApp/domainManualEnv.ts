@@ -14,6 +14,8 @@ import { readPendingSite } from '../publishSite.js';
 import { stampedSiteUrl } from '../ios/siteUrlFor.js';
 import { domainsBuyDisabled } from '../ios/vercelDomains.js';
 import { keyMode } from './stripeCore.js';
+import { resolvePublicBase, liveSiteBaseDeps } from '../siteSubpages.js';
+import { projectFor } from '../ios/domainFlow.js';
 import type { ManualDeps } from './domainManual.js';
 
 export const DEFAULT_ORDERS_EMAIL = 'ibrahim3709@gmail.com';
@@ -78,6 +80,8 @@ export function liveManualDeps(opts: { getSubscription?: (id: string) => Promise
     verifyStub: verifyStubOn(),
     getSubscription: opts.getSubscription,
     isWebAppSite: liveIsWebAppSite,
+    stripeMode: keyMode(process.env.STRIPE_SECRET_KEY),
+    resolveBase: (slug) => resolvePublicBase(projectFor(slug), liveSiteBaseDeps),
     async fetchCanonical(domain) {
       const r = await fetch(`https://${domain}/`, { redirect: 'follow', signal: AbortSignal.timeout(6_000) });
       const html = await r.text();

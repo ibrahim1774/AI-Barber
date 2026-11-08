@@ -43,7 +43,7 @@ function world(o: { manual?: Parameters<typeof fakeManual>[0]; flow?: Partial<Do
   const repo = fakeDomainsRepo([], clock);
   const subs: Record<string, any> = { sub_m1: mkSub('sub_m1') };
   const getSubscription = vi.fn(async (id: string) => (subs[id] ? structuredClone(subs[id]) : null));
-  const hooks = { onDomainLinked: vi.fn(async (_s: string, _d: string) => {}), onDomainUnlinked: vi.fn(async (_s: string) => {}) };
+  const hooks = { onDomainLinked: vi.fn(async (_s: string, _d: string): Promise<unknown> => 'republished'), onDomainUnlinked: vi.fn(async (_s: string) => {}) };
   const cancelAndRefund = vi.fn(async (_id: string) => {});
   const notifySupport = vi.fn(async (_s: string, _t: string) => {});
   const probeHttps = vi.fn(async (_d: string) => true);
@@ -525,6 +525,109 @@ describe('Mark live', () => {
   });
 });
 
+describe('F1: rows are stamped with the Stripe mode and a server in the other mode leaves them alone', () => {
+  const testSub = (id = 'sub_m1') => mkSub(id, { livemode: false });
+  it('a test-mode (livemode false) claim writes environment Sandbox; a live one Production', async () => {
+    const t = world(); t.subs.sub_m1 = testSub(); await t.claim();
+    expect(t.row().environment).toBe('Sandbox');
+    const l = world(); await l.claim();
+    expect(l.row().environment).toBe('Production');
+  });
+  it('the order mail TEST MODE line follows the stamp when Stripe cannot be asked', async () => {
+    const t = world({ manual: { stripeMode: 'test', getSubscription: vi.fn(async () => null) } });
+    t.subs.sub_m1 = testSub(); await t.claim();
+    await t.repo.update(KEY, null, { simulated: false });
+    await t.sweep();
+    expect(t.fm.toOrders().length).toBeGreaterThan(0);
+    // claim sent the order mail already (livemode false on the sub); force a fresh one through the sweep path
+    const w = world({ manual: { stripeMode: 'test', getSubscription: vi.fn(async () => null) } });
+    w.subs.sub_m1 = testSub();
+    await w.event('customer.subscription.created', w.subs.sub_m1);
+    expect(w.row().environment).toBe('Sandbox');
+    await w.sweep();
+    expect(w.fm.toOrders()[0].mail.text).toMatch(/TEST MODE/i);
+  });
+  it('sweep under a live key skips a Sandbox awaiting_setup row: no mail, no payer call, no write', async () => {
+    const w = world({ manual: { stripeMode: 'live' } });
+    w.subs.sub_m1 = testSub();
+    await w.event('customer.subscription.created', w.subs.sub_m1);
+    expect(w.row().environment).toBe('Sandbox');
+    const before = JSON.stringify(w.row());
+    const payer = vi.spyOn(w.flow, 'payer');
+    await w.sweep(); await w.sweep();
+    expect(w.fm.sent).toHaveLength(0);
+    expect(payer).not.toHaveBeenCalled();
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+    expect(JSON.stringify(w.row())).toBe(before);
+  });
+  it('sweep under a test key skips a Production row the same way', async () => {
+    const w = world({ manual: { stripeMode: 'test' } });
+    await w.event('customer.subscription.created', w.subs.sub_m1);
+    expect(w.row().environment).toBe('Production');
+    await w.sweep();
+    expect(w.fm.sent).toHaveLength(0);
+  });
+  it('the link page for a mismatched row is the generic "link not valid", GET and POST, no write, no Stripe call', async () => {
+    const w = world({ manual: { stripeMode: 'live' } });
+    w.subs.sub_m1 = testSub(); await w.claim(); await w.attach();
+    const before = JSON.stringify(w.row());
+    for (const a of ['live', 'cant', 'end'] as const) {
+      const g = await domainActionView(w.tokenFor(a), w.env);
+      const r = await runDomainAction(w.tokenFor(a), w.env);
+      expect(g.status).toBe(403); expect(r.status).toBe(403);
+      expect(r.html).toMatch(/Link not valid/);
+    }
+    expect(JSON.stringify(w.row())).toBe(before);
+    expect(w.hooks.onDomainLinked).not.toHaveBeenCalled();
+    expect(w.cancelAndRefund).not.toHaveBeenCalled();
+  });
+  it('a matching mode works as before', async () => {
+    const w = world({ manual: { stripeMode: 'test' } });
+    w.subs.sub_m1 = testSub(); await awaiting(w);
+    expect((await runDomainAction(w.tokenFor('live'), w.env)).status).toBe(200);
+  });
+});
+
+describe('F3: Mark live needs a real republish onto the domain', () => {
+  const noMail = (w: W) => expect(w.fm.toCustomer().filter((s) => /is live/.test(s.mail.subject))).toHaveLength(0);
+  for (const outcome of ['no-site', 'no-copy', 'site-offline']) {
+    it(`hook outcome ${outcome}: 502, row stays awaiting_setup, no customer mail`, async () => {
+      const w = world(); await awaiting(w);
+      w.hooks.onDomainLinked.mockResolvedValueOnce(outcome);
+      const r = await runDomainAction(w.tokenFor('live'), w.env);
+      expect(r.status).toBe(502);
+      expect(r.html).toContain(`Republish did not switch the site to ${DOMAIN} (${outcome})`);
+      expect(w.row()).toMatchObject({ state: 'awaiting_setup', linked_at: null, dns_ready_at: null });
+      noMail(w);
+      expect((await runDomainAction(w.tokenFor('live'), w.env)).status).toBe(200); // pressing again works once it republishes
+    });
+  }
+  it('republished but the resolved base is not https://<domain>: refused, awaiting_setup, no mail', async () => {
+    const resolveBase = vi.fn(async () => 'https://fresh-cuts.vercel.app');
+    const w = world({ manual: { resolveBase } }); await awaiting(w);
+    const r = await runDomainAction(w.tokenFor('live'), w.env);
+    expect(r.status).toBe(502);
+    expect(r.html).toContain('public base is https://fresh-cuts.vercel.app');
+    expect(w.row().state).toBe('awaiting_setup');
+    noMail(w);
+    resolveBase.mockResolvedValue(null);
+    expect((await runDomainAction(w.tokenFor('live'), w.env)).status).toBe(502);
+  });
+  it('republished and the base is https://<domain>: live + one mail', async () => {
+    const w = world({ manual: { resolveBase: vi.fn(async () => `https://${DOMAIN}`) } }); await awaiting(w);
+    expect((await runDomainAction(w.tokenFor('live'), w.env)).status).toBe(200);
+    expect(w.row().state).toBe('manual_live');
+  });
+  it('the staging stub skips the base check but still needs outcome republished', async () => {
+    const w = world({ manual: { verifyStub: true, resolveBase: vi.fn(async () => null) } }); await w.claim();
+    expect((await runDomainAction(w.tokenFor('live'), w.env)).status).toBe(200);
+    const x = world({ manual: { verifyStub: true } }); await x.claim();
+    x.hooks.onDomainLinked.mockResolvedValueOnce('no-copy');
+    expect((await runDomainAction(x.tokenFor('live'), x.env)).status).toBe(502);
+    expect(x.row().state).toBe('awaiting_setup');
+  });
+});
+
 describe("Can't get this name", () => {
   it('failed:taken, cancelled and refunded once, support told, ONE refunded mail; a replay does nothing', async () => {
     const w = world();
@@ -892,7 +995,7 @@ describe('S4: Can\'t and Mark live cannot interleave', () => {
     const w = world();
     await w.claim(); await w.attach();
     let release!: () => void;
-    w.hooks.onDomainLinked.mockImplementationOnce(() => new Promise<void>((res) => { release = res; }));
+    w.hooks.onDomainLinked.mockImplementationOnce(() => new Promise<unknown>((res) => { release = () => res("republished"); }));
     const live = runDomainAction(w.tokenFor('live'), w.env);
     await new Promise((r) => setTimeout(r, 0));
     const cant = await runDomainAction(w.tokenFor('cant'), w.env);
@@ -910,6 +1013,7 @@ describe('S4: Can\'t and Mark live cannot interleave', () => {
     await w.claim(); await w.attach();
     w.hooks.onDomainLinked.mockImplementationOnce(async () => {
       w.repo.rows.set(KEY, { ...w.row(), state: 'failed', failure_reason: 'taken' }); // Can't won meanwhile
+      return 'republished';
     });
     const r = await runDomainAction(w.tokenFor('live'), w.env);
     expect(r.html).toMatch(/free address/);

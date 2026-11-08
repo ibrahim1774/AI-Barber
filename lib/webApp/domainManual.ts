@@ -74,6 +74,16 @@ export interface ManualDeps {
    * buys a domain for these, whatever the Stripe subscription's metadata says. Throws on an outage (callers fail closed = manual).
    */
   isWebAppSite(slug: string): Promise<boolean>;
+  /** The server's Stripe key mode (keyMode(STRIPE_SECRET_KEY)). Rows stamped for the other mode are never touched. Unset/null = no filtering. */
+  stripeMode?: 'live' | 'test' | null;
+  /** The public base the site would be published with right now (resolvePublicBase on its project). Mark live requires https://<domain>. Unset = unchecked. */
+  resolveBase?(slug: string): Promise<string | null>;
+}
+
+/** The row's stamped environment is the one this server's Stripe key can act on ('Production' = live key, 'Sandbox' = test key). */
+export function envMatchesKey(row: Pick<DomainRow, 'environment'>, mode: 'live' | 'test' | null | undefined): boolean {
+  if (!mode) return true;
+  return mode === 'live' ? row.environment === 'Production' : row.environment === 'Sandbox';
 }
 
 /** What every manual-flow function needs. */
@@ -228,7 +238,7 @@ async function factsFor(row: DomainRow, env: ManualEnv, opts: { sub?: any; ownDe
   return {
     domain: row.domain, slug, project: projectFor(slug), liveUrl, customerEmail: cust.email, shopName: cust.shopName,
     subscriptionId: subOf(row), stripeCustomerId: typeof customer === 'string' ? customer : null,
-    testMode: sub ? sub.livemode === false : row.simulated, createdAt: row.created_at, priceNote: quote,
+    testMode: sub ? sub.livemode === false : row.environment === 'Sandbox', createdAt: row.created_at, priceNote: quote,
     ownDetached: opts.ownDetachedName ?? !!row.last_error?.startsWith('own detached name'), paidUntil: row.paid_until, autoRenew: row.auto_renew, teamSlug: m.teamSlug ?? null,
   };
 }
@@ -356,7 +366,7 @@ export async function manualClaim(
     }
 
     const ins = await repo.insertAwaitingSetup({
-      original_transaction_id: key, source: 'stripe', environment: 'Production', site_slug: v.slug, domain: v.domain, simulated,
+      original_transaction_id: key, source: 'stripe', environment: sub?.livemode === false ? 'Sandbox' : 'Production', site_slug: v.slug, domain: v.domain, simulated,
       auto_renew: payer.autoRenew === true, paid_until: payer.expiresAt != null ? iso(payer.expiresAt) : null,
       alerts_sent: { [MANUAL_ORIGIN]: iso(now()) }, // in the insert itself: no separate write that could fail
     });
@@ -471,6 +481,7 @@ async function load(token: string, env: ManualEnv): Promise<{ p: ActionPayload; 
   let row: DomainRow | null;
   try { row = await env.flow.repo.get(p.k); } catch { return msg('Try again', 'The database did not answer. Reload in a minute.', 503); }
   if (!row || row.source !== 'stripe' || row.domain !== p.d || row.site_slug !== p.s) return msg('Link not valid', 'This link does not match an order.', 403);
+  if (!envMatchesKey(row, env.manual.stripeMode)) return msg('Link not valid', 'This link does not match an order.', 403); // the other Stripe mode: no Stripe call, no write
   return { p, row };
 }
 
@@ -537,8 +548,9 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
     try {
       const cur0 = (await repo.get(key)) ?? row;
       if (cur0.state !== 'awaiting_setup') return msg(cur0.state === 'manual_live' ? 'Already live' : 'Already done', cur0.state === 'manual_live' ? `${row.domain} is already marked live.` : `This order is no longer waiting (${cur0.state}).`);
+      let outcome: unknown;
       try {
-        await withTimeout(Promise.resolve(hooks.onDomainLinked(row.site_slug, row.domain)), REPUBLISH_TIMEOUT_MS, 'republish');
+        outcome = await withTimeout(Promise.resolve(hooks.onDomainLinked(row.site_slug, row.domain)), REPUBLISH_TIMEOUT_MS, 'republish');
       } catch (e) {
         console.error(`[domains/manual] ${key}: republish on Mark live failed or timed out (row unchanged):`, errMsg(e));
         if (e instanceof TimeoutError) {
@@ -547,6 +559,16 @@ export async function runDomainAction(token: unknown, env: ManualEnv): Promise<P
           return msg('Republish still running', 'The republish is taking longer than this page can wait. Nothing was changed on the order; it may finish on its own. Press the link again in a few minutes (it is safe to repeat).', 504);
         }
         return msg('Republish failed', 'The site could not be republished on the new address. Nothing was changed; press the link again in a minute.', 502);
+      }
+      // F3: only a real republish counts, and only when the site now resolves to the domain (a transient lookup failure ships vercel.app canonicals).
+      const notSwitched = (why: string) => {
+        console.error(`[domains/manual] ${key}: Mark live refused, republish did not switch the site to the domain (${why})`);
+        return msg('Republish did not switch the site', `Republish did not switch the site to ${row.domain} (${why}); fix the attach and press Mark live again. Nothing was changed on the order and the customer was not emailed.`, 502);
+      };
+      if (outcome !== 'republished') return notSwitched(String(outcome ?? 'no outcome'));
+      if (!m.verifyStub && m.resolveBase) {
+        const base = await withTimeout(m.resolveBase(row.site_slug), 15_000, 'resolve base').catch(() => null);
+        if (String(base ?? '').replace(/\/+$/, '').toLowerCase() !== `https://${row.domain}`.toLowerCase()) return notSwitched(`public base is ${base ?? 'unresolved'}`);
       }
       const at = iso(now());
       const moved = await repo.update(key, ['awaiting_setup'], { state: 'manual_live', linked_at: at, dns_ready_at: at, last_error: null });
@@ -665,6 +687,7 @@ export async function sweepManualDomains(env: ManualEnv, deadline: number): Prom
     if (now() >= deadline) break;
     try {
       const row = (await repo.get(cand.original_transaction_id)) ?? cand;
+      if (!envMatchesKey(row, m.stripeMode)) continue; // the other Stripe mode's row: no mail, no Stripe call, no write
 
       if (row.state === 'awaiting_setup') {
         if (!row.alerts_sent?.[MANUAL_ORIGIN]) await setMarker(repo, row.original_transaction_id, MANUAL_ORIGIN, iso(now()), row);
