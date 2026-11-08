@@ -28,7 +28,7 @@ import { movedMap, pagePathsOf, planPublishedPaths, redirectsApply, type Publish
 import { defaultPathsStore, type PathsStore } from './publishedPathsStore.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
 import { vercelProjectExists } from './ios/slug.js';
-import { siteUrlOf } from './ios/siteAddress.js';
+import { publicLabel, siteUrlOf } from './ios/siteAddress.js';
 import type { SiteOwnerStore } from './siteOwners.js';
 import {
   findShopForSite, liveSiteBaseDeps, refreshSiteBase, resolvePublicBase, withSubpageLinks,
@@ -595,7 +595,7 @@ export async function publishSite(
 
   // Canonical links and the sitemap (multi-page sites only) use the base valid NOW: the project's own domain
   // list, so a domain attached since the last publish is already in this deploy. A failed lookup falls back to
-  // the base stored by the previous publish (best effort: a failed read is no base), and with neither the
+  // the base stored by the previous publish (best effort: a failed read is no base), and with neither: the default https://<slug>.vercel.app on a confirmed first deploy (project does not exist yet), else the
   // pages ship without canonical links and without a sitemap. Single-page sites never look anything up.
   const siteBaseDeps = opts.siteBase ?? liveSiteBaseDeps;
   let baseMemo: Promise<string | null> | null = null;
@@ -607,10 +607,15 @@ export async function publishSite(
       try { stored = (await siteBaseDeps.readBase?.(shop.id)) ?? null; }
       catch (e: any) { console.warn(`[Publish] ${safe}: reading the stored site base failed (${e?.message || e}); using the default address`); }
     }
-    // Nothing live and nothing stored: the FIRST deploy (its Vercel project does not exist yet, so there are no domains to read). The
-    // site's deterministic default address is its base, so sitemap.xml, robots.txt, canonical links and JSON-LD ship from the first
-    // publish. Any site with a custom domain has had it stored by an earlier publish, which wins above.
-    return stored ?? siteUrlOf(safe);
+    if (stored) return stored;
+    // Nothing live and nothing stored. The default address is used ONLY on a confirmed first deploy (the Vercel project does not
+    // exist yet, so there are no domains to read) and only when the clean alias is the slug itself (no 35-char truncation, which
+    // could name another project's host). Any other failure (an outage, a custom domain whose lookup errored) ships without
+    // canonical/sitemap, as before: a vercel.app canonical on a custom-domain site would be worse than none.
+    if (publicLabel(safe) !== safe) return null;
+    try { if (!(await (opts.projectExists ?? vercelProjectExists)(safe))) return siteUrlOf(safe); }
+    catch { /* cannot tell whether the project exists: ship without */ }
+    return null;
   })());
 
   try {

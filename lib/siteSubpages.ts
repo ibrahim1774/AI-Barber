@@ -239,7 +239,7 @@ export interface SiteBaseDeps {
   projectDomains(projectName: string): Promise<ProjectDomain[]>;
   /** Does Vercel report this custom domain's DNS as correctly pointed (config misconfigured === false)? Throws on an outage. */
   domainServing(name: string): Promise<boolean>;
-  /** The stored public base (ab_shops.site_base_url), or null. Optional: absent means no canonical links. */
+  /** The stored public base (ab_shops.site_base_url), or null. Optional: absent means no stored base (a confirmed first deploy then uses the default address, anything else none). */
   readBase?(shopId: string): Promise<string | null>;
   /** A partial update: only the fields given are written. */
   updateShop(shopId: string, fields: { site_base_url?: string; site_look?: SiteLook }): Promise<void>;

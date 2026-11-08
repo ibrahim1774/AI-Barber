@@ -1,6 +1,6 @@
 import { draftPath, planIntent, submitIntent, publicationFrom, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
-// 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
+// 409 already_subscribed (manage in the portal) | payment_processing (only a payment really in flight; a declined card does not block) | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
 // Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers etc.) must be applied BEFORE turning on ANY web-app
 // flag (WEB_APP_CHECKOUT, and WEB_APP_ENTITLEMENTS too: delete-account reads web_app_customers). Until then checkout fails closed
 // with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
@@ -75,18 +75,25 @@ export default async function handler(req: any, res: any) {
       // intent then sits in requires_payment_method and the customer must be able to retry at once. Anything not provably declined
       // (3DS requires_action, processing, an unreadable state) keeps blocking.
       for (const x of ours.filter((y) => y.status === 'incomplete' && Number(y.created) > stale)) {
-        if (await paymentDeclined(x)) declined = true;
+        const st = await paymentState(x);
+        if (st === 'declined') declined = true;
+        else if (st === 'unknown') return res.status(503).json({ error: 'try_again' }); // Stripe lookup failed: nothing was decided, retry at once
         else return res.status(409).json({ error: 'payment_processing' });
       }
     }
 
     // After a decline the customer's Checkout page is usually still open: hand back that same URL (no second session, no second
     // subscription). A publish-with-checkout always goes on to make its own session, which links its immutable submission.
-    if (declined && !plan) {
-      const stored = await storedSessionId(caller.id, mode).catch(() => null);
-      if (stored) {
-        const prev = await stripeCall(`checkout/sessions/${encodeURIComponent(stored)}`, null, 'GET').catch(() => null);
-        if (prev?.status === 'open' && prev.url && prev.mode === 'subscription' && prev.metadata?.tier === tier && prev.metadata?.interval === interval) return res.status(200).json({ url: prev.url });
+    // Reused only if it is exactly what was just asked for: same tier, interval and site, no publish submission, ours, and not about to expire.
+    let declinedPrev: string | null = null;
+    if (declined) {
+      declinedPrev = await storedSessionId(caller.id, mode).catch(() => null);
+      if (declinedPrev && !plan) {
+        const prev = await stripeCall(`checkout/sessions/${encodeURIComponent(declinedPrev)}`, null, 'GET').catch(() => null);
+        const m = prev?.metadata ?? {};
+        if (prev?.status === 'open' && prev.url && prev.mode === 'subscription' && m.tier === tier && m.interval === interval
+          && (m.site_slug ?? '') === slug && !m.intent_id && m.app === WEB_APP_TAG && m.user_id === caller.id
+          && Number(prev.expires_at) > Math.floor(Date.now() / 1000) + 300) return res.status(200).json({ url: prev.url });
       }
     }
 
@@ -128,6 +135,28 @@ export default async function handler(req: any, res: any) {
     }
     // Paid already, or no payable URL: never hand out a second payable page.
     if (session?.status !== 'open' || !session?.url) return res.status(409).json({ error: 'payment_processing' });
+    if (declined) {
+      // The declined tab's session may have been paid while this one was being made: never hand out a second payable page.
+      let paidMeanwhile = false;
+      try {
+        if (declinedPrev && declinedPrev !== session.id) {
+          const old = await stripeCall(`checkout/sessions/${encodeURIComponent(declinedPrev)}`, null, 'GET').catch(() => null);
+          if (old?.status === 'complete') paidMeanwhile = true;
+        }
+        for (const c of toCheck) {
+          const again = await stripeCall(`subscriptions?customer=${encodeURIComponent(c)}&status=all&limit=20`, null, 'GET');
+          if ((again?.data ?? []).some((x: any) => x?.metadata?.app === WEB_APP_TAG && (isEntitledStatus(String(x.status)) || x.status === 'unpaid' || x.status === 'paused'))) paidMeanwhile = true;
+        }
+      } catch (e: any) {
+        await stripeCall(`checkout/sessions/${enc(session.id)}/expire`, {}, 'POST').catch(() => {});
+        console.error('[web-app checkout] post-create recheck failed:', e?.message || e);
+        return res.status(503).json({ error: 'try_again' });
+      }
+      if (paidMeanwhile) {
+        await stripeCall(`checkout/sessions/${enc(session.id)}/expire`, {}, 'POST').catch(() => {});
+        return res.status(409).json({ error: 'already_subscribed' });
+      }
+    }
     if (plan) {
       // Only now are earlier unpaid submissions superseded: a failed session create above leaves them, and their open sessions, valid.
       let intent: Awaited<ReturnType<typeof submitIntent>>;
@@ -174,11 +203,13 @@ async function knownCustomer(mode: 'live' | 'test', uid: string, entRows: any[])
   return (await read()) ?? legacy; // a lost race converges on whichever row won
 }
 
-// True only when the incomplete subscription's latest payment intent is in requires_payment_method (the card was declined).
-async function paymentDeclined(sub: any): Promise<boolean> {
+// 'declined' only when the incomplete subscription's latest payment intent is requires_payment_method; 'unknown' when Stripe could not be read.
+// DEPENDS ON Stripe-Version 2024-06-20 (webAppServer.ts STRIPE_API_VERSION): from 2025-03-31 (basil) Invoice.payment_intent is gone, so
+// a version bump must move this to invoice.payments or declined cards would silently count as 'processing' again (a test pins this).
+async function paymentState(sub: any): Promise<'declined' | 'processing' | 'unknown'> {
   try {
     const full = await stripeCall(`subscriptions/${encodeURIComponent(sub.id)}?expand[0]=latest_invoice.payment_intent`, null, 'GET');
     const pi = full?.latest_invoice?.payment_intent;
-    return typeof pi === 'object' && pi?.status === 'requires_payment_method';
-  } catch (e: any) { console.error('[web-app checkout] payment state lookup failed:', e?.message || e); return false; }
+    return typeof pi === 'object' && pi?.status === 'requires_payment_method' ? 'declined' : 'processing';
+  } catch (e: any) { console.error('[web-app checkout] payment state lookup failed:', e?.message || e); return 'unknown'; }
 }
