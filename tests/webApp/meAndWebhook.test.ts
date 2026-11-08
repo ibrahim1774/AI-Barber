@@ -43,9 +43,22 @@ describe('GET /api/web-app/me phone fields', () => {
     stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
     expect(await get()).toMatchObject({ phone: null, needsPhone: true });
   });
-  it('flag on: a bound site row alone (webhook not landed) needs a phone', async () => {
+  it('flag on: a lapsed customer with a kept site row is not gated', async () => {
     vi.stubEnv('WEB_APP_PHONE_GATE', '1'); extra.sites = [{ slug: 'x' }];
-    expect(await get()).toMatchObject({ needsPhone: true, entitled: false });
+    stored.rows = [{ stripe_subscription_id: 's', status: 'canceled', created_at: '2026-10-01' }];
+    expect(await get()).toMatchObject({ needsPhone: false, entitled: false });
+  });
+  it('flag on: junk or non-E.164 values do not count as a saved phone (auth/metadata fallback)', async () => {
+    vi.stubEnv('WEB_APP_PHONE_GATE', '1'); vi.stubEnv('SUPABASE_URL', 'http://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
+    stored.rows = [{ stripe_subscription_id: 's', status: 'active', created_at: '2026-10-01' }];
+    const f = vi.fn(async () => ({ status: 200, json: async () => ({ phone: '', user_metadata: { phone: 'n/a' } }) }));
+    vi.stubGlobal('fetch', f);
+    expect(await get()).toMatchObject({ phone: null, needsPhone: true });
+    f.mockImplementation(async () => ({ status: 200, json: async () => ({ phone: '15552345678', user_metadata: { phone: 'n/a' } }) }));
+    expect(await get()).toMatchObject({ phone: '+15552345678', needsPhone: false });
+    f.mockImplementation(async () => ({ status: 200, json: async () => ({ phone: '', user_metadata: { phone: '(555) 234-5678' } }) }));
+    expect(await get()).toMatchObject({ phone: '+15552345678', needsPhone: false });
+    vi.unstubAllGlobals();
   });
   it('flag on: a user who never paid does not need one', async () => {
     vi.stubEnv('WEB_APP_PHONE_GATE', '1');

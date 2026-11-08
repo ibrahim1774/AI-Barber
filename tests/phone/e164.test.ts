@@ -23,6 +23,10 @@ describe('normalizePhoneE164', () => {
     expect(normalizePhoneE164('555234')).toEqual({ ok: false, reason: 'too_short' });
     expect(normalizePhoneE164('+123456')).toEqual({ ok: false, reason: 'too_short' });
   });
+  it('requires 11 digits for +1 numbers', () => {
+    expect(normalizePhoneE164('+1 555 234 567')).toEqual({ ok: false, reason: 'too_short' });
+    expect(normalizePhoneE164('+1 555 234 56789')).toEqual({ ok: false, reason: 'too_long' });
+  });
   it('reports too_long for + numbers over 15 digits', () => {
     expect(normalizePhoneE164('+1234567890123456')).toEqual({ ok: false, reason: 'too_long' });
   });

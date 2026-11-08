@@ -1,5 +1,6 @@
 // Live (Supabase REST + auth admin) wiring for lib/webApp/contactPhone.ts and the /me phone lookup.
 import { callerFrom, sbRest } from './webAppServer.js';
+import { normalizePhoneE164 } from '../phone/e164.js';
 import type { ContactPhoneDeps, AuthPhoneSync } from './contactPhone.js';
 
 const enc = encodeURIComponent;
@@ -44,22 +45,18 @@ export function liveContactPhoneDeps(mode: 'live' | 'test'): ContactPhoneDeps {
   };
 }
 
-/** The saved phone for /me: customer_contacts, then the auth phone, then user_metadata.phone. Fails soft to null. */
+/** The saved phone for /me as E.164: customer_contacts, then the auth phone, then user_metadata.phone (each validated). Fails soft to null. */
 export async function savedPhoneOf(userId: string): Promise<string | null> {
   try {
     const c = (await sbRest(`customer_contacts?user_id=eq.${enc(userId)}&select=phone_e164&limit=1`))?.[0]?.phone_e164;
-    if (typeof c === 'string' && c) return c;
+    const n = normalizePhoneE164(c);
+    if (n.ok) return n.e164;
   } catch (e: any) { console.error('[web-app phone] contacts read failed:', e?.status ?? 'err'); }
   try {
     const u = (await authAdmin(userId)).json;
-    const p = u?.phone || u?.user_metadata?.phone;
-    if (typeof p === 'string' && p.trim()) return p.trim();
+    // Supabase stores auth.phone without '+'. Junk (free-text sign-up phone) must not count as a saved phone.
+    const ap = typeof u?.phone === 'string' && /^\d+$/.test(u.phone.trim()) ? `+${u.phone.trim()}` : u?.phone;
+    for (const cand of [ap, u?.user_metadata?.phone]) { const n = normalizePhoneE164(cand); if (n.ok) return n.e164; }
   } catch { /* fail soft */ }
   return null;
-}
-
-/** True when the user has a bound (non-removed) site row in this mode: payment happened even if the webhook entitlement lags. */
-export async function hasBoundSite(userId: string, mode: 'live' | 'test'): Promise<boolean> {
-  try { return ((await sbRest(`web_app_sites?user_id=eq.${enc(userId)}&environment=eq.${mode}&removed_at=is.null&select=slug&limit=1`)) ?? []).length > 0; }
-  catch { return false; }
 }

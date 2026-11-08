@@ -20,6 +20,7 @@ export function normalizePhoneE164(raw: unknown, defaultRegion: 'US' = 'US'): Ph
     if (digits.length < 8) return { ok: false, reason: 'too_short' };
     if (digits.length > 15) return { ok: false, reason: 'too_long' };
     if (digits[0] === '0') return { ok: false, reason: 'invalid' };
+    if (digits[0] === '1' && digits.length !== 11) return { ok: false, reason: digits.length < 11 ? 'too_short' : 'too_long' };
     return { ok: true, e164: `+${digits}` };
   }
   void defaultRegion; // only US for now

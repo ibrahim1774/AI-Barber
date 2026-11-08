@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { needsPhone } from '../../lib/webApp/phoneGate.js';
 
-const base = { flag: true, phone: null as string | null, entitlementRows: [] as { status: string }[], hasCheckout: false };
+const base = { flag: true, phone: null as string | null, entitlementRows: [] as { status: string }[] };
 
 describe('needsPhone', () => {
   it('is false when the flag is off, whatever else is true', () => {
-    expect(needsPhone({ ...base, flag: false, entitlementRows: [{ status: 'active' }], hasCheckout: true })).toBe(false);
+    expect(needsPhone({ ...base, flag: false, entitlementRows: [{ status: 'active' }]})).toBe(false);
   });
   it('is true for an entitled user with no phone', () => {
     for (const status of ['active', 'trialing', 'past_due']) expect(needsPhone({ ...base, entitlementRows: [{ status }] })).toBe(true);
@@ -21,7 +21,7 @@ describe('needsPhone', () => {
     expect(needsPhone(base)).toBe(false);
     expect(needsPhone({ ...base, entitlementRows: [{ status: 'canceled' }, { status: 'incomplete_expired' }] })).toBe(false);
   });
-  it('is true for a just-paid user whose entitlement has not landed yet', () => {
-    expect(needsPhone({ ...base, hasCheckout: true })).toBe(true);
+  it('ignores any site/checkout signal: a lapsed or canceled customer is never gated', () => {
+    expect(needsPhone({ ...base, entitlementRows: [{ status: 'canceled' }, { status: 'unpaid' }, { status: 'incomplete' }] })).toBe(false);
   });
 });
