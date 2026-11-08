@@ -15,9 +15,12 @@ vi.mock('@supabase/supabase-js', () => ({
     };
   },
 }));
+const sweeps: string[] = [];
+const accounts: Record<string, string> = {};
 vi.mock('../../lib/admin/stripeSweep.js', () => ({
-  fetchAllCustomers: vi.fn(async () => { if (failing.has('stripe')) throw new Error('stripe 500'); return [{ id: 'cus_1' }]; }),
-  fetchAllSubscriptions: vi.fn(async () => []),
+  fetchAccountId: vi.fn(async (k: string) => { if (!accounts[k]) throw new Error('no'); return accounts[k]; }),
+  sweepCustomers: vi.fn(async (k: string) => { sweeps.push(`c:${k}`); if (failing.has('stripe')) throw new Error('stripe 500'); return { items: [{ id: 'cus_1' }], truncated: failing.has('truncate') }; }),
+  sweepSubscriptions: vi.fn(async (k: string) => { sweeps.push(`s:${k}`); return { items: [], truncated: false }; }),
 }));
 vi.mock('../../lib/ios/siteUrlFor.js', () => ({ stampedSiteUrl: async (s: string) => `https://${s}.vercel.app` }));
 
@@ -25,7 +28,7 @@ import { loadCustomerSources } from '../../lib/admin/customersLive.js';
 import { buildCustomerRows } from '../../lib/admin/customers.js';
 
 const ENV = { SUPABASE_URL: 'https://main.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k', STRIPE_SECRET_KEY: 'sk_test_x' };
-beforeEach(() => { failing.clear(); urls.length = 0; });
+beforeEach(() => { failing.clear(); urls.length = 0; sweeps.length = 0; for (const k of Object.keys(accounts)) delete accounts[k]; });
 
 describe('loadCustomerSources', () => {
   it('everything up: all sources ok, Pro skipped without env', async () => {
@@ -72,5 +75,27 @@ describe('loadCustomerSources', () => {
     expect(same.status.proStripe).toBe('skipped');
     const diff = await loadCustomerSources({ ...ENV, STRIPE_PRIMEHUB_PRO_SECRET_KEY: 'sk_test_pro' });
     expect(diff.status.proStripe).toBe('ok');
+  });
+
+  it('keys that open the same Stripe account are swept once (grouped by acct id), incl. the Pro key', async () => {
+    Object.assign(accounts, { sk_a: 'acct_1', sk_b: 'acct_1', sk_pro: 'acct_1', sk_other: 'acct_2' });
+    const s = await loadCustomerSources({ ...ENV, STRIPE_SECRET_KEY: 'sk_a', STRIPE_WEBAPP_SECRET_KEY: 'sk_b', STRIPE_PRIMEHUB_PRO_SECRET_KEY: 'sk_pro' });
+    expect(sweeps.sort()).toEqual(['c:sk_a', 's:sk_a']);
+    expect(s.status.proStripe).toBe('skipped');
+    sweeps.length = 0;
+    const t = await loadCustomerSources({ ...ENV, STRIPE_SECRET_KEY: 'sk_a', STRIPE_PRIMEHUB_PRO_SECRET_KEY: 'sk_other' });
+    expect(sweeps.sort()).toEqual(['c:sk_a', 'c:sk_other', 's:sk_a', 's:sk_other']);
+    expect(t.status.proStripe).toBe('ok');
+  });
+
+  it('when the account lookup fails, distinct keys are swept separately (fallback: key equality)', async () => {
+    await loadCustomerSources({ ...ENV, STRIPE_SECRET_KEY: 'sk_a', STRIPE_WEBAPP_SECRET_KEY: 'sk_b' });
+    expect(sweeps.filter((x) => x.startsWith('c:')).sort()).toEqual(['c:sk_a', 'c:sk_b']);
+  });
+
+  it('a truncated sweep reports stripe as partial', async () => {
+    failing.add('truncate');
+    const s = await loadCustomerSources(ENV);
+    expect(s.status.stripe).toBe('partial');
   });
 });

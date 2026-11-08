@@ -37,6 +37,11 @@ function make(over: any = {}) {
 }
 
 describe('/api/admin/customers', () => {
+  it('GET sets degraded when a source errored or is partial', async () => {
+    const m = make({ load: async () => ({ rows: [], sources: { auth: 'ok', stripe: 'partial' } }) });
+    expect((await m.call('GET')).body.degraded).toBe(true);
+  });
+
   it('401 without a token, 403 for a non-admin, 405 for other methods; no data either way', async () => {
     const m = make();
     const a = await m.call('GET', { token: null });
@@ -58,7 +63,7 @@ describe('/api/admin/customers', () => {
     const m = make();
     const first = await m.call('GET');
     expect(first.statusCode).toBe(200);
-    expect(first.body).toMatchObject({ ok: true, generatedAt: 1_000, rows: [{ key: 'main:u1' }], sources: { auth: 'ok' } });
+    expect(first.body).toMatchObject({ ok: true, generatedAt: 1_000, rows: [{ key: 'main:u1' }], sources: { auth: 'ok' }, degraded: false });
     expect(first.headers['Cache-Control']).toBe('no-store');
     m.clock.advance(30_000);
     await m.call('GET');

@@ -8,7 +8,7 @@ import { familyOf, isCustomDesignProduct } from './families.js';
 import { MANUAL_IDENTITIES } from './manualIdentities.js';
 import { normalizePhoneE164 } from '../phone/e164.js';
 
-export type SourceState = 'ok' | 'skipped' | 'error';
+export type SourceState = 'ok' | 'skipped' | 'error' | 'partial';
 export type SourceStatus = Record<string, SourceState>;
 
 export type CustomerFamily =
@@ -135,6 +135,29 @@ function showPhone(raw: string): string {
   return raw;
 }
 
+/** E.164 for a real phone, null for free text ("n/a", "123"). Used for every source except 'manual'. */
+function validPhone(raw: string | null): string | null {
+  if (!raw) return null;
+  const n = showPhone(raw);
+  return normalizePhoneE164(n).ok ? n : null;
+}
+
+/** First phone that really is a phone, in precedence order. 'manual' is exempt: it carries notes ("ig handle"). */
+function pickPhone(list: Array<[PhoneSource, string | null]>): { phone: string; source: PhoneSource } | null {
+  for (const [src, v] of list) {
+    if (!v) continue;
+    if (src === 'manual') return { phone: showPhone(v), source: src };
+    const ok = validPhone(v);
+    if (ok) return { phone: ok, source: src };
+  }
+  return null;
+}
+
+/** True when any source failed or was cut short: the UI shows a banner and the rows may be incomplete. */
+export function isDegraded(status: SourceStatus): boolean {
+  return Object.values(status || {}).some((v) => v === 'error' || v === 'partial');
+}
+
 function authKindOf(u: AuthUserLite | undefined, otpOnly = false): AuthKind {
   if (!u) return 'none';
   const providers = new Set<string>();
@@ -164,6 +187,7 @@ interface Candidate {
   subscriptionId: string | null;
   family: CustomerFamily;
   createdAt: number;
+  unknownProduct?: boolean;
 }
 
 function candidateRank(c: Candidate, order: AlsoPlan['source'][]): number[] {
@@ -219,7 +243,7 @@ function legacyCandidate(s: any): Candidate | null {
   return {
     source: 'legacy', plan: product, interval: s.plan?.interval ?? null, status,
     active: ACTIVE.has(status), test: s.livemode === false, customerId: subCustomerId(s), subscriptionId: s.id ?? null,
-    family, createdAt: typeof s.created === 'number' ? s.created * 1000 : 0,
+    family, createdAt: typeof s.created === 'number' ? s.created * 1000 : 0, unknownProduct: fam === 'unknown' && family === 'aibarber-legacy',
   };
 }
 
@@ -243,6 +267,11 @@ function pool(...ps: Array<StripePool | undefined>) {
 
 export async function buildCustomerRows(src: CustomerSources): Promise<CustomerRow[]> {
   const m = src.main;
+  // Degraded sources: rows that depend on a failed source would look authoritative and be wrong, so skip them.
+  const bad = (k: string) => src.status?.[k] === 'error';
+  const authDown = bad('auth');           // no accounts: every Stripe customer would look like "no account"
+  const webEntDown = bad('webEntitlements'); // web subs are not "owned": they would be reclassified as legacy
+  const proDown = bad('pro');             // Pro customers are unknown: they would show as main primehub-legacy
   const sp = pool(src.stripe, src.proStripe);
   const subsByCustomer = group(sp.subs, subCustomerId);
 
@@ -317,7 +346,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
     }
     for (const c of custs) {
       for (const s of subsByCustomer.get(c.id) ?? []) {
-        if (owned.has(s.id)) continue;
+        if (owned.has(s.id) || webEntDown) continue;
         const cand = legacyCandidate(s);
         if (cand) cands.push(cand);
       }
@@ -326,6 +355,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
     const legacySites = legacySitesByUser.get(uid) ?? [];
     const flags: string[] = [];
     if (primary?.test) flags.push('test');
+    if (primary?.unknownProduct) flags.push('unknown-product');
 
     const stripeCust = (primary?.customerId && sp.customers.get(primary.customerId)) || custs[0] || null;
     const owners = ownersByUser.get(uid) ?? [];
@@ -350,7 +380,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
       ['stripe', txt(stripeCust?.phone)],
       ['manual', txt(manual?.phone)],
     ];
-    const hit = phones.find(([, v]) => v);
+    const hit = pickPhone(phones);
 
     // slugs
     const webSlugs = new Set<string>();
@@ -384,8 +414,8 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
       siteUrl: null,
       siteSlug: webOrdered[0] ?? iosSlugs[0] ?? null,
       customDomain,
-      phone: hit ? showPhone(hit[1]!) : null,
-      phoneSource: hit ? hit[0] : null,
+      phone: hit ? hit.phone : null,
+      phoneSource: hit ? hit.source : null,
       plan: primary?.plan ?? null,
       interval: primary?.interval ?? null,
       status: primary?.status ?? null,
@@ -407,7 +437,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
   }
 
   // ---- Stripe-only customers: paid, but no account anywhere ---------------------------------------
-  for (const c of sp.customers.values()) {
+  for (const c of authDown || webEntDown ? [] : sp.customers.values()) {
     if (custToUser.has(c.id) || proCust.has(c.id)) continue;
     const cands: Candidate[] = [];
     for (const s of subsByCustomer.get(c.id) ?? []) {
@@ -416,17 +446,19 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
       if (cand) cands.push(cand);
     }
     if (!cands.length) continue; // no subscription: an abandoned checkout, not a customer
+    if (proDown && cands.every((x) => x.family === 'primehub-legacy')) continue; // may be a Pro customer
     const { primary, also } = pickPrimary(cands, ['legacy']);
     const email = lc(c.email);
     const manual = MANUAL_IDENTITIES[email ?? ''];
-    const ph = txt(c.phone) ?? txt(manual?.phone);
+    const hit = pickPhone([['stripe', txt(c.phone)], ['manual', txt(manual?.phone)]]);
     const flags = ['no-account'];
     if (primary?.test) flags.push('test');
+    if (primary?.unknownProduct) flags.push('unknown-product');
     const row: CustomerRow = {
       key: `main:stripe:${c.id}`, family: primary!.family, userId: null, project: 'main',
       contactEmail: email, stripeEmail: email, accountEmail: null, signupEmail: null,
       siteUrl: null, siteSlug: null, customDomain: null,
-      phone: ph ? showPhone(ph) : null, phoneSource: txt(c.phone) ? 'stripe' : manual?.phone ? 'manual' : null,
+      phone: hit ? hit.phone : null, phoneSource: hit ? hit.source : null,
       plan: primary!.plan, interval: primary!.interval, status: primary!.status,
       stripeCustomerId: c.id, stripeSubscriptionId: primary!.subscriptionId, stripeCustomerUrl: stripeUrl(c.id, !!primary!.test),
       signedUp: null, lastSignIn: null, authKind: 'none', flags, alsoPlans: also,
@@ -464,7 +496,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
         ['contact', txt(contact?.phone_e164)], ['auth', txt(u.phone)], ['metadata', txt(meta.phone) ?? txt(meta.phone_number)],
         ['site', txt(sitePhone?.contact_phone)], ['stripe', txt(stripeCust?.phone)],
       ];
-      const hit = phones.find(([, v]) => v);
+      const hit = pickPhone(phones);
       const domain = lc(primarySite?.custom_domain) ?? lc((domainsBySite.get(primarySite?.id) ?? [])[0]?.domain);
       const host = txt(primarySite?.published_host) ?? txt(primarySite?.deployed_host) ?? txt(primarySite?.vercel_host);
       const flags: string[] = [];
@@ -474,7 +506,7 @@ export async function buildCustomerRows(src: CustomerSources): Promise<CustomerR
         contactEmail: stripeEmail ?? account, stripeEmail, accountEmail: account, signupEmail: signupEmailOf(u, null),
         siteUrl: domain ? `https://${domain}` : host ? `https://${host}` : null,
         siteSlug: txt(primarySite?.slug), customDomain: domain,
-        phone: hit ? showPhone(hit[1]!) : null, phoneSource: hit ? hit[0] : null,
+        phone: hit ? hit.phone : null, phoneSource: hit ? hit.source : null,
         plan: primary?.plan ?? null, interval: primary?.interval ?? null, status: primary?.status ?? null,
         stripeCustomerId: custId, stripeSubscriptionId: primary?.subscriptionId ?? null, stripeCustomerUrl: stripeUrl(custId, !!primary?.test),
         signedUp: iso(u.created_at), lastSignIn: iso(u.last_sign_in_at), authKind: authKindOf(u, true), flags, alsoPlans: also,

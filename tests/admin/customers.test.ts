@@ -198,4 +198,35 @@ describe('buildCustomerRows', () => {
     const s = JSON.stringify(rows);
     for (const bad of ['hunter2', 'hunter3', 'sk_live_x', 'APPSECRET']) expect(s).not.toContain(bad);
   });
+
+  it('free-text phones are skipped down the chain; a manual note is kept; all-junk gives no-phone', async () => {
+    const rows = await buildCustomerRows(sources({
+      main: { users: [user('u', 'x@x.com', { user_metadata: { phone: 'n/a' } }), user('v', 'v@x.com', { user_metadata: { phone: '123' } })],
+        legacySites: [{ user_id: 'u', phone: '2025550009' }] },
+    }));
+    expect(byKey(rows, 'main:u')).toMatchObject({ phone: '+12025550009', phoneSource: 'legacy-site' });
+    expect(byKey(rows, 'main:v')).toMatchObject({ phone: null, phoneSource: null });
+    expect(byKey(rows, 'main:v').flags).toContain('no-phone');
+  });
+
+  it('degraded sources: no Stripe-only rows when auth failed, no legacy reclassification when entitlements failed, no primehub-legacy when Pro failed', async () => {
+    const stripe = { customers: [{ id: 'c1', email: 'a@x.com' }, { id: 'c2', email: 'b@x.com' }], subs: [sub('s1', 'c1', 'PrimeHub Website'), sub('s2', 'c2', 'AI Barber Website')] };
+    expect(await buildCustomerRows(sources({ stripe, status: { auth: 'error' } }))).toEqual([]);
+    expect(await buildCustomerRows(sources({ stripe, status: { auth: 'ok', webEntitlements: 'error' } }))).toEqual([]);
+    const pro = await buildCustomerRows(sources({ stripe, status: { auth: 'ok', pro: 'error' } }));
+    expect(pro.map((r) => r.family)).toEqual(['aibarber-legacy']);
+    // web sub whose entitlement table is down must not appear as a legacy plan on the user
+    const rows = await buildCustomerRows(sources({
+      main: { users: [user('u1', 'a@x.com')], webCustomers: [{ user_id: 'u1', stripe_customer_id: 'c2' }] },
+      stripe, status: { auth: 'ok', webEntitlements: 'error' },
+    }));
+    expect(rows[0].plan).toBeNull();
+  });
+
+  it('isDegraded: error and partial count, skipped and ok do not', async () => {
+    const { isDegraded } = await import('../../lib/admin/customers.js');
+    expect(isDegraded({ a: 'ok', b: 'skipped' })).toBe(false);
+    expect(isDegraded({ a: 'ok', b: 'partial' })).toBe(true);
+    expect(isDegraded({ b: 'error' })).toBe(true);
+  });
 });

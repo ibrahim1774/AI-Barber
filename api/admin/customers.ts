@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { checkAdmin, supabaseEmailOf, type EmailOfToken } from '../../lib/admin/auth.js';
 import { adminSupabase } from '../../lib/admin/live.js';
-import { buildCustomerRows, type CustomerRow, type SourceStatus } from '../../lib/admin/customers.js';
+import { buildCustomerRows, isDegraded, type CustomerRow, type SourceStatus } from '../../lib/admin/customers.js';
 import { loadCustomerSources } from '../../lib/admin/customersLive.js';
 import { APP_ORIGIN } from '../../lib/webApp/webAppServer.js';
 import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } from '../../lib/bookings/rateLimit.js';
@@ -11,7 +11,8 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *
  * Auth: Authorization: Bearer <Supabase access token> of ADMIN_EMAIL (lib/admin/auth.ts).
  *
- * GET  [?refresh=1]             → { ok, generatedAt, rows: CustomerRow[], sources }   60 s cache
+ * GET  [?refresh=1]             → { ok, generatedAt, rows: CustomerRow[], sources, degraded }   60 s cache
+ *                               degraded = any source 'error' or 'partial' (rows may be missing)
  * POST { action:'send-reset', userId } → { ok, sentTo }  Supabase password-reset email for a main-project
  *                                        account; the link returns to the web app's /app/reset-password.
  *
@@ -83,7 +84,7 @@ export function makeAdminCustomersHandler(d: AdminCustomersHandlerDeps) {
       if (req.method === 'GET') {
         const refresh = String(one(req.query?.refresh) ?? '') === '1';
         const c = await current(refresh);
-        return res.status(200).json({ ok: true, generatedAt: c.at, rows: c.payload.rows, sources: c.payload.sources });
+        return res.status(200).json({ ok: true, generatedAt: c.at, rows: c.payload.rows, sources: c.payload.sources, degraded: isDegraded(c.payload.sources) });
       }
 
       let body: any = req.body;
