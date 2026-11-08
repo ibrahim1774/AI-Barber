@@ -96,16 +96,16 @@ describe('publishSite deploys every page', () => {
     expect(arg.sitemap).toContain('<loc>https://freshcuts.com/shop</loc>');
     expect(arg.pages[0].html).toContain('href="/book"');
   });
-  it('no stored base (first publish, or the read fails): pages ship with no canonical and no sitemap', async () => {
+  it('FIX2: no live and no stored base (the FIRST publish, or the read fails): the default https://<slug>.vercel.app is the base, so canonical + sitemap ship', async () => {
     await writePendingSite('fresh-cuts', pending());
     await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps(null) });
-    expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
+    expect(deployRenderedSite.mock.calls[0][0].sitemap).toContain('<loc>https://fresh-cuts.vercel.app/about/</loc>');
+    expect(deployRenderedSite.mock.calls[0][0].pages.some((p: any) => p.html.includes('<link rel="canonical" href="https://fresh-cuts.vercel.app/'))).toBe(true);
     deployRenderedSite.mockClear();
     const failing = { ...deps(null), readBase: vi.fn(async () => { throw new Error('db down'); }) };
     const out = await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: failing });
     expect(out.ok).toBe(true);
-    expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
-    expect(deployRenderedSite.mock.calls[0][0].pages.every((p: any) => !p.html.includes('rel="canonical"'))).toBe(true);
+    expect(deployRenderedSite.mock.calls[0][0].sitemap).toContain('https://fresh-cuts.vercel.app/about/');
   });
   it('robots.txt travels with the sitemap, for web-created pages v2 sites only (step 2)', async () => {
     await writePendingSite('fresh-cuts', pending());
@@ -122,8 +122,8 @@ describe('publishSite deploys every page', () => {
     expect(deployRenderedSite.mock.calls[0][0].robots).toBe('User-agent: *\nAllow: /\nSitemap: https://freshcuts.com/sitemap.xml\n');
     deployRenderedSite.mockClear();
     await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: deps(null) });
-    expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
-    expect(deployRenderedSite.mock.calls[0][0].robots).toBeNull(); // no base, no sitemap, no robots.txt
+    expect(deployRenderedSite.mock.calls[0][0].sitemap).toContain('https://fresh-cuts.vercel.app/');
+    expect(deployRenderedSite.mock.calls[0][0].robots).toBe('User-agent: *\nAllow: /\nSitemap: https://fresh-cuts.vercel.app/sitemap.xml\n'); // first publish: default address
   });
   it('canonical uses the base valid at deploy time, not the one stored by the previous publish (P3b review S3)', async () => {
     await writePendingSite('fresh-cuts', pending());
@@ -143,15 +143,14 @@ describe('publishSite deploys every page', () => {
     expect(arg.pages.every((p: any) => p.html.includes('<link rel="canonical" href="https://fresh-cuts.vercel.app/'))).toBe(true);
     expect(arg.sitemap).toContain('https://fresh-cuts.vercel.app/about/');
   });
-  it('a failed domains lookup falls back to the stored base; with none stored there is no canonical', async () => {
+  it('a failed domains lookup falls back to the stored base; with none stored the default address is used', async () => {
     await writePendingSite('fresh-cuts', pending());
     const down = (base: string | null) => ({ ...deps(base), projectDomains: vi.fn(async () => { throw new Error('vercel down'); }) }) as any;
     await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: down('https://freshcuts.com') });
     expect(deployRenderedSite.mock.calls[0][0].sitemap).toContain('https://freshcuts.com/about/');
     deployRenderedSite.mockClear();
     await publishSite('fresh-cuts', { force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }), siteBase: down(null) });
-    expect(deployRenderedSite.mock.calls[0][0].sitemap).toBeNull();
-    expect(deployRenderedSite.mock.calls[0][0].pages.every((p: any) => !p.html.includes('rel="canonical"'))).toBe(true);
+    expect(deployRenderedSite.mock.calls[0][0].sitemap).toContain('https://fresh-cuts.vercel.app/about/');
   });
   it('a single-page site (no pages field) makes no domain lookup and ships no canonical or sitemap', async () => {
     const p = pending(); delete p.siteData.pages;

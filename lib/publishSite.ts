@@ -28,6 +28,7 @@ import { movedMap, pagePathsOf, planPublishedPaths, redirectsApply, type Publish
 import { defaultPathsStore, type PathsStore } from './publishedPathsStore.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
 import { vercelProjectExists } from './ios/slug.js';
+import { siteUrlOf } from './ios/siteAddress.js';
 import type { SiteOwnerStore } from './siteOwners.js';
 import {
   findShopForSite, liveSiteBaseDeps, refreshSiteBase, resolvePublicBase, withSubpageLinks,
@@ -601,9 +602,15 @@ export async function publishSite(
   const publicBase = (): Promise<string | null> => (baseMemo ??= (async () => {
     const live = await resolvePublicBase(safe, siteBaseDeps);
     if (live) return live;
-    if (!shop) return null;
-    try { return (await siteBaseDeps.readBase?.(shop.id)) ?? null; }
-    catch (e: any) { console.warn(`[Publish] ${safe}: reading the stored site base failed (${e?.message || e}); no canonical links this time`); return null; }
+    let stored: string | null = null;
+    if (shop) {
+      try { stored = (await siteBaseDeps.readBase?.(shop.id)) ?? null; }
+      catch (e: any) { console.warn(`[Publish] ${safe}: reading the stored site base failed (${e?.message || e}); using the default address`); }
+    }
+    // Nothing live and nothing stored: the FIRST deploy (its Vercel project does not exist yet, so there are no domains to read). The
+    // site's deterministic default address is its base, so sitemap.xml, robots.txt, canonical links and JSON-LD ship from the first
+    // publish. Any site with a custom domain has had it stored by an earlier publish, which wins above.
+    return stored ?? siteUrlOf(safe);
   })());
 
   try {
