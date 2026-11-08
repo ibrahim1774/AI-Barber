@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { checkAdmin, supabaseEmailOf } from '../lib/admin/auth.js';
 import { MANUAL_IDENTITIES, CLIENT_SITE_CONTACTS } from '../lib/admin/manualIdentities.js';
 import { fetchAllSubscriptions } from '../lib/admin/stripeSweep.js';
+import { familyOf, isCustomDesignProduct } from '../lib/admin/families.js';
 
 /*
  * /admin data feed — one JSON payload joining Stripe subscriptions,
@@ -35,13 +36,6 @@ interface SubRow {
   isCustomDesign: boolean;
   paidCount: number;       // successfully paid non-zero invoices
 }
-
-const familyOf = (product: string): SubRow['family'] => {
-  if (/ariya|haelabs|faceforge|nurplix/i.test(product)) return 'other-biz';
-  if (/aibarber|prime barber/i.test(product)) return 'aibarber';
-  if (/primehub/i.test(product)) return 'primehub';
-  return 'unknown';
-};
 
 // Count of successfully-paid, non-zero invoices per subscription — one
 // global sweep over paid invoices instead of a call per subscription.
@@ -164,7 +158,7 @@ export default async function handler(req: any, res: any) {
         // it (receipts shouldn't advertise the price test), so this is the
         // signal — present only on subscriptions created after that change.
         page: s.metadata?.page || '',
-        isCustomDesign: /custom website design|website hosting \(custom\)/i.test(product),
+        isCustomDesign: isCustomDesignProduct(product),
         paidCount: paidCounts[s.id] || 0,
         account: accountByEmail.get(email) || null,
         manualPhone: MANUAL_IDENTITIES[email]?.phone || null,
