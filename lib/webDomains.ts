@@ -560,6 +560,8 @@ export interface PanelDeps {
   getSubscription(id: string): Promise<any | null>;
   /** POST /v1/billing_portal/sessions → { url }. */
   createPortalSession(customer: string, returnUrl: string, subscriptionId: string): Promise<{ ok: boolean; data: any }>;
+  /** POST /v1/subscriptions/<id> cancel_at_period_end=<bool> (Idempotency-Key). Only the one domain subscription. */
+  setRenewal?(subscriptionId: string, cancelAtPeriodEnd: boolean, idempotencyKey: string): Promise<{ ok: boolean; status: number; data: any }>;
 }
 
 /**
@@ -612,4 +614,39 @@ export async function webDomainPortal(body: any, authorization: unknown, returnU
   const r = await deps.createPortalSession(customer, returnUrl, subId);
   if (!r.ok || !r.data?.url) return { status: 502, body: { error: 'portal-unavailable' } };
   return { status: 200, body: { url: r.data.url } };
+}
+
+/**
+ * { siteId } + the owner's bearer → turn renewal off (cancel_at_period_end=true) or back on (false) on
+ * THIS site's domain subscription only: the hosting plan is never touched. The domain keeps working
+ * until the paid year ends. Same owner / row / mode rules as the portal: refunded, empty id, other
+ * Stripe mode → 404. Returns the fresh status body.
+ */
+export async function webDomainRenewal(action: 'cancel-renewal' | 'resume-renewal', body: any, authorization: unknown, deps: PanelDeps, now: () => number = Date.now): Promise<WebResult> {
+  const auth = await deps.authorize(body?.siteId, authorization);
+  if (!auth.ok || !auth.target) return denied(auth);
+  const row = await webRowFor(auth.target, deps);
+  if (!row || row.refunded_at) return { status: 404, body: { error: 'no-domain-subscription' } };
+  const subId = row.original_transaction_id.replace(/^stripe:/, '');
+  if (!subId) return { status: 404, body: { error: 'no-domain-subscription' } };
+  const sub = await deps.getSubscription(subId);
+  if (!sub) return { status: 404, body: { error: 'no-domain-subscription' } };
+  const cancel = action === 'cancel-renewal';
+  const periodEnd = Number(sub.current_period_end ?? sub.items?.data?.[0]?.current_period_end ?? 0) * 1000;
+  const active = sub.status === 'active' || sub.status === 'trialing';
+  if (!active || (periodEnd && periodEnd <= now())) {
+    return { status: 409, body: { error: cancel ? 'not-active' : 'not-resumable' } };
+  }
+  if (!deps.setRenewal) return { status: 502, body: { error: 'renewal-unavailable' } };
+  const idem = `domain-renewal-${subId}-${cancel ? 'off' : 'on'}-${Math.floor(now() / 60_000)}`;
+  const r = await deps.setRenewal(subId, cancel, idem);
+  if (!r.ok) {
+    console.error(`[web-domain] ${action} failed: stripe ${r.status} ${r.data?.error?.code || r.data?.error?.type || 'unknown'}`);
+    return { status: 502, body: { error: 'renewal-unavailable' } };
+  }
+  const want = !cancel;
+  const patch: Partial<typeof row> = { auto_renew: want };
+  if (row.state === 'live' || row.state === 'manual_live') patch.auto_renew_synced = false;
+  const updated = (await deps.flow.repo.update(row.original_transaction_id, [row.state], patch)) ?? { ...row, ...patch };
+  return { status: 200, body: { ...webStatusBody(updated) } };
 }

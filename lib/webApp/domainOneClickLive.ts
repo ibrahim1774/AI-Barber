@@ -66,6 +66,15 @@ export function livePanelDeps(authorize: AuthorizeOwner): PanelDeps {
     authorize,
     flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
     getSubscription: stripeSubscription,
+    async setRenewal(subscriptionId, cancelAtPeriodEnd, idempotencyKey) {
+      const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION, 'Idempotency-Key': idempotencyKey },
+        body: new URLSearchParams({ cancel_at_period_end: String(cancelAtPeriodEnd) }).toString(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
+    },
     async createPortalSession(customer, returnUrl, subscriptionId) {
       const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
         method: 'POST',

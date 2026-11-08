@@ -5,7 +5,7 @@ import {
   DOMAIN_DISCLOSURE, DOMAIN_PRICE_LABEL, clearDomainCheckout, comDomainFrom, domainSiteId, panelView,
   rememberDomainCheckout, takeDomainCheckout, STEP_LABEL,
 } from '../services/domainUi';
-import { domainPortalForm, webDomainPanelStatus, webDomainPortal } from '../lib/webDomains';
+import { domainPortalForm, webDomainPanelStatus, webDomainPortal, webDomainRenewal } from '../lib/webDomains';
 import { fakeDomainsRepo, blankRow } from './ios/fakeDomainsRepo';
 
 const src = fs.readFileSync(path.join(process.cwd(), 'components/DomainManager.tsx'), 'utf8');
@@ -136,5 +136,69 @@ describe('api/web-domain (owner only)', () => {
       'flow_data[after_completion][type]': 'redirect',
       'flow_data[after_completion][redirect][return_url]': 'https://app.test/app/domain',
     });
+  });
+});
+
+describe('webDomainRenewal: server-side turn renewal off / on for the one domain subscription', () => {
+  const NOW = Date.parse('2026-11-08T00:00:00Z');
+  const future = Math.floor(Date.parse('2027-03-01T00:00:00Z') / 1000);
+  const authorize = async (siteId: unknown, auth: unknown) =>
+    auth === 'Bearer owner' && siteId === 'fresh-cuts' ? { ok: true, target: 'fresh-cuts' } : { ok: false, status: 403 as const, error: 'not-authorized' };
+  const setup = (over: { sub?: any; row?: any; set?: any } = {}) => {
+    const repo = fakeDomainsRepo();
+    repo.rows.set('stripe:sub_1', blankRow({ original_transaction_id: 'stripe:sub_1', source: 'stripe', site_slug: 'fresh-cuts', domain: 'freshcuts.com', state: 'live', auto_renew: true, paid_until: '2027-03-01T00:00:00Z', ...over.row }));
+    const setRenewal = vi.fn(over.set ?? (async () => ({ ok: true, status: 200, data: {} })));
+    const getSubscription = vi.fn(async () => (over.sub === undefined ? { customer: 'cus_1', status: 'active', current_period_end: future } : over.sub));
+    return { repo, setRenewal, getSubscription, deps: { authorize, flow: { repo }, getSubscription, createPortalSession: vi.fn(), setRenewal } as any };
+  };
+
+  it('cancel: sets cancel_at_period_end=true on the domain sub only, row auto_renew off, fresh status', async () => {
+    const { deps, setRenewal, repo } = setup();
+    const r = await webDomainRenewal('cancel-renewal', { siteId: 'fresh-cuts' }, 'Bearer owner', deps, () => NOW);
+    expect(setRenewal).toHaveBeenCalledWith('sub_1', true, expect.stringMatching(/^domain-renewal-sub_1-off-/));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ domain: 'freshcuts.com', autoRenew: false });
+    expect(String((r.body as any).state)).toMatch(/^cancelled-until:/);
+    expect(repo.rows.get('stripe:sub_1')!.auto_renew).toBe(false);
+  });
+
+  it('resume: sets cancel_at_period_end=false and turns renewal back on', async () => {
+    const { deps, setRenewal } = setup({ row: { auto_renew: false } });
+    const r = await webDomainRenewal('resume-renewal', { siteId: 'fresh-cuts' }, 'Bearer owner', deps, () => NOW);
+    expect(setRenewal).toHaveBeenCalledWith('sub_1', false, expect.stringMatching(/^domain-renewal-sub_1-on-/));
+    expect(r).toMatchObject({ status: 200, body: { state: 'live', autoRenew: true } });
+  });
+
+  it('a wrong owner is 403 and nothing is sent', async () => {
+    const { deps, setRenewal } = setup();
+    expect((await webDomainRenewal('cancel-renewal', { siteId: 'fresh-cuts' }, 'Bearer x', deps, () => NOW)).status).toBe(403);
+    expect(setRenewal).not.toHaveBeenCalled();
+  });
+
+  it('a refunded row, an empty sub id and a sub from the other mode are 404', async () => {
+    for (const o of [{ row: { state: 'failed', refunded_at: '2026-11-01T00:00:00Z' } }, { row: { original_transaction_id: 'stripe:' } }, { sub: null }]) {
+      const { deps, setRenewal } = setup(o as any);
+      expect((await webDomainRenewal('cancel-renewal', { siteId: 'fresh-cuts' }, 'Bearer owner', deps, () => NOW)).status).toBe(404);
+      expect(setRenewal).not.toHaveBeenCalled();
+    }
+  });
+
+  it('resume is 409 not-resumable when the sub is cancelled or past its period end', async () => {
+    for (const sub of [{ customer: 'c', status: 'canceled', current_period_end: future }, { customer: 'c', status: 'active', current_period_end: Math.floor(NOW / 1000) - 10 }]) {
+      const { deps, setRenewal } = setup({ sub });
+      expect(await webDomainRenewal('resume-renewal', { siteId: 'fresh-cuts' }, 'Bearer owner', deps, () => NOW)).toEqual({ status: 409, body: { error: 'not-resumable' } });
+      expect(setRenewal).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a Stripe error is 502, logs the code (no PII) and leaves the row alone', async () => {
+    const { deps, repo } = setup({ set: async () => ({ ok: false, status: 400, data: { error: { code: 'resource_missing', message: 'secret@x.com' } } }) });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await webDomainRenewal('cancel-renewal', { siteId: 'fresh-cuts' }, 'Bearer owner', deps, () => NOW);
+    expect(r).toEqual({ status: 502, body: { error: 'renewal-unavailable' } });
+    expect(log.mock.calls.join(' ')).toContain('resource_missing');
+    expect(log.mock.calls.join(' ')).not.toContain('secret@x.com');
+    expect(repo.rows.get('stripe:sub_1')!.auto_renew).toBe(true);
+    log.mockRestore();
   });
 });

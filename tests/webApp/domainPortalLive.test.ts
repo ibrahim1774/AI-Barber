@@ -26,3 +26,18 @@ describe('livePanelDeps.createPortalSession', () => {
     });
   });
 });
+
+describe('livePanelDeps.setRenewal', () => {
+  it('POSTs cancel_at_period_end to the one subscription with an Idempotency-Key', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const deps = livePanelDeps((async () => ({ ok: false })) as any);
+    await deps.setRenewal!('sub_dom', true, 'k1');
+    const [url, init] = fetchMock.mock.calls[0] as any;
+    expect(url).toBe('https://api.stripe.com/v1/subscriptions/sub_dom');
+    expect(init.method).toBe('POST');
+    expect(init.headers['Idempotency-Key']).toBe('k1');
+    expect(init.headers['Stripe-Version']).toBe('2024-06-20');
+    expect(Object.fromEntries(new URLSearchParams(init.body))).toEqual({ cancel_at_period_end: 'true' });
+  });
+});

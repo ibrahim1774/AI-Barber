@@ -7,6 +7,7 @@ const m = vi.hoisted(() => ({
   createDomainCheckout: vi.fn(async () => ({ status: 200, body: { url: 'https://checkout.stripe.com/x' } })),
   purchaseDomain: vi.fn(async () => ({ status: 202, body: { state: 'registering' } })),
   webDomainPanelStatus: vi.fn(async () => ({ status: 200, body: { state: 'none' } })),
+  webDomainRenewal: vi.fn(async () => ({ status: 200, body: { autoRenew: false } })),
   webDomainPortal: vi.fn(async () => ({ status: 200, body: { url: 'https://billing.stripe.com/p' } })),
 }));
 vi.mock('../../lib/webDomains.js', () => m);
@@ -60,13 +61,16 @@ describe('api/web-app/domain', () => {
   it('routes each action to its function and answers its status and body; unknown action 400', async () => {
     const pairs: Array<[string, keyof typeof m, number]> = [
       ['card', 'oneClickCard', 200], ['buy', 'oneClickDomainPurchase', 402], ['checkout', 'createDomainCheckout', 200],
-      ['purchase', 'purchaseDomain', 202], ['status', 'webDomainPanelStatus', 200], ['portal', 'webDomainPortal', 200],
+      ['purchase', 'purchaseDomain', 202], ['status', 'webDomainPanelStatus', 200], ['portal', 'webDomainPortal', 200], ['cancel-renewal', 'webDomainRenewal', 200],
     ];
     for (const [action, fn, status] of pairs) {
       const res = await call({ action, siteId: 'fresh-cuts', domain: 'freshcuts.com', sessionId: 'cs_x' });
       expect(m[fn]).toHaveBeenCalledTimes(1);
       expect(res.status).toHaveBeenCalledWith(status);
     }
+    const resume = await call({ action: 'resume-renewal', siteId: 'fresh-cuts' });
+    expect((m.webDomainRenewal.mock.calls.at(-1) as any[])[0]).toBe('resume-renewal');
+    expect(resume.status).toHaveBeenCalledWith(200);
     expect((await call({ action: 'nope' })).status).toHaveBeenCalledWith(400);
   });
 
