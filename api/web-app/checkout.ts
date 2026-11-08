@@ -95,6 +95,9 @@ export default async function handler(req: any, res: any) {
           && (m.site_slug ?? '') === slug && !m.intent_id && m.app === WEB_APP_TAG && m.user_id === caller.id
           && Number(prev.expires_at) > Math.floor(Date.now() / 1000) + 300) return res.status(200).json({ url: prev.url });
       }
+      // Not reused: close the old declined tab FIRST. An expired session cannot be paid afterwards, so nothing can complete behind the
+      // recheck below; if it had already completed, the expire fails (swallowed) and the recheck sees it.
+      if (declinedPrev) await expireSession(declinedPrev);
     }
 
     // Existing Stripe billing is checked before superseding any recoverable publish submission.
@@ -137,7 +140,7 @@ export default async function handler(req: any, res: any) {
     if (session?.status !== 'open' || !session?.url) return res.status(409).json({ error: 'payment_processing' });
     if (declined) {
       // The declined tab's session may have been paid while this one was being made: never hand out a second payable page.
-      let paidMeanwhile = false;
+      let paidMeanwhile = false; let inFlight = false;
       try {
         if (declinedPrev && declinedPrev !== session.id) {
           const old = await stripeCall(`checkout/sessions/${encodeURIComponent(declinedPrev)}`, null, 'GET').catch(() => null);
@@ -146,15 +149,22 @@ export default async function handler(req: any, res: any) {
         for (const c of toCheck) {
           const again = await stripeCall(`subscriptions?customer=${encodeURIComponent(c)}&status=all&limit=20`, null, 'GET');
           if ((again?.data ?? []).some((x: any) => x?.metadata?.app === WEB_APP_TAG && (isEntitledStatus(String(x.status)) || x.status === 'unpaid' || x.status === 'paused'))) paidMeanwhile = true;
+          // An old-tab retry still mid-3DS or processing (incomplete, not declined) may yet succeed: do not hand out a second payable page.
+          const stale = Math.floor(Date.now() / 1000) - 3600;
+          for (const x of (again?.data ?? []).filter((y: any) => y?.metadata?.app === WEB_APP_TAG && y.status === 'incomplete' && Number(y.created) > stale)) {
+            const st = await paymentState(x);
+            if (st === 'unknown') throw new Error('payment state unreadable');
+            if (st === 'processing') inFlight = true;
+          }
         }
       } catch (e: any) {
         await stripeCall(`checkout/sessions/${enc(session.id)}/expire`, {}, 'POST').catch(() => {});
         console.error('[web-app checkout] post-create recheck failed:', e?.message || e);
         return res.status(503).json({ error: 'try_again' });
       }
-      if (paidMeanwhile) {
+      if (paidMeanwhile || inFlight) {
         await stripeCall(`checkout/sessions/${enc(session.id)}/expire`, {}, 'POST').catch(() => {});
-        return res.status(409).json({ error: 'already_subscribed' });
+        return res.status(409).json({ error: paidMeanwhile ? 'already_subscribed' : 'payment_processing' });
       }
     }
     if (plan) {

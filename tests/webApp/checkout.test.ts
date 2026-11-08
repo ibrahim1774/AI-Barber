@@ -275,6 +275,28 @@ describe('POST /api/web-app/checkout', () => {
     expect(src).toContain("const STRIPE_API_VERSION = '2024-06-20'");
   });
 
+  it('R2: after a decline the old Checkout session is expired BEFORE the new one is created', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } });
+    expect((await run()).code).toBe(200);
+    const iExp = stripe.calls.findIndex((c) => c.path === 'checkout/sessions/cs_open/expire');
+    const iNew = stripe.calls.findIndex((c) => c.path === 'checkout/sessions' && c.method === 'POST');
+    expect(iExp).toBeGreaterThanOrEqual(0); expect(iExp).toBeLessThan(iNew);
+  });
+
+  it('R2: the old tab retried and is now processing / mid-3DS (incomplete, not declined): new session expired, 409 payment_processing', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } });
+    const h = stripe.handler; let listed = 0;
+    stripe.handler = (p: string, ...rest: any[]) => {
+      if (p.startsWith('subscriptions?') && ++listed === 2) { subs = incompleteWith({ id: 'pi_1', status: 'requires_action' }); return { data: subs }; }
+      return h(p, ...rest);
+    };
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
+    expect(stripe.calls.some((c) => c.path === 'checkout/sessions/cs_new/expire')).toBe(true);
+  });
+
   it('L1: the declined tab paid while the new session was being made: the new session is expired and 409 already_subscribed', async () => {
     subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
     openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } }); // forces a new session
