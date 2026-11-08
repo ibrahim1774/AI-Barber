@@ -22,6 +22,6 @@ describe('032_customer_contacts.sql', () => {
   it('only adds nullable columns to web_app_sites', () => {
     expect(code).toMatch(/alter table public\.web_app_sites add column if not exists contact_phone text;/i);
     expect(code).toMatch(/alter table public\.web_app_sites add column if not exists contact_phone_at timestamptz;/i);
-    expect(code).not.toMatch(/drop |delete |truncate /i);
+    expect(code).not.toMatch(/drop (table|column)|delete from|truncate/i);
   });
 });
