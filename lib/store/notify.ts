@@ -9,7 +9,7 @@ import type { StoreNotifyEvent } from './types.js';
 import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
 /** Store money is always two decimals ($18.00), unlike bookings' dollars(). */
-export const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+export const dollars = (cents: number) => `$${(cents / 100).toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ',')}`;
 
 /**
  * Store notifications: owner pushes (Expo) and customer emails (SMTP), in the Phase 2 layout.

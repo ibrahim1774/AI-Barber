@@ -10,7 +10,9 @@ export { manualLink, manualMethods, METHOD_LABEL, safeAccent, onAccent, telUrl, 
 /** Store money: always two decimals ($18.00); '' when there is no amount. */
 export function formatMoney(cents: number | null | undefined): string {
   if (cents == null) return '';
-  return `$${(cents / 100).toFixed(2)}`;
+  const abs = Math.abs(Math.round(cents));
+  const whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${cents < 0 ? '-' : ''}$${whole}.${String(abs % 100).padStart(2, '0')}`;
 }
 
 /** Mirrors lib/store/payments.ts: 0 or 1 → "Ships within 1 day", 2+ → "Ships within N days", unset → no line (null). */

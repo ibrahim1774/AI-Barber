@@ -32,6 +32,8 @@ describe('formatMoney (store)', () => {
     expect(formatMoney(1250)).toBe('$12.50');
     expect(formatMoney(1800)).toBe('$18.00');
     expect(formatMoney(0)).toBe('$0.00');
+    expect(formatMoney(125000)).toBe('$1,250.00');
+    expect(formatMoney(100050)).toBe('$1,000.50');
     expect(formatMoney(null)).toBe('');
   });
 });
