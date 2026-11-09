@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { CustomerFamily, CustomerRow, SourceStatus } from '../lib/admin/customers';
 import {
-  FAMILY_LABEL, FAMILY_ORDER, canSendReset, countsByFamily, emailCells, filterRows, isTestRow, planLabel, safeHttpUrl, safeStripeUrl, skippedSources, sourceBanner,
+  FAMILY_LABEL, FAMILY_ORDER, RESET_COOLDOWN_MS, canSendReset, countsByFamily, emailCells, filterRows, isTestRow, planLabel, resetFailedText, resetSecondsLeft, safeHttpUrl, safeStripeUrl, skippedSources, sourceBanner,
 } from '../lib/admin/customersView';
 
 /*
@@ -108,6 +108,15 @@ export const AdminCustomers: React.FC = () => {
   const [copied, setCopied] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
+  // Per-row reset cooldown: Supabase allows one reset email per address a minute, so a second click would only fail.
+  const [resetUntil, setResetUntil] = useState<Record<string, number>>({});
+  const [tick, setTick] = useState(Date.now());
+  useEffect(() => {
+    if (!Object.values(resetUntil).some((u) => u > Date.now())) return;
+    const id = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [resetUntil]);
+
   const load = async (refresh = false) => {
     setLoading(true);
     setErr('');
@@ -143,9 +152,12 @@ export const AdminCustomers: React.FC = () => {
     setNotice(null);
     try {
       const out = await call('POST', '', { action: 'send-reset', userId: r.userId });
+      setResetUntil((m) => ({ ...m, [r.userId]: Date.now() + RESET_COOLDOWN_MS }));
+      setTick(Date.now());
       setNotice({ kind: 'ok', text: `Reset email sent to ${out.sentTo}.` });
     } catch (e: any) {
-      setNotice({ kind: 'err', text: `Reset failed: ${e?.message || 'error'}` });
+      if (e?.message === 'rate-limited') { setResetUntil((m) => ({ ...m, [r.userId]: Date.now() + RESET_COOLDOWN_MS })); setTick(Date.now()); }
+      setNotice({ kind: 'err', text: resetFailedText(e?.message) });
     }
   };
 
@@ -221,7 +233,10 @@ export const AdminCustomers: React.FC = () => {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {safeStripeUrl(r) && <a style={ghostBtn} href={safeStripeUrl(r)!} target="_blank" rel="noreferrer">Stripe{isTestRow(r) ? ' (test)' : ''}</a>}
                   {safeHttpUrl(r.siteUrl) && <a style={ghostBtn} href={safeHttpUrl(r.siteUrl)!} target="_blank" rel="noreferrer">Open site</a>}
-                  {canSendReset(r) && <button style={ghostBtn} onClick={() => sendReset(r)}>Send password reset</button>}
+                  {canSendReset(r) && (() => {
+                    const left = resetSecondsLeft(resetUntil[r.userId], tick);
+                    return <button style={{ ...ghostBtn, ...(left ? { opacity: 0.6, cursor: 'default' } : {}) }} disabled={left > 0} onClick={() => sendReset(r)}>{left ? `Sent ✓ (${left}s)` : 'Send password reset'}</button>;
+                  })()}
                 </div>
               </Cell>
             </div>

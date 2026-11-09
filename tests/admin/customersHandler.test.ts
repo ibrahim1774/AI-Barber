@@ -150,3 +150,32 @@ describe('/api/admin/customers', () => {
     expect(maskEmail('ibrahim@davoxa.com')).toBe('i***@d***.com');
   });
 });
+
+import { isResetRateLimit, resetFailedText, resetSecondsLeft, RESET_RATE_LIMITED_TEXT } from '../../lib/admin/customersView.js';
+
+describe('send-reset rate limit', () => {
+  it('the API answers 429 rate-limited when sendReset reports it', async () => {
+    const sendReset = vi.fn(async () => ({ ok: false as const, error: 'rate-limited' as const }));
+    const { call } = make({ sendReset });
+    const r = await call('POST', { body: { action: 'send-reset', userId: UID } });
+    expect(r.statusCode).toBe(429);
+    expect(r.body).toEqual({ ok: false, error: 'rate-limited' });
+  });
+  it('recognises the Supabase rate-limit errors', () => {
+    expect(isResetRateLimit({ status: 429, message: 'x' })).toBe(true);
+    expect(isResetRateLimit({ code: 'over_email_send_rate_limit' })).toBe(true);
+    expect(isResetRateLimit({ message: 'For security purposes, you can only request this after 52 seconds.' })).toBe(true);
+    expect(isResetRateLimit({ status: 500, message: 'smtp down' })).toBe(false);
+    expect(isResetRateLimit(null)).toBe(false);
+  });
+  it('shows the friendly text for rate-limited and Reset failed otherwise', () => {
+    expect(resetFailedText('rate-limited')).toBe(RESET_RATE_LIMITED_TEXT);
+    expect(resetFailedText('failed')).toBe('Reset failed: failed');
+  });
+  it('counts the cooldown down to zero', () => {
+    expect(resetSecondsLeft(61_000, 1_000)).toBe(60);
+    expect(resetSecondsLeft(61_000, 60_500)).toBe(1);
+    expect(resetSecondsLeft(61_000, 61_000)).toBe(0);
+    expect(resetSecondsLeft(undefined, 5)).toBe(0);
+  });
+});

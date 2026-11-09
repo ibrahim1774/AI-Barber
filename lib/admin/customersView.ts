@@ -82,3 +82,24 @@ export function countsByFamily(rows: CustomerRow[]): Record<string, number> {
   for (const r of rows) out[r.family] = (out[r.family] || 0) + 1;
   return out;
 }
+
+/** Supabase limits password-reset emails per address (about one a minute). */
+export const RESET_COOLDOWN_MS = 60_000;
+export const RESET_RATE_LIMITED_TEXT = 'Already sent — try again in a minute.';
+
+/** Is this Supabase auth error the per-address email rate limit (429, over_email_send_rate_limit, "you can only request this after N seconds")? */
+export function isResetRateLimit(e: any): boolean {
+  if (!e) return false;
+  if (e.status === 429 || e.code === 'over_email_send_rate_limit' || e.code === 'over_request_rate_limit') return true;
+  return /for security purposes, you can only request this after|rate limit/i.test(String(e.message || ''));
+}
+
+/** Seconds left on a row's reset button (0 = ready). `until` is the time the cooldown ends. */
+export function resetSecondsLeft(until: number | undefined, now: number): number {
+  return until && until > now ? Math.ceil((until - now) / 1000) : 0;
+}
+
+/** The notice for a failed reset. The API sends error 'rate-limited' for the Supabase limit. */
+export function resetFailedText(message: string | undefined): string {
+  return message === 'rate-limited' ? RESET_RATE_LIMITED_TEXT : `Reset failed: ${message || 'error'}`;
+}
