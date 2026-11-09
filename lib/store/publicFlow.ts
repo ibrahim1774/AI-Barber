@@ -175,10 +175,12 @@ export async function createOrder(body: unknown, deps: StoreDeps): Promise<FlowR
     return invalid('expectedTotalCents');
   }
   if (pay === 'shop' && fulfilment === 'shipping') return invalid('pay'); // in-shop pay is pickup only
-  // Card + shipping: Stripe Checkout collects the address and the webhook stores it.
+  // Card + shipping: the address typed at checkout is validated and stored now and prefilled in
+  // Stripe Checkout; the webhook replaces it with what Stripe collected. Without one (older
+  // clients) the order holds {} until payment. Pickup orders need no address.
   let shippingAddress: Record<string, unknown> | null = null;
   if (fulfilment === 'shipping') {
-    if (pay === 'card') shippingAddress = {};
+    if (pay === 'card' && (address == null || (isObj(address) && Object.keys(address).length === 0))) shippingAddress = {};
     else {
       shippingAddress = parseUsAddress(address);
       if (!shippingAddress) return invalid('address');

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/shop/api';
 import { cartTotals } from '../../src/shop/cart';
 import {
-  checkoutBody, invalidMessage, payRows, placeOrder, validateCheckout, withNewAttempt, type CheckoutState,
+  checkoutBody, formatMoney, invalidMessage, payRows, placeOrder, validateCheckout, withNewAttempt, type CheckoutState,
 } from '../../src/shop/logic';
 import type { Product, ShopInfo } from '../../src/shop/types';
 
@@ -27,11 +27,22 @@ const base = (over: Partial<CheckoutState> = {}): CheckoutState => ({
   fulfilment: 'pickup', address, pay: 'shop', method: null, ...over,
 });
 
+describe('formatMoney (store)', () => {
+  it('always shows two decimals', () => {
+    expect(formatMoney(1250)).toBe('$12.50');
+    expect(formatMoney(1800)).toBe('$18.00');
+    expect(formatMoney(0)).toBe('$0.00');
+    expect(formatMoney(125000)).toBe('$1,250.00');
+    expect(formatMoney(100050)).toBe('$1,000.50');
+    expect(formatMoney(null)).toBe('');
+  });
+});
+
 describe('checkoutBody', () => {
-  it('sends no address for card + shipping', () => {
+  it('sends the typed address for card + shipping', () => {
     const b = checkoutBody(base({ fulfilment: 'shipping', pay: 'card' }));
     expect(b.pay).toBe('card');
-    expect('address' in b).toBe(false);
+    expect(b.address).toEqual({ name: 'Sam Lee', line1: '1 Main St', city: 'Austin', state: 'TX', postalCode: '78701' });
   });
   it('sends the address for manual + shipping, trimmed, with line2 only when set', () => {
     const b = checkoutBody(base({ fulfilment: 'shipping', pay: 'manual', method: 'cashapp' }));
@@ -93,10 +104,12 @@ describe('validateCheckout', () => {
     expect(validateCheckout(base({ customer: { name: 'A', phone: '12', email: 'a@b.co' } }))).toMatch(/phone/i);
     expect(validateCheckout(base({ customer: { name: 'A', phone: '5125550100', email: 'nope' } }))).toMatch(/email/i);
   });
-  it('wants an address for non-card shipping, but not for card shipping', () => {
+  it('wants an address for every shipping order, card included', () => {
     expect(validateCheckout(base({ fulfilment: 'shipping', pay: 'manual', method: 'cashapp', address: { ...address, line1: '' } }))).toMatch(/address/i);
     expect(validateCheckout(base({ fulfilment: 'shipping', pay: 'manual', method: 'cashapp', address: { ...address, postalCode: '123' } }))).toMatch(/zip/i);
-    expect(validateCheckout(base({ fulfilment: 'shipping', pay: 'card', address: { ...address, line1: '' } }))).toBeNull();
+    expect(validateCheckout(base({ fulfilment: 'shipping', pay: 'card', address: { ...address, line1: '' } }))).toMatch(/address/i);
+    expect(validateCheckout(base({ fulfilment: 'shipping', pay: 'card' }))).toBeNull();
+    expect(validateCheckout(base({ fulfilment: 'pickup', pay: 'shop', address: { ...address, line1: '' } }))).toBeNull();
   });
   it('wants a method for manual', () => {
     expect(validateCheckout(base({ pay: 'manual', method: null }))).toMatch(/pay/i);

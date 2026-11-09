@@ -1,12 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail as liveSendEmail, type EmailMessage, type EmailResult } from '../bookings/email.js';
 import { pushToUsers, type PushMessage } from '../bookings/push.js';
-import { emailLayout, dollars, pushTokenStore, type ManualMethod } from '../bookings/notify.js';
+import { emailLayout, pushTokenStore, type ManualMethod } from '../bookings/notify.js';
 import { serviceDb, SITE_ORIGIN } from '../bookings/payments.js';
 import { orderManageUrl, orderNoLabel, shipsWithinLabel } from './payments.js';
 import { shopPageUrl } from '../customerUrls.js';
 import type { StoreNotifyEvent } from './types.js';
 import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
+
+/** Store money is always two decimals ($18.00), unlike bookings' dollars(). */
+export const dollars = (cents: number) => `$${(cents / 100).toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ',')}`;
 
 /**
  * Store notifications: owner pushes (Expo) and customer emails (SMTP), in the Phase 2 layout.

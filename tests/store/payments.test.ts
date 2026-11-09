@@ -95,6 +95,32 @@ describe('createOrderCheckout', () => {
     expect(calls[0].params.has('line_items[0][price_data][product_data][images][0]')).toBe(false);
   });
 
+  it('shipping order with a typed address: a Customer carries it, Checkout uses that customer', async () => {
+    const shipOrder = { ...order, fulfilment: 'shipping' as const, shipping_cents: 800, total_cents: 5300, customer_name: 'Sam Lee',
+      shipping_address: { name: 'Sam Lee', line1: '1 Main St', line2: 'Apt 2', city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' } };
+    const { f, calls } = fakeFetch({ body: { id: 'cus_1' } }, session(5300));
+    await createOrderCheckout(shop, shipOrder, items.slice(0, 1).map((i) => ({ ...i, quantity: 3 })), { fetch: f, now: () => NOW });
+    expect(calls[0].url).toMatch(/\/customers$/);
+    expect(calls[0].params.get('shipping[address][line2]')).toBe('Apt 2');
+    expect(calls[0].params.get('shipping[address][state]')).toBe('TX');
+    expect(calls[0].init.headers['Stripe-Account']).toBe('acct_123');
+    const p = calls[1].params;
+    expect(p.get('customer')).toBe('cus_1');
+    expect(p.has('customer_email')).toBe(false);
+    expect(p.get('customer_update[shipping]')).toBe('auto');
+    expect(p.get('shipping_address_collection[allowed_countries][0]')).toBe('US');
+  });
+
+  it('a failed Customer call does not block checkout: falls back to customer_email, Stripe collects the address', async () => {
+    const shipOrder = { ...order, fulfilment: 'shipping' as const, shipping_cents: 800, total_cents: 5300,
+      shipping_address: { name: 'Sam Lee', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' } };
+    const { f, calls } = fakeFetch({ status: 400, body: { error: { message: 'nope' } } }, session(5300));
+    await createOrderCheckout(shop, shipOrder, items.slice(0, 1).map((i) => ({ ...i, quantity: 3 })), { fetch: f, now: () => NOW });
+    expect(calls).toHaveLength(2);
+    expect(calls[1].params.has('customer')).toBe(false);
+    expect(calls[1].params.get('customer_email')).toBe('sam@example.com');
+  });
+
   it('shipping order: US-only address collection, fixed_amount = shipping_cents, fee on subtotal + shipping', async () => {
     const shipOrder = { ...order, fulfilment: 'shipping' as const, shipping_cents: 800, total_cents: 5300 };
     const { f, calls } = fakeFetch(session(5300));
