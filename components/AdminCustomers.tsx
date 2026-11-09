@@ -113,7 +113,11 @@ export const AdminCustomers: React.FC = () => {
   const [tick, setTick] = useState(Date.now());
   useEffect(() => {
     if (!Object.values(resetUntil).some((u) => u > Date.now())) return;
-    const id = setInterval(() => setTick(Date.now()), 1000);
+    const id = setInterval(() => {
+      const n = Date.now();
+      setTick(n);
+      if (!Object.values(resetUntil).some((u) => u > n)) clearInterval(id); // every cooldown is over: stop ticking
+    }, 1000);
     return () => clearInterval(id);
   }, [resetUntil]);
 
@@ -156,7 +160,7 @@ export const AdminCustomers: React.FC = () => {
       setTick(Date.now());
       setNotice({ kind: 'ok', text: `Reset email sent to ${out.sentTo}.` });
     } catch (e: any) {
-      if (e?.message === 'rate-limited') { setResetUntil((m) => ({ ...m, [r.userId]: Date.now() + RESET_COOLDOWN_MS })); setTick(Date.now()); }
+      if (e?.message === 'reset-rate-limited') { setResetUntil((m) => ({ ...m, [r.userId]: Date.now() + RESET_COOLDOWN_MS })); setTick(Date.now()); }
       setNotice({ kind: 'err', text: resetFailedText(e?.message) });
     }
   };

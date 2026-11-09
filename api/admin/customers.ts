@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { checkAdmin, supabaseEmailOf, type EmailOfToken } from '../../lib/admin/auth.js';
 import { adminSupabase } from '../../lib/admin/live.js';
-import { isResetRateLimit } from '../../lib/admin/customersView.js';
+import { resetLimitKind } from '../../lib/admin/customersView.js';
 import { buildCustomerRows, isDegraded, type CustomerRow, type SourceStatus } from '../../lib/admin/customers.js';
 import { loadCustomerSources } from '../../lib/admin/customersLive.js';
 import { APP_ORIGIN } from '../../lib/webApp/webAppServer.js';
@@ -31,7 +31,7 @@ export interface CustomersPayload { rows: CustomerRow[]; sources: SourceStatus }
 
 export type SendResetResult =
   | { ok: true; to: string }
-  | { ok: false; error: 'not-found' | 'no-email' | 'rate-limited' | 'failed' };
+  | { ok: false; error: 'not-found' | 'no-email' | 'reset-rate-limited' | 'email-limit' | 'failed' };
 
 export interface AdminCustomersHandlerDeps {
   emailOf(): EmailOfToken;
@@ -98,7 +98,7 @@ export function makeAdminCustomersHandler(d: AdminCustomersHandlerDeps) {
       const r = await d.sendReset(userId);
       if ('error' in r) {
         log(`[admin/customers] send-reset ${userId.slice(0, 8)} by admin: ${r.error}`);
-        return res.status(r.error === 'failed' ? 502 : r.error === 'not-found' ? 404 : r.error === 'rate-limited' ? 429 : 409).json({ ok: false, error: r.error });
+        return res.status(r.error === 'failed' ? 502 : r.error === 'not-found' ? 404 : r.error === 'reset-rate-limited' || r.error === 'email-limit' ? 429 : 409).json({ ok: false, error: r.error });
       }
       log(`[admin/customers] send-reset ${userId.slice(0, 8)} -> ${maskEmail((r as { to: string }).to)}`);
       return res.status(200).json({ ok: true, sentTo: maskEmail((r as { to: string }).to) });
@@ -121,7 +121,7 @@ async function liveSendReset(userId: string): Promise<SendResetResult> {
   const email = data.user.email;
   if (!email) return { ok: false, error: 'no-email' };
   const { error: e2 } = await sb.auth.resetPasswordForEmail(email, { redirectTo: `${APP_ORIGIN()}/app/reset-password` });
-  if (e2) return { ok: false, error: isResetRateLimit(e2) ? 'rate-limited' : 'failed' };
+  if (e2) { const k = resetLimitKind(e2); return { ok: false, error: k === 'address' ? 'reset-rate-limited' : k === 'email' ? 'email-limit' : 'failed' }; }
   return { ok: true, to: email };
 }
 

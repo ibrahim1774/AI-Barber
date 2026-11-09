@@ -87,11 +87,18 @@ export function countsByFamily(rows: CustomerRow[]): Record<string, number> {
 export const RESET_COOLDOWN_MS = 60_000;
 export const RESET_RATE_LIMITED_TEXT = 'Already sent — try again in a minute.';
 
-/** Is this Supabase auth error the per-address email rate limit (429, over_email_send_rate_limit, "you can only request this after N seconds")? */
-export function isResetRateLimit(e: any): boolean {
-  if (!e) return false;
-  if (e.status === 429 || e.code === 'over_email_send_rate_limit' || e.code === 'over_request_rate_limit') return true;
-  return /for security purposes, you can only request this after|rate limit/i.test(String(e.message || ''));
+export const RESET_EMAIL_LIMIT_TEXT = 'Email limit reached — try again later.';
+export const RESET_TOO_MANY_TEXT = 'Too many actions — wait a minute and try again.';
+
+/**
+ * Which Supabase rate limit a failed reset hit: 'address' = the per-address "you can only request this after N seconds" (a mail was
+ * just sent), 'email' = any other limit (the project-wide hourly email cap), null = not a rate limit.
+ */
+export function resetLimitKind(e: any): 'address' | 'email' | null {
+  if (!e) return null;
+  if (/for security purposes, you can only request this after/i.test(String(e.message || ''))) return 'address';
+  if (e.status === 429 || e.code === 'over_email_send_rate_limit' || e.code === 'over_request_rate_limit' || /rate limit/i.test(String(e.message || ''))) return 'email';
+  return null;
 }
 
 /** Seconds left on a row's reset button (0 = ready). `until` is the time the cooldown ends. */
@@ -99,7 +106,10 @@ export function resetSecondsLeft(until: number | undefined, now: number): number
   return until && until > now ? Math.ceil((until - now) / 1000) : 0;
 }
 
-/** The notice for a failed reset. The API sends error 'rate-limited' for the Supabase limit. */
+/** The notice for a failed reset: the API error 'reset-rate-limited' (per address), 'email-limit' (project cap), 'rate-limited' (the admin write limiter). */
 export function resetFailedText(message: string | undefined): string {
-  return message === 'rate-limited' ? RESET_RATE_LIMITED_TEXT : `Reset failed: ${message || 'error'}`;
+  if (message === 'reset-rate-limited') return RESET_RATE_LIMITED_TEXT;
+  if (message === 'email-limit') return RESET_EMAIL_LIMIT_TEXT;
+  if (message === 'rate-limited') return RESET_TOO_MANY_TEXT;
+  return `Reset failed: ${message || 'error'}`;
 }

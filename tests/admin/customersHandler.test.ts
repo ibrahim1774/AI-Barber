@@ -151,25 +151,36 @@ describe('/api/admin/customers', () => {
   });
 });
 
-import { isResetRateLimit, resetFailedText, resetSecondsLeft, RESET_RATE_LIMITED_TEXT } from '../../lib/admin/customersView.js';
+import { resetLimitKind, resetFailedText, resetSecondsLeft, RESET_RATE_LIMITED_TEXT, RESET_EMAIL_LIMIT_TEXT, RESET_TOO_MANY_TEXT } from '../../lib/admin/customersView.js';
 
 describe('send-reset rate limit', () => {
-  it('the API answers 429 rate-limited when sendReset reports it', async () => {
-    const sendReset = vi.fn(async () => ({ ok: false as const, error: 'rate-limited' as const }));
-    const { call } = make({ sendReset });
-    const r = await call('POST', { body: { action: 'send-reset', userId: UID } });
-    expect(r.statusCode).toBe(429);
-    expect(r.body).toEqual({ ok: false, error: 'rate-limited' });
+  it('the API answers 429 reset-rate-limited / email-limit when sendReset reports them', async () => {
+    for (const error of ['reset-rate-limited', 'email-limit'] as const) {
+      const sendReset = vi.fn(async () => ({ ok: false as const, error }));
+      const { call } = make({ sendReset });
+      const r = await call('POST', { body: { action: 'send-reset', userId: UID } });
+      expect(r.statusCode).toBe(429);
+      expect(r.body).toEqual({ ok: false, error });
+    }
   });
-  it('recognises the Supabase rate-limit errors', () => {
-    expect(isResetRateLimit({ status: 429, message: 'x' })).toBe(true);
-    expect(isResetRateLimit({ code: 'over_email_send_rate_limit' })).toBe(true);
-    expect(isResetRateLimit({ message: 'For security purposes, you can only request this after 52 seconds.' })).toBe(true);
-    expect(isResetRateLimit({ status: 500, message: 'smtp down' })).toBe(false);
-    expect(isResetRateLimit(null)).toBe(false);
+  it('the admin write limiter still answers plain rate-limited (a different message)', async () => {
+    const { call } = make();
+    let last: any;
+    for (let i = 0; i < 12; i++) last = await call('POST', { body: { action: 'send-reset', userId: UID } });
+    expect(last.statusCode).toBe(429);
+    expect(last.body).toEqual({ ok: false, error: 'rate-limited' });
   });
-  it('shows the friendly text for rate-limited and Reset failed otherwise', () => {
-    expect(resetFailedText('rate-limited')).toBe(RESET_RATE_LIMITED_TEXT);
+  it('tells the per-address limit from the project-wide email cap', () => {
+    expect(resetLimitKind({ status: 429, message: 'For security purposes, you can only request this after 52 seconds.' })).toBe('address');
+    expect(resetLimitKind({ code: 'over_email_send_rate_limit', message: 'email rate limit exceeded' })).toBe('email');
+    expect(resetLimitKind({ status: 429, message: 'x' })).toBe('email');
+    expect(resetLimitKind({ status: 500, message: 'smtp down' })).toBe(null);
+    expect(resetLimitKind(null)).toBe(null);
+  });
+  it('shows a different text for each case and Reset failed otherwise', () => {
+    expect(resetFailedText('reset-rate-limited')).toBe(RESET_RATE_LIMITED_TEXT);
+    expect(resetFailedText('email-limit')).toBe(RESET_EMAIL_LIMIT_TEXT);
+    expect(resetFailedText('rate-limited')).toBe(RESET_TOO_MANY_TEXT);
     expect(resetFailedText('failed')).toBe('Reset failed: failed');
   });
   it('counts the cooldown down to zero', () => {
