@@ -51,7 +51,7 @@ describe('notifyOrder: order_created', () => {
     await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, d);
     expect(d.loadContext).toHaveBeenCalledWith('ord-1');
     expect(d.push).toHaveBeenCalledTimes(1);
-    expect(d.push).toHaveBeenCalledWith(['owner-1', 'barber-user-1'], { body: 'New order #1001: Sam Lee, $45 · pickup', data: DATA });
+    expect(d.push).toHaveBeenCalledWith(['owner-1', 'barber-user-1'], { body: 'New order #1001: Sam Lee, $45.00 · pickup', data: DATA });
 
     expect(d.sendEmail).toHaveBeenCalledTimes(1);
     const m = d.sendEmail.mock.calls[0][0];
@@ -60,18 +60,18 @@ describe('notifyOrder: order_created', () => {
     expect(m.replyTo).toBe('owner@example.com');
     expect(m.subject).toBe('Order #1001 at Fade Factory');
     expect(m.html).toContain('2 × Beard oil');
-    expect(m.html).toContain('$30');
+    expect(m.html).toContain('$30.00');
     expect(m.html).toContain('1 × Comb');
     expect(m.html).toContain('Subtotal');
     expect(m.html).toContain('Total');
-    expect(m.html).toContain('$45');
-    expect(m.html).toContain('Send $45 by Cash App to $fadefactory');
+    expect(m.html).toContain('$45.00');
+    expect(m.html).toContain('Send $45.00 by Cash App to $fadefactory');
     expect(m.html).toContain('1 Main St, Austin TX'); // pickup: address
     expect(m.html).toContain('Ring the bell at the side door'); // pickup note
     expect(m.html).toContain('View order');
     expect(m.html).toContain(STATUS_URL);
     expect(m.html).toContain('#aa3300'); // the shared Phase 2 layout, in the shop accent
-    expect(m.text).toContain('Send $45 by Cash App to $fadefactory');
+    expect(m.text).toContain('Send $45.00 by Cash App to $fadefactory');
     expect(m.text).toContain(STATUS_URL);
   });
 
@@ -81,10 +81,10 @@ describe('notifyOrder: order_created', () => {
       shipping_address: { name: 'Sam Lee', line1: '9 Elm St', line2: null, city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' },
     }));
     await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, d);
-    expect(d.push.mock.calls[0][1].body).toBe('New order #1001: Sam Lee, $53 · shipping');
+    expect(d.push.mock.calls[0][1].body).toBe('New order #1001: Sam Lee, $53.00 · shipping');
     const html = d.sendEmail.mock.calls[0][0].html;
     expect(html).toContain('Shipping');
-    expect(html).toContain('$8');
+    expect(html).toContain('$8.00');
     expect(html).toContain('Ships within 3 days');
     expect(html).toContain('9 Elm St');
     expect(html).toContain('Paid by card');
@@ -147,7 +147,7 @@ describe('notifyOrder: customer emails', () => {
     expect(m.html).toContain('1 Main St, Austin TX');
     expect(m.html).toContain('Ring the bell at the side door');
     expect(m.html).toContain('Amount due at pickup');
-    expect(m.html).toContain('$45');
+    expect(m.html).toContain('$45.00');
   });
 
   it('order_ready: no amount due once paid', () => {
@@ -197,7 +197,7 @@ describe('notifyOrder: customer emails', () => {
     expect(d.push).not.toHaveBeenCalled();
     const m = d.sendEmail.mock.calls[0][0];
     expect(m.subject).toBe('Order #1001 was cancelled');
-    expect(m.html).toContain('A refund of $45 is on its way to your card');
+    expect(m.html).toContain('A refund of $45.00 is on its way to your card');
 
     const none = orderCancelledEmail(ctx({ status: 'cancelled' }), 0);
     expect(none.subject).toBe('Order #1001 was cancelled');
@@ -221,7 +221,7 @@ describe('notifyOrder: order_says_paid', () => {
   it('push copy with the amount, method label and order number', async () => {
     const d = mkDeps();
     await notifyOrder({ kind: 'order_says_paid', orderId: 'ord-1', method: 'cashapp' }, d);
-    expect(d.push).toHaveBeenCalledWith(['owner-1', 'barber-user-1'], { body: 'Sam Lee says they paid $45 by Cash App (order #1001)', data: DATA });
+    expect(d.push).toHaveBeenCalledWith(['owner-1', 'barber-user-1'], { body: 'Sam Lee says they paid $45.00 by Cash App (order #1001)', data: DATA });
     expect(d.sendEmail).not.toHaveBeenCalled();
   });
 });

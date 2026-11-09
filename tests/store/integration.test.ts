@@ -200,13 +200,20 @@ describe('integration: the full shop row reaches createOrderCheckout', () => {
     const bodies: URLSearchParams[] = [];
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: { body?: string }) => {
       bodies.push(new URLSearchParams(init.body));
+      if (_url.endsWith('/customers')) return new Response(JSON.stringify({ id: 'cus_live' }), { status: 200 });
       return new Response(JSON.stringify({ id: 'cs_live', url: 'https://checkout.stripe.test/cs_live', amount_total: 3500 }), { status: 200 });
     }));
     const w = storeWorld({ shop: { ships_within_days: 3 } });
     w.deps.payments = liveStorePayments;
     expect((await placeShipping(w)).status).toBe(201);
-    expect(bodies).toHaveLength(1);
-    const b = bodies[0];
+    // The typed address goes to Stripe as a Customer first, then Checkout opens with it.
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].get('shipping[address][line1]')).toBe('1 Main St');
+    expect(bodies[0].get('shipping[address][postal_code]')).toBe('78701');
+    const b = bodies[1];
+    expect(b.get('customer')).toBe('cus_live');
+    expect(b.get('customer_email')).toBeNull();
+    expect(b.get('customer_update[shipping]')).toBe('auto');
     expect(b.get('shipping_options[0][shipping_rate_data][display_name]')).toBe('Ships within 3 days');
     expect(b.get('shipping_options[0][shipping_rate_data][delivery_estimate][maximum][value]')).toBe('8');
     expect(b.get('shipping_options[0][shipping_rate_data][fixed_amount][amount]')).toBe('500');

@@ -259,7 +259,7 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
     pay: current?.pay ?? 'card', method: current?.method ?? null,
   };
   const soldOutLines = cart.lines.filter((l) => l.soldOut);
-  const needsAddress = fulfilment === 'shipping' && current?.pay !== 'card';
+  const needsAddress = fulfilment === 'shipping';
   const showCardNote = fulfilment === 'shipping' && current?.pay === 'card';
 
   const submitting = useRef(false);
@@ -350,7 +350,7 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
           </div>
         </div>
       </>}
-      {showCardNote && <p className="sub">You'll enter your shipping address on the secure card page.</p>}
+      {showCardNote && <p className="sub">The secure card page will show this address for you to confirm.</p>}
 
       <h3>Payment</h3>
       {rows.length === 0 && <p className="note warn">This shop can't take orders online right now. Please call the shop.</p>}

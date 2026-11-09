@@ -5,7 +5,13 @@ import type {
   Address, Cart, CreateOrderResponse, Fulfilment, ManualMethod, OrderBody, PayChoice, Product, ShopInfo,
 } from './types';
 
-export { formatMoney, manualLink, manualMethods, METHOD_LABEL, safeAccent, onAccent, telUrl, directionsUrl } from '../book/logic';
+export { manualLink, manualMethods, METHOD_LABEL, safeAccent, onAccent, telUrl, directionsUrl } from '../book/logic';
+
+/** Store money: always two decimals ($18.00); '' when there is no amount. */
+export function formatMoney(cents: number | null | undefined): string {
+  if (cents == null) return '';
+  return `$${(cents / 100).toFixed(2)}`;
+}
 
 /** Mirrors lib/store/payments.ts: 0 or 1 → "Ships within 1 day", 2+ → "Ships within N days", unset → no line (null). */
 export function shipsWithinLabel(n: number | null | undefined): string | null {
@@ -120,8 +126,8 @@ export function checkoutBody(s: CheckoutState): OrderBody {
   };
   if (t(s.note)) body.note = t(s.note);
   if (eff.pay === 'manual' && eff.method) body.method = eff.method;
-  // Card + shipping: Stripe Checkout collects the address, so none is sent.
-  if (s.fulfilment === 'shipping' && eff.pay !== 'card') {
+  // Shipping (card too): send the address typed here; for card it prefills Stripe Checkout.
+  if (s.fulfilment === 'shipping') {
     const a: Address = { name: t(s.address.name), line1: t(s.address.line1), city: t(s.address.city), state: t(s.address.state).toUpperCase(), postalCode: t(s.address.postalCode) };
     if (t(s.address.line2)) a.line2 = t(s.address.line2);
     body.address = a;
@@ -144,7 +150,7 @@ export function validateCheckout(s: CheckoutState): string | null {
   const eff = effectivePay(s);
   if (!payRows(s.shop, s.fulfilment).length) return "This shop can't take orders online right now. Please call the shop.";
   if (eff.pay === 'manual' && !eff.method) return 'Please choose how you want to pay.';
-  if (s.fulfilment === 'shipping' && eff.pay !== 'card') {
+  if (s.fulfilment === 'shipping') {
     const a = s.address;
     if (!a.name.trim() || !a.line1.trim() || !a.city.trim()) return 'Please enter your full shipping address.';
     if (!/^[A-Za-z]{2}$/.test(a.state.trim())) return 'Please choose your state.';

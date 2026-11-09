@@ -240,7 +240,7 @@ describe('createOrder: rails', () => {
     expect(w.notified).toHaveLength(1);
   });
 
-  it('card + shipping: inserted with shipping_address {}, checkout gets snapshot items and the total, session + url stored in one update', async () => {
+  it('card + shipping: inserted with the validated typed address, checkout gets snapshot items and the total, session + url stored in one update', async () => {
     const w = storeWorld();
     const upd = vi.spyOn(w.deps.repo, 'updateOrder');
     const r = await createOrder(body(w, {
@@ -250,7 +250,8 @@ describe('createOrder: rails', () => {
     expect(r.status).toBe(201);
     const o = w.state.orders[0];
     expect(o).toMatchObject({
-      status: 'new', payment_status: 'awaiting', payment_method: 'card', shipping_address: {},
+      status: 'new', payment_status: 'awaiting', payment_method: 'card',
+      shipping_address: { name: 'Sam Lee', line1: '1 Main St', line2: null, city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' },
       subtotal_cents: 5500, shipping_cents: 500, total_cents: 6000,
       stripe_checkout_session_id: `cs_${o.id}`, checkout_url: `https://checkout.stripe.test/${o.id}`,
     });
@@ -265,6 +266,21 @@ describe('createOrder: rails', () => {
     ]);
     expect(r.body).toMatchObject({ checkoutUrl: `https://checkout.stripe.test/${o.id}`, order: { number: 1001, totalCents: 6000 } });
     expect(w.notified).toEqual([{ kind: 'order_created', orderId: o.id }]);
+  });
+
+  it('card + shipping without an address (older client) stores {} and still checks out', async () => {
+    const w = storeWorld();
+    const r = await createOrder(body(w, { pay: 'card', fulfilment: 'shipping', expectedTotalCents: 3500 }), w.deps);
+    expect(r.status).toBe(201);
+    expect(w.state.orders[0].shipping_address).toEqual({});
+  });
+
+  it('card + shipping with an invalid address is rejected and nothing is stored', async () => {
+    const w = storeWorld();
+    const r = await createOrder(body(w, { pay: 'card', fulfilment: 'shipping', address: { ...ADDRESS, postalCode: '12' }, expectedTotalCents: 3500 }), w.deps);
+    expect(r.status).toBe(400);
+    expect(r.body).toMatchObject({ field: 'address' });
+    expect(w.state.orders).toHaveLength(0);
   });
 
   it('card + pickup ignores any address and stores null', async () => {

@@ -38,6 +38,9 @@ export interface PayOrder {
   order_no: number | null;
   manage_token: string;
   customer_email: string | null;
+  customer_name?: string | null;
+  /** The address typed at checkout (card + shipping); {} or absent when none. Prefills Stripe's address step. */
+  shipping_address?: Record<string, unknown> | null;
   fulfilment: 'pickup' | 'shipping';
   shipping_cents: number;
   total_cents: number;
@@ -102,6 +105,31 @@ export async function createOrderCheckout(
   const meta = { order_id: order.id, shop_id: shop.id, app: STORE_APP };
   const link = orderManageUrl(order.manage_token, shop);
 
+  // Card + shipping with an address typed at checkout: hand it to Stripe through a Customer so
+  // Checkout opens with it filled in (the customer only confirms it). Best effort: on any
+  // failure Checkout just asks for the address, and the webhook stores whatever Stripe collected.
+  let customerId: string | undefined;
+  const typed = order.fulfilment === 'shipping' ? order.shipping_address : null;
+  if (typed && typeof typed.line1 === 'string' && typed.line1) {
+    try {
+      const c = await stripeRequest('POST', '/customers', {
+        email: order.customer_email || undefined,
+        name: (order.customer_name || (typed.name as string) || undefined) as string | undefined,
+        'shipping[name]': String(typed.name || order.customer_name || 'Customer').slice(0, 100),
+        'shipping[address][line1]': String(typed.line1),
+        'shipping[address][line2]': typed.line2 ? String(typed.line2) : undefined,
+        'shipping[address][city]': String(typed.city ?? ''),
+        'shipping[address][state]': String(typed.state ?? ''),
+        'shipping[address][postal_code]': String(typed.postal_code ?? ''),
+        'shipping[address][country]': 'US',
+        'metadata[order_id]': order.id,
+      }, { account: shop.stripe_account_id, idempotencyKey: `ab-order-cust-${order.id}`, fetch: opts.fetch, stripeVersion: CHECKOUT_STRIPE_VERSION });
+      if (typeof c?.id === 'string') customerId = c.id;
+    } catch (e: any) {
+      console.error('[store/payments] customer prefill failed, Checkout will ask for the address:', e?.message || e);
+    }
+  }
+
   const params: Record<string, string | number | undefined> = {
     mode: 'payment',
     success_url: `${link}?checkout=success`,
@@ -109,7 +137,9 @@ export async function createOrderCheckout(
     expires_at: minuteSec + CHECKOUT_HOLD_SEC,
     ...CHECKOUT_CARD_ONLY,
     client_reference_id: order.id,
-    customer_email: order.customer_email || undefined,
+    customer: customerId,
+    customer_email: customerId ? undefined : order.customer_email || undefined,
+    'customer_update[shipping]': customerId ? 'auto' : undefined,
     'payment_intent_data[application_fee_amount]': fee > 0 ? fee : undefined,
     'payment_intent_data[description]': `Order ${orderNoLabel(order)}${shop.name ? ` at ${shop.name}` : ''}`.slice(0, 250),
   };
