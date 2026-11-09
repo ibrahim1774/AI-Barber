@@ -12,6 +12,8 @@ import { contactFor, liveSiteUrlFor, resetDunning, sendFailedPaymentIfDue } from
 import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
+import { livePlanEndDeps, onPlanEnded, onPlanResumed } from '../../lib/webApp/domainPlanEnd.js';
+import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -111,11 +113,31 @@ export default async function handler(req: any, res: any) {
       try { await handleDuplicates(row.user_id, liveDupDeps(mode)); }
       catch (e: any) { console.error('[web-app webhook dup check]', e?.message || e); }
     }
+    // The plan's effect on the site's custom domain. Best effort: NEVER changes the response.
+    try {
+      const slug = row.site_slug ?? (await storedSlug(row.stripe_subscription_id, row.user_id ?? null, mode));
+      if (slug) {
+        if (event.type === 'customer.subscription.deleted' && !isEntitledStatus(row.status)) {
+          await onPlanEnded(slug, row.user_id ?? null, await livePlanEndDeps(mode), { excludeSub: row.stripe_subscription_id, customerId: row.stripe_customer_id });
+        } else if (isEntitledStatus(row.status)) {
+          await onPlanResumed(slug, await livePlanEndDeps(mode));
+        }
+      }
+    } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
     return res.status(200).json({ ok: true });
   } catch (e: any) {
     console.error('[web-app webhook]', e.message);
     return res.status(500).json({ error: 'store_failed' }); // Stripe retries
   }
+}
+
+/** The site this plan belongs to when the Stripe metadata has none: the slug stored on its entitlement row, else the user's site in this mode. */
+async function storedSlug(subId: string, userId: string | null, mode: 'live' | 'test'): Promise<string | null> {
+  const stored = (await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${enc(subId)}&select=site_slug&limit=1`))?.[0]?.site_slug;
+  if (typeof stored === 'string' && stored) return stored;
+  if (!userId) return null;
+  const site = (await sbRest(`web_app_sites?user_id=eq.${enc(userId)}&environment=eq.${mode}&select=slug&limit=1`))?.[0]?.slug;
+  return typeof site === 'string' && site ? site : null;
 }
 
 /** A failed renewal: email the owner at once, then (via the cron) every 2 days while it stays past_due. Our subscriptions only. */

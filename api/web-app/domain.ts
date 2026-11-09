@@ -11,7 +11,7 @@
 // One-click is switched by WEB_DOMAIN_ONECLICK (default on) and falls back to Checkout by itself.
 import { STRIPE_API_VERSION } from '../../lib/stripeVersion.js';
 import { authorizeSiteOwner, liveDeployAuthDeps } from '../../lib/deployAuth.js';
-import { createDomainCheckout, purchaseDomain, webDomainPanelStatus, webDomainPortal } from '../../lib/webDomains.js';
+import { createDomainCheckout, purchaseDomain, webDomainPanelStatus, webDomainPortal, webDomainRenewal } from '../../lib/webDomains.js';
 import { oneClickCard, oneClickDomainPurchase } from '../../lib/webApp/domainOneClick.js';
 import { liveOneClickDeps, livePanelDeps, webPlanOf } from '../../lib/webApp/domainOneClickLive.js';
 import { liveWebDomainDeps } from '../../lib/ios/domainLive.js';
@@ -61,6 +61,7 @@ export default async function handler(req: any, res: any) {
         break;
       case 'status': r = await webDomainPanelStatus(body, auth, livePanelDeps(authorize)); break;
       case 'portal': r = await webDomainPortal(body, auth, `${APP_ORIGIN()}/app/domain`, livePanelDeps(authorize)); break;
+      case 'cancel-renewal': case 'resume-renewal': r = await webDomainRenewal(body.action, body, auth, livePanelDeps(authorize)); break;
       default: return res.status(400).json({ error: 'bad-request' });
     }
     return res.status(r.status).json(r.body);

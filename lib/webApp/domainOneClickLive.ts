@@ -9,7 +9,7 @@ import { serviceClient } from '../bookings/repo.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest } from './webAppServer.js';
 import { oneClickFlagOn, type OneClickDeps, type WebPlan } from './domainOneClick.js';
-import type { AuthorizeOwner, PanelDeps } from '../webDomains.js';
+import { domainPortalForm, type AuthorizeOwner, type PanelDeps } from '../webDomains.js';
 import { liveManualDeps } from './domainManualEnv.js';
 
 /**
@@ -41,6 +41,17 @@ export function oneClickEnabled(env: Record<string, string | undefined> = proces
   return oneClickFlagOn(env) && !!mode && mode === keyMode(env.STRIPE_WEBAPP_SECRET_KEY) && !!(env.STRIPE_DOMAIN_PRICE_ID || env.STRIPE_DOMAIN_PRODUCT_ID);
 }
 
+/** POST /v1/subscriptions/<id> cancel_at_period_end (the domain key). Only ever the one domain subscription. */
+export async function stripeSetRenewal(subscriptionId: string, cancelAtPeriodEnd: boolean, idempotencyKey: string) {
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY || ''}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION, 'Idempotency-Key': idempotencyKey },
+    body: new URLSearchParams({ cancel_at_period_end: String(cancelAtPeriodEnd) }).toString(),
+    signal: AbortSignal.timeout(10_000),
+  });
+  return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
+}
+
 export function liveOneClickDeps(authorize: AuthorizeOwner): OneClickDeps {
   return {
     authorize,
@@ -66,11 +77,19 @@ export function livePanelDeps(authorize: AuthorizeOwner): PanelDeps {
     authorize,
     flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
     getSubscription: stripeSubscription,
-    async createPortalSession(customer, returnUrl) {
+    setRenewal: (id, cancel, idem) => stripeSetRenewal(id, cancel, idem),
+    async hasActivePlan(siteSlug) {
+      const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+      if (!mode) return false;
+      const site = (await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(siteSlug)}&environment=eq.${mode}&select=user_id&limit=1`))?.[0];
+      if (!site?.user_id) return false;
+      return ((await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(site.user_id)}&environment=eq.${mode}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&limit=1`)) ?? []).length > 0;
+    },
+    async createPortalSession(customer, returnUrl, subscriptionId) {
       const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION },
-        body: new URLSearchParams({ customer, return_url: returnUrl }).toString(),
+        body: domainPortalForm(customer, returnUrl, subscriptionId),
       });
       return { ok: r.ok, data: await r.json().catch(() => null) };
     },

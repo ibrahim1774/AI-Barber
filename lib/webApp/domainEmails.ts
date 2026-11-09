@@ -163,7 +163,7 @@ export function customerLiveEmail(f: Pick<OrderFacts, 'domain' | 'liveUrl' | 'pa
 }
 
 export function customerRefundedEmail(f: Pick<OrderFacts, 'domain' | 'liveUrl'>, origin: string): Mail {
-  return textMail(`Your $39 for ${f.domain} was refunded`, [
+  return textMail(`Your refund for ${f.domain}`, [
     `We could not register ${f.domain} for you. Your $39 has been refunded in full and the subscription is cancelled. A refund usually shows on your statement within 5 to 10 business days.`,
     '',
     f.liveUrl ? `Your website is not affected and is still at ${f.liveUrl}` : 'Your website is not affected.',

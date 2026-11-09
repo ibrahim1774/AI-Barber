@@ -276,7 +276,7 @@ export async function runDomainSweep(deadline: number): Promise<DomainSweepSumma
 /** An email to support (domain refunds / refusals): domain, site and amount only, no customer PII. */
 export async function notifySupportEmail(subject: string, text: string): Promise<void> {
   const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const r = await sendEmail({ to: 'support@davoxa.com', subject, text, html: `<pre>${esc(text)}</pre>`, fromName: 'Prime Barber domains' });
+  const r = await sendEmail({ to: process.env.DOMAIN_SUPPORT_EMAIL || 'support@davoxa.com', subject, text, html: `<pre>${esc(text)}</pre>`, fromName: 'Prime Barber domains' });
   // S1: only a delivered email counts. Throwing makes alertOnce skip its once-only marker, so the next sweep retries.
   if (r !== 'sent') throw new Error(`support email not sent (${r}): ${subject}`);
 }

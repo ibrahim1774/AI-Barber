@@ -118,6 +118,16 @@ export async function fulfilManually(sub: any, slug: string, manual?: Pick<Manua
 
 /** statusBody plus the manual states: awaiting-setup, a live manual domain, a manually ended one. */
 export function webStatusBody(row: DomainRow | null): DomainStatusBody {
+  return withRenewalReason(row, webStatusBodyBase(row));
+}
+
+/** Renewal is off because the hosting plan ended (not the customer's choice): the client says so. Applied to every web status path. */
+export function withRenewalReason<T extends DomainStatusBody>(row: DomainRow | null, b: T): T {
+  if (row && !row.refunded_at && !row.auto_renew && row.alerts_sent?.['renewal-off-plan-ended'] && !row.alerts_sent?.['renewal-off-customer']) (b as any).renewalOffReason = 'plan-ended';
+  return b;
+}
+
+function webStatusBodyBase(row: DomainRow | null): DomainStatusBody {
   if (!row) return statusBody(null);
   if (row.state === 'awaiting_setup') {
     return {
@@ -129,14 +139,19 @@ export function webStatusBody(row: DomainRow | null): DomainStatusBody {
   if (row.state === 'transferred' && row.transferred_by === 'manual-ended') {
     return { domain: row.domain, state: 'expired', paidUntil: row.paid_until ? iso(Date.parse(row.paid_until)) : null, autoRenew: false, ...(row.simulated ? { sandbox: true as const } : {}) };
   }
+  if (row.state === 'failed' && row.refunded_at) {
+    // Refunded: nothing is paid, nothing renews, and a retry would be a free reclaim (refused server-side).
+    return { ...statusBody(row), paidUntil: null, autoRenew: false, canRetry: false, refunded: true } as DomainStatusBody;
+  }
   return statusBody(row);
 }
 
 /** webStatusBody with the DNS / TLS probe on a live manual domain. */
 export async function webStatusWithProbe(row: DomainRow | null, flow: DomainFlowDeps): Promise<DomainStatusBody> {
-  if (row?.state === 'manual_live') return statusWithProbe({ ...row, state: 'live' }, flow);
+  if (row?.state === 'manual_live') return withRenewalReason(row, await statusWithProbe({ ...row, state: 'live' }, flow));
+  if (row?.state === 'failed' && row.refunded_at) return webStatusBody(row);
   if (row?.state === 'awaiting_setup' || (row?.state === 'transferred' && row.transferred_by === 'manual-ended')) return webStatusBody(row);
-  return statusWithProbe(row, flow); // every other state: the existing status + probe
+  return withRenewalReason(row, await statusWithProbe(row, flow)); // every other state: the existing status + probe
 }
 
 // ─── signed links ───
