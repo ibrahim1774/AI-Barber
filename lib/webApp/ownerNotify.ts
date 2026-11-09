@@ -91,8 +91,8 @@ export async function webReturnBaseOf(
 }
 
 // Header-safe: collapse whitespace/control characters (a customer name must never inject a header line).
-const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
-const cap = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
+const cap = (s: string, n: number) => { const c = Array.from(s); return c.length > n ? `${c.slice(0, n - 1).join('').trimEnd()}…` : s; };
 /** Customer's first name for subjects (short), or "A customer". */
 const who = (n: string | null) => cap(firstOf(clean(n ?? '')) || 'A customer', 16);
 /** "Tuesday, November 10 at 10:00 AM" -> "Tue Nov 10, 10:00 AM" for a subject; falls back to the short form. */

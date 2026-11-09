@@ -200,6 +200,14 @@ describe('ownerEmailFor / sendOwnerEmail', () => {
     expect(m.subject).not.toMatch(/[\r\n]/);
     expect(m.subject.length).toBeLessThanOrEqual(80);
   });
+  it('subject: no bidi/C1 controls, and the cap never splits a surrogate pair', () => {
+    const when = { whenShort: 'Sat 3:00 PM', whenLong: 'Saturday, October 24 at 3:00 PM', service: 'Fade' };
+    const bidi = ownerEmailFor({ kind: 'booking_created', customerName: 'Jo\u202eevil\u2066x\u200f\u0085y', ...when }, null).subject;
+    expect(bidi).not.toMatch(/[\u0080-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/);
+    const long = ownerEmailFor({ kind: 'booking_created', customerName: 'a'.repeat(38) + '😀😀😀', ...when }, null).subject;
+    expect(long).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+    expect(long).toContain('…');
+  });
   it('sendOwnerEmail: sends to the resolved address; no address skips; failures never throw', async () => {
     const send = vi.fn(async (_to: string, _m: unknown) => {});
     const ev = { kind: 'booking_created', customerName: 'Jake', ...when } as const;
