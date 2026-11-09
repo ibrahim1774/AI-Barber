@@ -2,7 +2,7 @@
 // (Mark live / Can't get this name / Mark ended). Ibrahim only: the link is emailed to DOMAIN_ORDERS_EMAIL,
 // carries an HMAC (DOMAIN_ADMIN_LINK_SECRET), expires after 30 days and is single use (the conditional state update).
 // GET only shows the checks and writes nothing (mail scanners prefetch links); POST acts and needs a same-origin browser.
-import { clientIp, publicLimiter } from '../../lib/bookings/rateLimit.js';
+import { clientIp, domainActionLimiter } from '../../lib/bookings/rateLimit.js';
 import { domainActionView, postAllowed, runDomainAction } from '../../lib/webApp/domainManual.js';
 import { liveManualEnv } from '../../lib/webApp/domainManualLive.js';
 
@@ -17,7 +17,7 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') return send(405, '<p>Method not allowed.</p>');
   try {
     const post = req.method === 'POST';
-    if (!(await publicLimiter.allow(clientIp(req.headers), post ? 'write' : 'read'))) return send(429, '<p>Too many requests. Try again in a minute.</p>');
+    if (!(await domainActionLimiter.allow(clientIp(req.headers), post ? 'write' : 'read'))) return send(429, '<p>Too many requests. Try again in a minute.</p>');
     if (post && !postAllowed(req.headers)) return send(403, '<p>This action must be pressed on the confirmation page.</p>');
     const token = post ? (req.body?.t ?? req.query?.t) : req.query?.t;
     const env = liveManualEnv();

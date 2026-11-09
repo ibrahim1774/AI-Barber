@@ -427,6 +427,26 @@ describe('S1: the support email only counts when it was really sent', () => {
     vi.resetModules();
   });
 
+  it('the support alert goes to DOMAIN_SUPPORT_EMAIL when set, else support@davoxa.com', async () => {
+    vi.resetModules();
+    const sendEmail = vi.fn(async () => 'sent');
+    vi.doMock('../lib/bookings/email.js', async (orig) => ({ ...(await orig<object>()), sendEmail }));
+    const { notifySupportEmail } = await import('../lib/ios/domainLive.js');
+    const prev = process.env.DOMAIN_SUPPORT_EMAIL;
+    try {
+      delete process.env.DOMAIN_SUPPORT_EMAIL;
+      await notifySupportEmail('s', 't');
+      expect(sendEmail).toHaveBeenLastCalledWith(expect.objectContaining({ to: 'support@davoxa.com' }));
+      process.env.DOMAIN_SUPPORT_EMAIL = 'qa+alerts@example.test';
+      await notifySupportEmail('s', 't');
+      expect(sendEmail).toHaveBeenLastCalledWith(expect.objectContaining({ to: 'qa+alerts@example.test' }));
+    } finally {
+      if (prev === undefined) delete process.env.DOMAIN_SUPPORT_EMAIL; else process.env.DOMAIN_SUPPORT_EMAIL = prev;
+      vi.doUnmock('../lib/bookings/email.js');
+      vi.resetModules();
+    }
+  });
+
   it('a failed alert email is retried by the next sweep (not marked sent)', async () => {
     quiet();
     const w = world();

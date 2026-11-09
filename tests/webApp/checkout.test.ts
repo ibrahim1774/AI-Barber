@@ -19,12 +19,18 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
     if (path.startsWith('web_app_checkout_sessions')) { if ((globalThis as any).__csFail) throw new Error('relation does not exist'); if ((init.method ?? 'GET') === 'GET') return (globalThis as any).__cs ? [{ stripe_session_id: (globalThis as any).__cs }] : []; (globalThis as any).__csSaved = init.body; return null; }
     if (path.startsWith('web_app_drafts')) return (globalThis as any).__shop === undefined ? [] : [{ shop: (globalThis as any).__shop }];
     if (path.startsWith('site_owners')) return [];
+    if (path.startsWith('web_app_publish_intents') && init.method === 'PATCH') return [{ id: 'int1' }];
     return [];
   },
 }));
 vi.mock('../../lib/webApp/appStoreGuard.js', () => ({
   appStoreStateOf: async () => { if (guard.err) throw guard.err; return guard.state; },
 }));
+
+vi.mock('../../lib/webApp/reliability.js', async (orig) => {
+  const a: any = await orig();
+  return { ...a, planIntent: async (...x: any[]) => ((globalThis as any).__plan ? { id: 'int1' } : a.planIntent(...x)), submitIntent: async (...x: any[]) => ((globalThis as any).__plan ? { id: 'int1' } : a.submitIntent(...x)) };
+});
 
 import handler from '../../api/web-app/checkout.js';
 
@@ -43,6 +49,8 @@ beforeEach(() => {
   stripe.handler = (path: string, body: any, method: string, opts: any) => {
     if (path === 'customers') { const k = opts.idempotencyKey; if (!keyed.has(k)) keyed.set(k, { id: `cus_${keyed.size + 1}` }); return keyed.get(k); }
     if (path.startsWith('subscriptions?')) return { data: subs };
+    if (path.startsWith('subscriptions/') && (globalThis as any).__subFail) throw new Error('stripe 500');
+    if (path.startsWith('subscriptions/')) { const id = decodeURIComponent(path.split('?')[0].split('/')[1]); const f = subs.find((x) => x.id === id); if (!f) throw new Error('no sub'); return f; }
     if (path.startsWith('checkout/sessions?')) return { data: open };
     // Stripe replays the FIRST response for a repeated key: the create response always says 'open'. Real state is only visible via GET.
     if (path === 'checkout/sessions') { const id = nextId.shift() ?? `cs_${Math.random()}`; real[id] ??= { id, status: 'open', url: `https://stripe.test/${id}` }; return { id, status: 'open', url: `https://stripe.test/${id}` }; }
@@ -51,7 +59,7 @@ beforeEach(() => {
     throw new Error(`unexpected ${path}`);
   };
 });
-afterEach(() => { vi.unstubAllEnvs(); (globalThis as any).__shop = undefined; (globalThis as any).__cs = undefined; (globalThis as any).__csFail = false; (globalThis as any).__csSaved = undefined; });
+afterEach(() => { vi.unstubAllEnvs(); (globalThis as any).__shop = undefined; (globalThis as any).__cs = undefined; (globalThis as any).__csFail = false; (globalThis as any).__csSaved = undefined; (globalThis as any).__subFail = false; (globalThis as any).__plan = false; });
 
 const created = () => stripe.calls.filter((c) => c.path === 'checkout/sessions' && c.method === 'POST');
 
@@ -173,6 +181,145 @@ describe('POST /api/web-app/checkout', () => {
     const r = await run();
     expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
     expect(created()).toHaveLength(0);
+  });
+
+  const incompleteWith = (pi: any, ageSec = 60) => [{ id: 'sub_1', status: 'incomplete', created: Math.floor(Date.now() / 1000) - ageSec, metadata: { app: 'aibarber-app' }, latest_invoice: { id: 'in_1', payment_intent: pi } }];
+
+  it('FIX1: a declined card (payment intent requires_payment_method) does not block: a session URL is returned, no duplicate subscription, nothing cancelled', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    const r = await run();
+    expect(r.code).toBe(200); expect(r.body.url).toMatch(/^https:\/\/stripe\.test\//);
+    expect(stripe.calls.some((c) => c.method === 'DELETE' || /subscriptions\/sub_1$/.test(c.path) && c.method === 'POST')).toBe(false);
+    expect(created()).toHaveLength(1);
+  });
+
+  it('FIX1: the still-open stored session is reused (its URL returned) after a decline, none created', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    (globalThis as any).__cs = 'cs_open';
+    real.cs_open = { id: 'cs_open', status: 'open', url: 'https://stripe.test/cs_open', mode: 'subscription', expires_at: Math.floor(Date.now() / 1000) + 1800, metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month' } };
+    const r = await run();
+    expect(r.code).toBe(200); expect(r.body).toEqual({ url: 'https://stripe.test/cs_open' });
+    expect(created()).toHaveLength(0);
+  });
+
+  it('FIX1: payment intent requires_action (3DS in progress) or processing still blocks with payment_processing', async () => {
+    for (const status of ['requires_action', 'processing', 'requires_confirmation']) {
+      subs = incompleteWith({ id: 'pi_1', status });
+      const r = await run();
+      expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
+    }
+    expect(created()).toHaveLength(0);
+  });
+
+  it('FIX1: an incomplete sub whose payment state cannot be read keeps blocking (fail closed)', async () => {
+    subs = incompleteWith(null);
+    expect((await run()).body.error).toBe('payment_processing');
+  });
+
+  const openStored = (over: any = {}) => { (globalThis as any).__cs = 'cs_open'; real.cs_open = { id: 'cs_open', status: 'open', url: 'https://stripe.test/cs_open', mode: 'subscription', expires_at: Math.floor(Date.now() / 1000) + 1800, metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month' }, ...over }; };
+
+  it('L2/I3: a stored session of another tier, with an intent, another site, another user or about to expire is NOT reused (a new one is created)', async () => {
+    const bad: any[] = [
+      { metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'bookings', interval: 'month' } },
+      { metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'i1' } },
+      { metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', site_slug: 'other' } },
+      { metadata: { app: 'aibarber-app', user_id: 'u2', tier: 'website', interval: 'month' } },
+      { expires_at: Math.floor(Date.now() / 1000) + 60 },
+    ];
+    for (const b of bad) {
+      stripe.calls = []; nextId = ['cs_new'];
+      subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+      openStored(b);
+      const r = await run();
+      expect(r.body.url).toBe('https://stripe.test/cs_new');
+      expect(created()).toHaveLength(1);
+    }
+  });
+
+  it('I3: publish-with-checkout after a decline creates and links its own session (the old one is not reused)', async () => {
+    vi.stubEnv('WEB_APP_RELIABILITY', '1'); (globalThis as any).__plan = true;
+    try {
+      subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+      openStored();
+      const r = await run({ tier: 'website', interval: 'month', publish: true, draftId: 'd1', revision: 1 });
+      expect(r.code).toBe(200); expect(r.body.url).toBe('https://stripe.test/cs_new');
+      expect(created()).toHaveLength(1);
+      expect(created()[0].body['metadata[intent_id]']).toBe('int1');
+      expect(sb.calls.some((c) => c.path.startsWith('web_app_publish_intents?id=eq.int1') && c.body?.stripe_session_id === 'cs_new')).toBe(true);
+    } finally { (globalThis as any).__plan = false; }
+  });
+
+  it('I3: mixed declined + processing incomplete subscriptions: 409 payment_processing', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    subs = [
+      { id: 'sub_a', status: 'incomplete', created: now - 60, metadata: { app: 'aibarber-app' }, latest_invoice: { payment_intent: { status: 'requires_payment_method' } } },
+      { id: 'sub_b', status: 'incomplete', created: now - 60, metadata: { app: 'aibarber-app' }, latest_invoice: { payment_intent: { status: 'processing' } } },
+    ];
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
+  });
+
+  it('I2: a failed Stripe payment-state lookup is 503 try_again, not a processing lockout', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    (globalThis as any).__subFail = true;
+    const r = await run();
+    expect(r.code).toBe(503); expect(r.body.error).toBe('try_again');
+    expect(created()).toHaveLength(0);
+  });
+
+  it('I1: pins the Stripe 2024-06-20 dependency: the lookup expands latest_invoice.payment_intent', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    await run();
+    expect(stripe.calls.some((c) => c.path === 'subscriptions/sub_1?expand[0]=latest_invoice.payment_intent')).toBe(true);
+    const src = (await import('node:fs')).readFileSync(new URL('../../lib/webApp/webAppServer.ts', import.meta.url), 'utf8');
+    expect(src).toContain("const STRIPE_API_VERSION = '2024-06-20'");
+  });
+
+  it('R2: after a decline the old Checkout session is expired BEFORE the new one is created', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } });
+    expect((await run()).code).toBe(200);
+    const iExp = stripe.calls.findIndex((c) => c.path === 'checkout/sessions/cs_open/expire');
+    const iNew = stripe.calls.findIndex((c) => c.path === 'checkout/sessions' && c.method === 'POST');
+    expect(iExp).toBeGreaterThanOrEqual(0); expect(iExp).toBeLessThan(iNew);
+  });
+
+  it('R2: the old tab retried and is now processing / mid-3DS (incomplete, not declined): new session expired, 409 payment_processing', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } });
+    const h = stripe.handler; let listed = 0;
+    stripe.handler = (p: string, ...rest: any[]) => {
+      if (p.startsWith('subscriptions?') && ++listed === 2) { subs = incompleteWith({ id: 'pi_1', status: 'requires_action' }); return { data: subs }; }
+      return h(p, ...rest);
+    };
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
+    expect(stripe.calls.some((c) => c.path === 'checkout/sessions/cs_new/expire')).toBe(true);
+  });
+
+  it('L1: the declined tab paid while the new session was being made: the new session is expired and 409 already_subscribed', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } }); // forces a new session
+    const h = stripe.handler; let listed = 0;
+    stripe.handler = (p: string, ...rest: any[]) => {
+      if (p.startsWith('subscriptions?') && ++listed === 2) return { data: [{ id: 'sub_1', status: 'active', metadata: { app: 'aibarber-app' } }] };
+      return h(p, ...rest);
+    };
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body.error).toBe('already_subscribed');
+    expect(stripe.calls.some((c) => c.path === 'checkout/sessions/cs_new/expire')).toBe(true);
+  });
+
+  it('L1b: the old session completed: the new one is expired and 409 already_subscribed', async () => {
+    subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+    openStored({ metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', intent_id: 'old' } });
+    const h = stripe.handler; let gets = 0;
+    stripe.handler = (p: string, b: any, m: string, o: any) => {
+      if (p === 'checkout/sessions/cs_open' && m === 'GET' && ++gets === 2) return { id: 'cs_open', status: 'complete' };
+      return h(p, b, m, o);
+    };
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body.error).toBe('already_subscribed');
   });
 
   it('other open tagged sessions are expired once the new one exists; untagged and the new one are left alone', async () => {

@@ -58,7 +58,7 @@ describe('emails', () => {
       '',
       'Questions? Reply to this email.',
     ].join('\n'));
-    expect(customerRefundedEmail(F, O).subject).toBe('Your $39 for freshcuts.com was refunded');
+    expect(customerRefundedEmail(F, O).subject).toBe('Your refund for freshcuts.com');
     expect(customerRefundedEmail(F, O).text).toContain('Your $39 has been refunded in full and the subscription is cancelled.');
     for (const m of [customerOrderedEmail(F, O), customerLiveEmail(F, O), customerRefundedEmail(F, O)]) expect(m.text).not.toMatch(/\/mo\b|per month|a month|monthly/i);
   });

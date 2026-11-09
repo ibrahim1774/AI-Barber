@@ -640,14 +640,14 @@ describe("Can't get this name", () => {
     expect(w.cancelAndRefund).toHaveBeenCalledTimes(1);
     expect(w.cancelAndRefund).toHaveBeenCalledWith('sub_m1');
     expect(w.notifySupport).toHaveBeenCalled();
-    const refunded = w.fm.toCustomer().filter((s) => /was refunded/.test(s.mail.subject));
+    const refunded = w.fm.toCustomer().filter((s) => /Your refund for/.test(s.mail.subject));
     expect(refunded).toHaveLength(1);
     expect(refunded[0].mail.text).toContain('refunded in full');
     const again = await runDomainAction(w.tokenFor('cant'), w.env);
     expect(again.html).toMatch(/Already done/);
     await w.sweep(); await w.sweep();
     expect(w.cancelAndRefund).toHaveBeenCalledTimes(1);
-    expect(w.fm.toCustomer().filter((s) => /was refunded/.test(s.mail.subject))).toHaveLength(1);
+    expect(w.fm.toCustomer().filter((s) => /Your refund for/.test(s.mail.subject))).toHaveLength(1);
     expect(w.reg.api.buy).not.toHaveBeenCalled();
     // the app's status is the existing refunded screen
     expect(webStatusBody(w.row()).state).toMatch(/^failed:/);
@@ -661,11 +661,11 @@ describe("Can't get this name", () => {
     expect(r.status).toBe(202);
     expect(r.html).toMatch(/Refund pending/);
     expect(w.row()).toMatchObject({ state: 'failed', refunded_at: null });
-    expect(w.fm.toCustomer().filter((s) => /was refunded/.test(s.mail.subject))).toHaveLength(0);
+    expect(w.fm.toCustomer().filter((s) => /Your refund for/.test(s.mail.subject))).toHaveLength(0);
     await w.iosSweep(); // the existing failed-row refund retry (pass 7)
     expect(w.row().refunded_at).toBeTruthy();
     await w.sweep(); await w.sweep();
-    expect(w.fm.toCustomer().filter((s) => /was refunded/.test(s.mail.subject))).toHaveLength(1);
+    expect(w.fm.toCustomer().filter((s) => /Your refund for/.test(s.mail.subject))).toHaveLength(1);
     expect(w.cancelAndRefund).toHaveBeenCalledTimes(2);
   });
 

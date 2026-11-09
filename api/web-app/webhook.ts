@@ -8,16 +8,16 @@ import { WEB_APP_TAG, cleanShopName, isEntitledStatus, keyMode, planDescription,
 import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
-import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { contactFor, liveSiteUrlFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
 import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
+import { livePlanEndDeps, onPlanEnded, onPlanResumed } from '../../lib/webApp/domainPlanEnd.js';
 import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
 
 export const config = { api: { bodyParser: false } };
 
 const SUB_EVENTS = new Set(['checkout.session.completed', 'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted']);
-const siteUrlOf = (slug: string | null) => (slug ? stampedSiteUrl(slug) : Promise.resolve(null));
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -98,7 +98,7 @@ export default async function handler(req: any, res: any) {
       if (claimed?.length) {
         try {
           const { email: to, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
-          if (to) await sendMail(to, welcomeEmail({ email: to, firstName, siteUrl: await siteUrlOf(row.site_slug), tier: row.tier }));
+          if (to) await sendMail(to, welcomeEmail({ email: to, firstName, siteUrl: await liveSiteUrlFor(row.site_slug, row.user_id, row.environment), tier: row.tier }));
         } catch (e: any) {
           // Best effort: release the claim so a later event retries, but never fail the webhook over an email
           // (Stripe would retry for days and could disable the endpoint, stopping entitlement updates).
@@ -113,11 +113,42 @@ export default async function handler(req: any, res: any) {
       try { await handleDuplicates(row.user_id, liveDupDeps(mode)); }
       catch (e: any) { console.error('[web-app webhook dup check]', e?.message || e); }
     }
+    // The plan's effect on the site's custom domain. Best effort: NEVER changes the response.
+    try { await withTimeout((async () => {
+      const slug = row.site_slug ?? (await withTimeout(storedSlug(row.stripe_subscription_id, row.user_id ?? null, mode), SLUG_LOOKUP_TIMEOUT_MS, null));
+      if (slug) {
+        if (event.type === 'customer.subscription.deleted' && !isEntitledStatus(row.status)) {
+          await onPlanEnded(slug, row.user_id ?? null, await livePlanEndDeps(mode), { excludeSub: row.stripe_subscription_id, customerId: row.stripe_customer_id });
+        } else if (isEntitledStatus(row.status)) {
+          await onPlanResumed(slug, await livePlanEndDeps(mode));
+        }
+      }
+    })(), DOMAIN_STEP_TIMEOUT_MS, undefined); } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
     return res.status(200).json({ ok: true });
   } catch (e: any) {
     console.error('[web-app webhook]', e.message);
     return res.status(500).json({ error: 'store_failed' }); // Stripe retries
   }
+}
+
+/** A hung database must never hang the webhook: give up on the slug lookup after this long (the domain sweep is the backstop). */
+const SLUG_LOOKUP_TIMEOUT_MS = 3_000;
+/** The whole domain-renewal step is capped too, so the webhook always answers Stripe in time. */
+const DOMAIN_STEP_TIMEOUT_MS = 8_000;
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+  });
+}
+
+/** The site this plan belongs to when the Stripe metadata has none: the slug stored on its entitlement row, else the user's site in this mode. */
+async function storedSlug(subId: string, userId: string | null, mode: 'live' | 'test'): Promise<string | null> {
+  const stored = (await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${enc(subId)}&select=site_slug&limit=1`))?.[0]?.site_slug;
+  if (typeof stored === 'string' && stored) return stored;
+  if (!userId) return null;
+  const site = (await sbRest(`web_app_sites?user_id=eq.${enc(userId)}&environment=eq.${mode}&select=slug&limit=1`))?.[0]?.slug;
+  return typeof site === 'string' && site ? site : null;
 }
 
 /** A failed renewal: email the owner at once, then (via the cron) every 2 days while it stays past_due. Our subscriptions only. */

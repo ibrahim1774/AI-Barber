@@ -90,7 +90,7 @@ export interface RateLimiter {
 }
 
 /** Limiter scopes: a fixed, server-chosen namespace per limiter, never from the request. */
-export type RateScope = 'public' | 'ios' | 'deploy' | 'user' | 'signup' | 'signupEmail' | 'transfer';
+export type RateScope = 'public' | 'ios' | 'deploy' | 'user' | 'signup' | 'signupEmail' | 'transfer' | 'domainAction';
 
 /**
  * Limiter keyed `${scope}:${kind}:${subject}`: reads count in `readStore` (default in memory),
@@ -122,6 +122,9 @@ export const publicLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStor
 
 /** /api/deploy-site, per IP (same limits as the public pages, its own buckets). */
 export const deployLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore, { read: READ_LIMIT, write: WRITE_LIMIT }, 'deploy');
+
+/** /api/web-app/domain-action (the operator links), per IP: its own buckets, so it never throttles the booking pages. */
+export const domainActionLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore, { read: READ_LIMIT, write: WRITE_LIMIT }, 'domainAction');
 
 /** Per signed-in user (subject = the verified Supabase user id): /api/shop/plan and setup's Apple verify. */
 export const userLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore, { read: READ_LIMIT, write: WRITE_LIMIT }, 'user');

@@ -6,7 +6,7 @@ const h = vi.hoisted(() => ({
   view: vi.fn(async (_t: unknown, _e: unknown) => ({ status: 200, html: '<p>view</p>' })),
   run: vi.fn(async (_t: unknown, _e: unknown) => ({ status: 200, html: '<p>done</p>' })),
 }));
-vi.mock('../../lib/bookings/rateLimit.js', () => ({ publicLimiter: { allow: h.allow }, clientIp: (hd: any) => hd?.['x-real-ip'] ?? 'unknown' }));
+vi.mock('../../lib/bookings/rateLimit.js', () => ({ domainActionLimiter: { allow: h.allow }, clientIp: (hd: any) => hd?.['x-real-ip'] ?? 'unknown' }));
 vi.mock('../../lib/webApp/domainManualLive.js', () => ({ liveManualEnv: () => ({ env: true }) }));
 vi.mock('../../lib/webApp/domainManual.js', async (orig) => ({ ...(await orig<any>()), domainActionView: h.view, runDomainAction: h.run }));
 

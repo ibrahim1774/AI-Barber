@@ -1,5 +1,5 @@
 import { STRIPE_API_VERSION } from '../lib/stripeVersion.js';
-import { webDomainPanelStatus, webDomainPortal } from '../lib/webDomains.js';
+import { domainPortalForm, webDomainPanelStatus, webDomainPortal } from '../lib/webDomains.js';
 import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
 import { liveVercelDomains } from '../lib/ios/vercelDomains.js';
 import { supabaseDomains } from '../lib/ios/domainsRepo.js';
@@ -25,11 +25,11 @@ export default async function handler(req: any, res: any) {
       authorize: (siteId: unknown, authorization: unknown) => authorizeSiteOwner({ siteId, authorization }, authDeps),
       flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
       getSubscription: stripeSubscription,
-      async createPortalSession(customer: string, returnUrl: string) {
+      async createPortalSession(customer: string, returnUrl: string, subscriptionId: string) {
         const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
           method: 'POST',
           headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION },
-          body: new URLSearchParams({ customer, return_url: returnUrl }).toString(),
+          body: domainPortalForm(customer, returnUrl, subscriptionId),
         });
         return { ok: r.ok, data: await r.json().catch(() => null) };
       },

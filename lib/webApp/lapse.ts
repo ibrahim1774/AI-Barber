@@ -30,6 +30,10 @@ export interface WebSweepDeps {
   clearTakenDown(slug: string): Promise<void>;
   deployOffline(slug: string): Promise<void>;
   publish(slug: string, opts: { force: boolean }): Promise<PublishOutcome>;
+  /** Best effort, never throws: the plan has ended, so the site's domain stops renewing (lib/webApp/domainPlanEnd.ts). */
+  planEnded?(row: WebSiteRow): Promise<void>;
+  /** Best effort, never throws: a restored (re-subscribed) site's domain renews again where the plan ending turned it off. */
+  planResumed?(row: WebSiteRow): Promise<void>;
   now(): number;
 }
 
@@ -63,7 +67,10 @@ export async function sweepWebApp(deps: WebSweepDeps, opts: { limit?: number; de
       if (await deps.iosOwnsSlug(row.slug)) { out.skipped.push(row.slug); continue; }
       if (!(await deps.hasEntitledRow(row.user_id))) continue;
       const o = await deps.publish(row.slug, { force: true });
-      if (o.ok) { await deps.clearTakenDown(row.slug); out.restored.push(row.slug); }
+      if (o.ok) {
+        await deps.clearTakenDown(row.slug); out.restored.push(row.slug);
+        await deps.planResumed?.(row).catch((e: any) => console.error(`[Sweeper:web] domain renewal resume for ${row.slug}:`, e?.message || e));
+      }
       else { console.error(`[Sweeper:web] RESTORE FAILED ${row.slug}: ${o.reason} ${o.error ?? ''}; flag kept`); out.restoreFailed.push(row.slug); }
     } catch (e: any) {
       console.error(`[Sweeper:web] restore threw for ${row.slug}:`, e?.message || e);
@@ -90,6 +97,7 @@ export async function sweepWebApp(deps: WebSweepDeps, opts: { limit?: number; de
         continue;
       }
       if (isEntitledStatus(status)) { out.stillActive.push(row.slug); continue; }
+      await deps.planEnded?.(row).catch((e: any) => console.error(`[Sweeper:web] domain renewal for ${row.slug}:`, e?.message || e));
       // Stamp first: a death mid-deploy leaves the flag set, so a later re-subscribe is restored.
       await deps.markTakenDown(row.slug);
       try {
@@ -151,6 +159,14 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
       await deployRenderedSite({ siteId: slug, html: offlineHtml(), subpages: shop ? { mode: 'manage-only' } : null });
     },
     publish: (slug, opts) => publishSite(slug, opts),
+    planEnded: async (row) => {
+      const { livePlanEndDeps, onPlanEnded } = await import('./domainPlanEnd.js');
+      await onPlanEnded(row.slug, row.user_id ?? null, await livePlanEndDeps(env));
+    },
+    planResumed: async (row) => {
+      const { livePlanEndDeps, onPlanResumed } = await import('./domainPlanEnd.js');
+      await onPlanResumed(row.slug, await livePlanEndDeps(env));
+    },
     now: () => Date.now(),
   };
 }

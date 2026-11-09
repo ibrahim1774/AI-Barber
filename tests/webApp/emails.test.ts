@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { failedPaymentEmail, resetLink, signInLink, welcomeEmail } from '../../lib/webApp/emails';
+import { TIER_NAME, failedPaymentEmail, resetLink, signInLink, welcomeEmail } from '../../lib/webApp/emails';
 
 const O = 'https://www.aibarber.org';
 const site = 'https://joes.vercel.app';
@@ -10,7 +10,8 @@ describe('web app emails', () => {
   it('welcome: short subject saying what they signed up for, with site, account, sign-in and reset links, no password', () => {
     const m = welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
     expect(m.subject).toBe('Welcome! Barber plan active');
-    expect(m.text).toContain('Custom site');
+    expect(m.text).toContain('Plan: Website');
+    expect(m.text).not.toContain('Custom site');
     for (const part of [site, 'a@b.co', signInLink(O), resetLink(O)]) { expect(m.html).toContain(part); expect(m.text).toContain(part); }
     expect(m.text).toContain('We never email passwords');
     expect(m.html.toLowerCase()).not.toMatch(/password:/);
@@ -18,8 +19,9 @@ describe('web app emails', () => {
   it('welcome: personal fixed subject; the body names the plan', () => {
     const m = welcomeEmail({ email: 'a@b.co', firstName: 'Jake Lee', siteUrl: null, tier: 'bookings' }, O);
     expect(m.subject).toBe('Welcome Jake! Barber plan active');
-    expect(m.text).toContain('Custom site + booking');
-    expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).toContain('Custom site, booking + your own store');
+    expect(m.text).toContain('Plan: Bookings');
+    expect(m.text).toContain('Your plan is active: Bookings.');
+    expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).toContain('Plan: Store');
   });
   it('failed payment: calm subject, headline and lead; single sign-in link on our own site (never Stripe); reply-to; text mirror', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', firstName: 'Jack Smith', siteUrl: site, tier: 'website', updateUrl: 'https://invoice.stripe.com/i/x' }, O);
@@ -59,6 +61,29 @@ describe('web app emails', () => {
     const f = failedPaymentEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
     expect(f.html).not.toContain('#0d0d0d');
     expect(f.html).toContain('background:#ffffff');
+  });
+  it('plan labels match the paywall names (Website / Bookings / Store) in every mail that names the plan', () => {
+    for (const [tier, label] of [['website', 'Website'], ['bookings', 'Bookings'], ['store', 'Store']] as const) {
+      expect(TIER_NAME[tier]).toBe(label);
+      const w = welcomeEmail({ email: 'a@b.co', siteUrl: null, tier }, O);
+      expect(w.text).toContain(`Plan: ${label}`); expect(w.html).toContain(`Your plan: ${label}.`);
+      expect(failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier }, O).text).toContain(`Plan: ${label}`);
+      expect(w.html + w.text).not.toMatch(/Custom site/);
+    }
+  });
+  it('welcome: live site link when known (one site link, plus the sign-in and reset links), none when unknown; no extra headers', () => {
+    const w = welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
+    expect(w.html.match(/href="https:\/\/joes\.vercel\.app"/g)).toHaveLength(1);
+    expect(w.text).toContain(`Site: ${site}`);
+    expect(w.html.match(/href="/g)).toHaveLength(3);
+    const n = welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'website' }, O);
+    expect(n.text).not.toContain('Site:'); expect(n.html).not.toContain('joes'); expect(n.html.match(/href="/g)).toHaveLength(2);
+    expect(w.headers).toBeUndefined();
+    expect(w.html.toLowerCase()).not.toMatch(/italic|<i>|<em>|unsubscribe/);
+  });
+  it('welcome: never greets by a shop-style word; only the given first name', () => {
+    expect(welcomeEmail({ email: 'a@b.co', firstName: null, siteUrl: null, tier: 'website' }, O).subject).toBe('Welcome! Barber plan active');
+    expect(welcomeEmail({ email: 'a@b.co', firstName: '', siteUrl: null, tier: 'website' }, O).subject).toBe('Welcome! Barber plan active');
   });
   it('escapes html in the account email', () => {
     expect(welcomeEmail({ email: '<b>x</b>@y.co', siteUrl: null, tier: 'website' }, O).html).not.toContain('<b>x</b>');
