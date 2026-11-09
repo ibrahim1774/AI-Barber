@@ -8,16 +8,14 @@ import { WEB_APP_TAG, cleanShopName, isEntitledStatus, keyMode, planDescription,
 import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
-import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { contactFor, liveSiteUrlFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
 import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
-import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
 
 export const config = { api: { bodyParser: false } };
 
 const SUB_EVENTS = new Set(['checkout.session.completed', 'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted']);
-const siteUrlOf = (slug: string | null) => (slug ? stampedSiteUrl(slug) : Promise.resolve(null));
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -98,7 +96,7 @@ export default async function handler(req: any, res: any) {
       if (claimed?.length) {
         try {
           const { email: to, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
-          if (to) await sendMail(to, welcomeEmail({ email: to, firstName, siteUrl: await siteUrlOf(row.site_slug), tier: row.tier }));
+          if (to) await sendMail(to, welcomeEmail({ email: to, firstName, siteUrl: await liveSiteUrlFor(row.site_slug, row.user_id, row.environment), tier: row.tier }));
         } catch (e: any) {
           // Best effort: release the claim so a later event retries, but never fail the webhook over an email
           // (Stripe would retry for days and could disable the endpoint, stopping entitlement updates).

@@ -12,7 +12,11 @@ const enc = encodeURIComponent;
 
 const siteUrlOf = (slug: string | null) => (slug ? stampedSiteUrl(slug) : Promise.resolve(null));
 
-/** Account email + first name: the Supabase user's, else the Stripe customer's. */
+/**
+ * Account email + first name. The name is the Supabase user's own (first_name / given_name / full_name / name, then the
+ * Google identity's), never the Stripe customer's: Checkout's billing name and shop-style names are not a first name,
+ * so with no real name the mail simply has no name ("Hi there" / a nameless subject). Email falls back to Stripe.
+ */
 export async function contactFor(userId: string | null, customerId: string): Promise<{ email: string | null; firstName: string | null }> {
   let email: string | null = null; let name: string | null = null;
   if (userId) {
@@ -20,17 +24,39 @@ export async function contactFor(userId: string | null, customerId: string): Pro
     if (r.ok) {
       const u: any = await r.json().catch(() => null);
       email = u?.email ?? null;
-      const m = u?.user_metadata ?? {};
-      name = m.first_name || m.given_name || m.full_name || m.name || null;
+      const pick = (m: any) => m?.first_name || m?.given_name || m?.full_name || m?.name || null;
+      name = pick(u?.user_metadata);
+      if (!name && Array.isArray(u?.identities)) for (const id of u.identities) { name = pick(id?.identity_data); if (name) break; }
     }
   }
-  if (!email || !name) {
+  if (!email) {
     const c = await stripeCall(`customers/${enc(customerId)}`, null, 'GET').catch(() => null);
-    email = email ?? c?.email ?? null;
-    name = name ?? c?.name ?? null;
+    email = c?.email ?? null;
   }
   const first = typeof name === 'string' ? name.trim().split(/\s+/)[0] : '';
   return { email, firstName: first || null };
+}
+
+/**
+ * The live address for a just-paid customer's welcome mail: the stamped site URL (what the deploy really resolved).
+ * Uses the subscription's slug, else the user's published web site. Null when nothing is published yet (the mail is
+ * usually sent within seconds of payment, before the first publish): the mail then leaves the link out.
+ * A custom domain cannot exist yet at this point (it is bought after the first publish), so none is consulted.
+ */
+export const LIVE_URL_TIMEOUT_MS = 3_000;
+export async function liveSiteUrlFor(slug: string | null, userId: string | null, env: 'live' | 'test'): Promise<string | null> {
+  const lookup = async (): Promise<string | null> => {
+    if (slug) return await stampedSiteUrl(slug);
+    if (!userId) return null;
+    const r = await sbRest(`web_app_sites?user_id=eq.${enc(userId)}&environment=eq.${env}&published_at=not.is.null&taken_down_at=is.null&removed_at=is.null&select=slug&order=created_at.desc&limit=1`, { timeoutMs: LIVE_URL_TIMEOUT_MS });
+    const found = r?.[0]?.slug;
+    return typeof found === 'string' && found ? await stampedSiteUrl(found) : null;
+  };
+  // A slow or failing lookup must never hold the webhook or the mail: after ~3 s the mail goes out without the link.
+  let t: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([lookup(), new Promise<null>((res) => { t = setTimeout(() => res(null), LIVE_URL_TIMEOUT_MS); })]);
+  } catch { return null; } finally { clearTimeout(t); }
 }
 
 /** The Stripe-hosted page where this customer can pay / replace the card for the open invoice. */
