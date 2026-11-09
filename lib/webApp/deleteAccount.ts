@@ -135,7 +135,9 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
     sbRest(`web_app_sites?stripe_subscription_id=eq.${enc(otid.slice(WEB.length))}`, { method: 'PATCH', body: { ...body, updated_at: new Date().toISOString() } }).then(() => {});
   const webRemove: RemoveSiteDeps = {
     ...remove,
-    markRemoved: (otid, at) => stamp(otid, { removed_at: new Date(at).toISOString(), taken_down_at: new Date(at).toISOString() }),
+    markRemoved: (otid, at) => stamp(otid, { removed_at: new Date(at).toISOString(), taken_down_at: new Date(at).toISOString() })
+      // Drop the stored mobile number too. Separate and best effort: the columns come with migration 032, and a missing column must never break account deletion.
+      .then(() => stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {})),
     markTakenDown: (otid, at) => stamp(otid, { taken_down_at: new Date(at).toISOString() }),
   };
   return {

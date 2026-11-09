@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { AdminAppSites } from './AdminAppSites';
+import { AdminCustomers } from './AdminCustomers';
 
 /*
  * /admin — owner-only ops dashboard.
@@ -232,7 +233,7 @@ export const AdminDashboard: React.FC = () => {
   const defaultFamily: Family =
     typeof window !== 'undefined' && /primehub/i.test(window.location.hostname) ? 'primehub' : 'aibarber';
   const [family, setFamily] = useState<Family>(defaultFamily);
-  const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts' | 'appsites'>('hosting');
+  const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts' | 'appsites' | 'customers'>('hosting');
   const [includeYearly, setIncludeYearly] = useState(false);
   const [minPayments, setMinPayments] = useState(0);
   const [search, setSearch] = useState('');
@@ -531,7 +532,8 @@ export const AdminDashboard: React.FC = () => {
               ['custom', 'Custom design'],
               ['accounts', `Never paid · ${accountsOnly.length}`],
               ['appsites', 'App sites'],
-            ] as ['hosting' | 'custom' | 'accounts' | 'appsites', string][]
+              ['customers', 'Customers'],
+            ] as ['hosting' | 'custom' | 'accounts' | 'appsites' | 'customers', string][]
           ).map(([key, label]) => (
             <button
               key={key}
@@ -556,9 +558,10 @@ export const AdminDashboard: React.FC = () => {
 
         {/* App sites: iOS customers' sites (edit / replace / republish / rollback) */}
         {tab === 'appsites' && <AdminAppSites />}
+        {tab === 'customers' && <AdminCustomers />}
 
         {/* toolbar */}
-        {tab !== 'appsites' && (
+        {tab !== 'appsites' && tab !== 'customers' && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'inline-flex', border: `1px solid ${LINE}`, borderRadius: 8, overflow: 'hidden' }}>
             {(
@@ -650,8 +653,8 @@ export const AdminDashboard: React.FC = () => {
         </div>
         )}
 
-        {tab !== 'appsites' && loading && <div style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
-        {tab !== 'appsites' && dataError && <div style={{ ...panel, padding: 24, color: '#f85149' }}>{dataError}</div>}
+        {tab !== 'appsites' && tab !== 'customers' && loading && <div style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
+        {tab !== 'appsites' && tab !== 'customers' && dataError && <div style={{ ...panel, padding: 24, color: '#f85149' }}>{dataError}</div>}
 
         {/* subscriptions table */}
         {!loading && !dataError && (tab === 'hosting' || tab === 'custom') && (
