@@ -1,7 +1,7 @@
 // The live wiring of the plan-end checks: iOS ownership and the other-plan check (DB, then Stripe).
 import { describe, it, expect, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ ent: [] as any[], ios: [] as any[], subs: [] as any[], calls: [] as string[] }));
+const h = vi.hoisted(() => ({ cust: [] as any[], ent: [] as any[], ios: [] as any[], subs: [] as any[], calls: [] as string[] }));
 vi.mock('../../lib/ios/domainsRepo.js', () => ({ supabaseDomains: () => ({}) }));
 vi.mock('../../lib/bookings/repo.js', () => ({ serviceClient: () => ({}) }));
 vi.mock('../../lib/ios/domainLive.js', () => ({ stripeSubscription: vi.fn() }));
@@ -9,7 +9,7 @@ vi.mock('../../lib/webApp/domainOneClickLive.js', () => ({ stripeSetRenewal: vi.
 vi.mock('../../lib/webApp/dunning.js', () => ({ contactFor: vi.fn() }));
 vi.mock('../../lib/webApp/emails.js', () => ({ sendMail: vi.fn(), replyToAddress: () => undefined, esc: (x: string) => x }));
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
-  sbRest: async (path: string) => { h.calls.push(path); return path.startsWith('ios_purchases') ? h.ios : path.startsWith('web_app_entitlements') ? h.ent : []; },
+  sbRest: async (path: string) => { h.calls.push(path); return path.startsWith('ios_purchases') ? h.ios : path.startsWith('web_app_customers') ? h.cust : path.startsWith('web_app_entitlements') ? h.ent : []; },
   stripeCall: async (path: string) => (path.startsWith('subscriptions?customer=') ? { data: h.subs } : { customer: 'cus_1' }),
 }));
 
@@ -33,5 +33,16 @@ describe('livePlanEndDeps checks', () => {
     expect(await d.hasOtherPlan!('u1', 'sub_1', 'cus_1')).toBe(false); // itself and an ended one do not count
     h.subs.push({ id: 'sub_3', status: 'active', metadata: { app: 'aibarber-app' } });
     expect(await d.hasOtherPlan!('u1', 'sub_1', undefined)).toBe(true); // customer looked up from the ending sub
+  });
+
+  it('customerOf: web_app_customers first, else the newest entitlement row, else null', async () => {
+    const d = await livePlanEndDeps('live');
+    h.cust = [{ stripe_customer_id: 'cus_a' }];
+    expect(await d.customerOf('u1')).toBe('cus_a');
+    h.cust = []; h.ent = [{ stripe_customer_id: 'cus_b' }];
+    expect(await d.customerOf('u1')).toBe('cus_b');
+    expect(h.calls.at(-1)).toContain('order=created_at.desc');
+    h.ent = [];
+    expect(await d.customerOf('u1')).toBeNull();
   });
 });

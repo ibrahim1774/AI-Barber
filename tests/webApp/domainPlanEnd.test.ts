@@ -26,7 +26,7 @@ describe('plan ended', () => {
     const t = setup();
     await onPlanEnded('fresh-cuts', 'u1', t.deps);
     expect(t.setRenewal).toHaveBeenCalledWith('sub_dom', true, expect.stringMatching(/^[0-9a-f-]{36}$/));
-    expect((t.sendMail.mock.calls[0] as any[])[2]).toBe(`plan-ended-sub_dom-${END * 1000}`);
+    expect((t.sendMail.mock.calls[0] as any[])[2]).toBe(`plan-ended-sub_dom-${t.row().alerts_sent![OFF_PLAN_ENDED]}`);
     expect(t.sendMail).toHaveBeenCalledTimes(1);
     const mail = (t.sendMail.mock.calls[0] as any[])[1];
     expect(mail.subject).toBe("freshcuts.com won't renew");
@@ -170,7 +170,7 @@ describe('round 3: safety', () => {
     await onPlanEnded('fresh-cuts', 'u1', t.deps);
     log.mockRestore();
     expect(t.sendMail).not.toHaveBeenCalled();
-    expect(t.row().alerts_sent).toBeNull();
+    expect(t.row().alerts_sent).not.toHaveProperty(PLAN_ENDED_MAIL); // no letter claimed; only the intent marker (L2) is kept
     ok = true;
     await onPlanEnded('fresh-cuts', 'u1', t.deps);
     expect(t.sendMail).toHaveBeenCalledTimes(1);
@@ -203,7 +203,7 @@ describe('round 3: safety', () => {
   it('backstop: a taken-down site with no plan whose domain still renews gets the plan-end; a live or planned site does not', async () => {
     const mk = (site: any, entitled = false) => {
       const t = setup();
-      return { t, deps: { ...t.deps, siteOf: async () => site, hasEntitledRow: async () => entitled } as any };
+      return { t, deps: { ...t.deps, siteOf: async () => site, hasEntitledRow: async () => entitled, customerOf: async () => 'cus_web' } as any };
     };
     const down = mk({ user_id: 'u1', published_at: 'x', taken_down_at: 'y', removed_at: null });
     expect((await sweepDomainRenewal(down.deps)).ended).toEqual(['fresh-cuts']);
@@ -222,12 +222,88 @@ describe('round 3: safety', () => {
     const t = setup();
     t.sendMail.mockRejectedValueOnce(new Error('smtp'));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const deps: any = { ...t.deps, siteOf: async () => ({ user_id: 'u1', published_at: 'x', taken_down_at: 'y', removed_at: null }), hasEntitledRow: async () => false };
+    const deps: any = { ...t.deps, siteOf: async () => ({ user_id: 'u1', published_at: 'x', taken_down_at: 'y', removed_at: null }), hasEntitledRow: async () => false, customerOf: async () => 'cus_web' };
     await sweepDomainRenewal(deps);
     await sweepDomainRenewal(deps);
     log.mockRestore();
     expect(t.sendMail).toHaveBeenCalledTimes(2);
     expect(t.setRenewal).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('round 4', () => {
+  const DOWN = { user_id: 'u1', published_at: 'x', taken_down_at: 'y', removed_at: null };
+
+  it('N1: the backstop passes the owner customer, so a resubscribe whose webhook is late (a plan only at Stripe) ends nothing and mails nothing', async () => {
+    const t = setup();
+    const hasOtherPlan = vi.fn(async (_u: any, _e: any, customer: any) => customer === 'cus_web'); // Stripe lists an active aibarber-app sub
+    const deps: any = { ...t.deps, hasOtherPlan, siteOf: async () => DOWN, hasEntitledRow: async () => false, customerOf: async () => 'cus_web' };
+    await sweepDomainRenewal(deps);
+    expect(hasOtherPlan).toHaveBeenCalledWith('u1', undefined, 'cus_web');
+    expect(t.setRenewal).not.toHaveBeenCalled();
+    expect(t.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('N1: no known customer means the row is skipped, not acted on', async () => {
+    const t = setup();
+    const deps: any = { ...t.deps, siteOf: async () => DOWN, hasEntitledRow: async () => false, customerOf: async () => null };
+    expect((await sweepDomainRenewal(deps)).checked).toBe(0);
+    expect(t.setRenewal).not.toHaveBeenCalled();
+  });
+
+  it('N2: more than 50 healthy / legacy rows ahead of a real candidate do not starve it; the cap counts only rows acted on', async () => {
+    const legacy = Array.from({ length: 60 }, (_, i) => blankRow({ original_transaction_id: `stripe:sub_old${i}`, source: 'stripe', site_slug: `old${i}`, domain: `old${i}.com`, state: 'live', environment: 'Production', created_at: '2020-01-01T00:00:00.000Z' }));
+    const t = setup({ extra: legacy });
+    const deps: any = { ...t.deps, siteOf: async (slug: string) => (slug === 'fresh-cuts' ? DOWN : null), hasEntitledRow: async () => false, customerOf: async () => 'cus_web' };
+    expect((await sweepDomainRenewal(deps)).ended).toEqual(['fresh-cuts']);
+  });
+
+  it('N2: the limit stops after that many rows acted on', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => blankRow({ original_transaction_id: `stripe:sub_m${i}`, source: 'stripe', site_slug: `m${i}`, domain: `m${i}.com`, state: 'live', environment: 'Production' }));
+    const t = setup({ extra: many });
+    t.deps.getSubscription = vi.fn(async () => ({ customer: 'c', status: 'active', current_period_end: END, cancel_at_period_end: false }));
+    const deps: any = { ...t.deps, siteOf: async () => DOWN, hasEntitledRow: async () => false, customerOf: async () => 'cus_web' };
+    expect((await sweepDomainRenewal(deps, 2)).checked).toBe(2);
+  });
+
+  it('L1: a second plan-end after a resume sends with a NEW Resend key (a replaying Resend would drop a repeat)', async () => {
+    const t = setup();
+    await onPlanEnded('fresh-cuts', 'u1', t.deps);
+    await onPlanResumed('fresh-cuts', t.deps);
+    t.deps.now = () => NOW + 3_600_000;
+    await onPlanEnded('fresh-cuts', 'u1', t.deps);
+    const keys = t.sendMail.mock.calls.map((c) => c[2]);
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('L2: the marker is stored BEFORE the Stripe write; a failed write keeps it, a later pass retries, and resume still clears it', async () => {
+    const t = setup();
+    let markerAtWrite: any = 'unset';
+    let fail = true;
+    let cur: any = { customer: 'cus_1', status: 'active', current_period_end: END, cancel_at_period_end: false };
+    t.deps.getSubscription = vi.fn(async () => cur);
+    t.deps.setRenewal = vi.fn(async (_id: string, cancel: boolean) => {
+      markerAtWrite = t.row().alerts_sent?.[OFF_PLAN_ENDED];
+      if (fail) return { ok: false, status: 500, data: { error: { code: 'api_error' } } };
+      cur = { ...cur, cancel_at_period_end: cancel };
+      return { ok: true, status: 200, data: {} };
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await onPlanEnded('fresh-cuts', 'u1', t.deps);
+    log.mockRestore();
+    expect(markerAtWrite).toEqual(expect.any(String));
+    expect(t.row().alerts_sent![OFF_PLAN_ENDED]).toBe(markerAtWrite); // kept
+    expect(t.sendMail).not.toHaveBeenCalled();
+    // resume while Stripe still renews: the spent marker is cleared, nothing is written
+    await onPlanResumed('fresh-cuts', t.deps);
+    expect(t.row().alerts_sent).toEqual({});
+    expect(t.deps.setRenewal).toHaveBeenCalledTimes(1);
+    // a later plan-end retries and completes
+    fail = false;
+    await onPlanEnded('fresh-cuts', 'u1', t.deps);
+    expect(cur.cancel_at_period_end).toBe(true);
+    expect(t.sendMail).toHaveBeenCalledTimes(1);
   });
 });
 

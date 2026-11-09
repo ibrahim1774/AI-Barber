@@ -110,11 +110,14 @@ export async function onPlanEnded(slug: string, userId: string | null, deps: Pla
         if (end && end <= deps.now()) continue;
         const already = row.alerts_sent ?? {};
         if (already[OFF_BY_CUSTOMER]) continue; // the customer's own choice: leave it, nothing to tell
+        let stamp = already[OFF_PLAN_ENDED];
         if (!sub.cancel_at_period_end) {
+          // The intent marker first: if the Stripe write or its confirmation fails, the marker stays and a later pass retries
+          // (the resume path treats a still-renewing sub with the marker as "spent" and clears it).
+          if (!stamp) { stamp = iso(deps.now()); await setMarkers(deps, row, { [OFF_PLAN_ENDED]: stamp }); }
           if (!(await applyRenewal(deps, subId, true, slug))) continue;
-          await setMarkers(deps, row, { [OFF_PLAN_ENDED]: iso(deps.now()) });
           await deps.repo.update(row.original_transaction_id, null, { auto_renew: false, auto_renew_synced: false }).catch(() => {});
-        } else if (!already[OFF_PLAN_ENDED]) {
+        } else if (!stamp) {
           continue; // off for another reason (not ours)
         }
         const token = await claim(deps, row, PLAN_ENDED_MAIL);
@@ -125,7 +128,7 @@ export async function onPlanEnded(slug: string, userId: string | null, deps: Pla
           const to = customer ? await deps.contactEmail(userId, customer) : null;
           if (!to) console.error(`[domain-plan-end] ${slug}: no email address for the owner; nothing sent`);
           else {
-            await deps.sendMail(to, planEndedEmail({ domain: row.domain, renewsOn: end ? iso(end).slice(0, 10) : 'the end of its paid year' }), `plan-ended-${subId}-${end}`);
+            await deps.sendMail(to, planEndedEmail({ domain: row.domain, renewsOn: end ? iso(end).slice(0, 10) : 'the end of its paid year' }), `plan-ended-${subId}-${stamp}`); // the marker stamp is new for each end, so a second letter is never dropped as a duplicate
             sent = true;
           }
         } catch (e: any) { console.error(`[domain-plan-end] ${slug} ${row.domain} mail:`, e?.message || e); }
@@ -163,6 +166,8 @@ export interface DomainRenewalSweepDeps extends PlanEndDeps {
   /** The web site row for this slug in this mode, or null (not a web-app site). */
   siteOf(slug: string): Promise<{ user_id: string; published_at: string | null; taken_down_at: string | null; removed_at: string | null } | null>;
   hasEntitledRow(userId: string): Promise<boolean>;
+  /** The owner's web-app Stripe customer (web_app_customers, else the newest entitlement row), or null. */
+  customerOf(userId: string): Promise<string | null>;
 }
 
 /**
@@ -170,20 +175,27 @@ export interface DomainRenewalSweepDeps extends PlanEndDeps {
  * taken down, removed or unpublished, whose owner has no plan, and that nobody turned off, gets the plan-end again.
  * Idempotent (onPlanEnded checks Stripe first). Never throws.
  */
-export async function sweepDomainRenewal(deps: DomainRenewalSweepDeps, limit = 50): Promise<{ checked: number; ended: string[] }> {
+export async function sweepDomainRenewal(deps: DomainRenewalSweepDeps, limit = 50, scanMax = 1000): Promise<{ checked: number; ended: string[] }> {
   const out = { checked: 0, ended: [] as string[] };
   try {
     const rows = (await deps.repo.all())
       .filter((r) => r.source === 'stripe' && !DONE_STATES.includes(r.state) && !r.refunded_at && envMatchesKey(r, deps.mode)
-        && !r.alerts_sent?.[OFF_BY_CUSTOMER] && !(r.alerts_sent?.[OFF_PLAN_ENDED] && r.alerts_sent?.[PLAN_ENDED_MAIL])).slice(0, limit);
+        && !r.alerts_sent?.[OFF_BY_CUSTOMER] && !(r.alerts_sent?.[OFF_PLAN_ENDED] && r.alerts_sent?.[PLAN_ENDED_MAIL]))
+      .slice(0, scanMax);
+    // The budget counts rows ACTED ON, not rows looked at: healthy and legacy rows are skipped for free and never starve newer ones.
     for (const row of rows) {
+      if (out.checked >= limit) break;
       try {
         const site = await deps.siteOf(row.site_slug);
         if (!site) continue;
         const gone = !site.published_at || !!site.taken_down_at || !!site.removed_at;
         if (!gone || (await deps.hasEntitledRow(site.user_id))) continue;
+        // A plan that exists at Stripe but is not stored yet (a late webhook) must not be mistaken for "no plan":
+        // without a known customer we cannot ask Stripe, so we do nothing.
+        const customerId = await deps.customerOf(site.user_id);
+        if (!customerId) continue;
         out.checked++;
-        await onPlanEnded(row.site_slug, site.user_id, deps);
+        await onPlanEnded(row.site_slug, site.user_id, deps, { customerId });
         const fresh = await deps.repo.get(row.original_transaction_id);
         if (fresh?.alerts_sent?.[OFF_PLAN_ENDED]) out.ended.push(row.site_slug);
       } catch (e: any) { console.error(`[domain-plan-end] backstop ${row.site_slug}:`, e?.message || e); }
@@ -227,6 +239,11 @@ export async function livePlanEndDeps(mode: 'live' | 'test' | null): Promise<Dom
     },
     siteOf: async (slug) => (await sbRest(`web_app_sites?slug=eq.${enc(slug)}&environment=eq.${mode}&select=user_id,published_at,taken_down_at,removed_at&limit=1`))?.[0] ?? null,
     hasEntitledRow: async (uid) => ((await sbRest(`web_app_entitlements?user_id=eq.${enc(uid)}&environment=eq.${mode}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&limit=1`)) ?? []).length > 0,
+    customerOf: async (uid) => {
+      const c = (await sbRest(`web_app_customers?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=stripe_customer_id&limit=1`))?.[0]?.stripe_customer_id
+        ?? (await sbRest(`web_app_entitlements?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=stripe_customer_id&order=created_at.desc&limit=1`))?.[0]?.stripe_customer_id;
+      return typeof c === 'string' && c ? c : null;
+    },
     now: () => Date.now(),
   };
 }
