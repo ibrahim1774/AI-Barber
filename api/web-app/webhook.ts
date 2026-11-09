@@ -114,8 +114,8 @@ export default async function handler(req: any, res: any) {
       catch (e: any) { console.error('[web-app webhook dup check]', e?.message || e); }
     }
     // The plan's effect on the site's custom domain. Best effort: NEVER changes the response.
-    try {
-      const slug = row.site_slug ?? (await storedSlug(row.stripe_subscription_id, row.user_id ?? null, mode));
+    try { await withTimeout((async () => {
+      const slug = row.site_slug ?? (await withTimeout(storedSlug(row.stripe_subscription_id, row.user_id ?? null, mode), SLUG_LOOKUP_TIMEOUT_MS, null));
       if (slug) {
         if (event.type === 'customer.subscription.deleted' && !isEntitledStatus(row.status)) {
           await onPlanEnded(slug, row.user_id ?? null, await livePlanEndDeps(mode), { excludeSub: row.stripe_subscription_id, customerId: row.stripe_customer_id });
@@ -123,12 +123,23 @@ export default async function handler(req: any, res: any) {
           await onPlanResumed(slug, await livePlanEndDeps(mode));
         }
       }
-    } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
+    })(), DOMAIN_STEP_TIMEOUT_MS, undefined); } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
     return res.status(200).json({ ok: true });
   } catch (e: any) {
     console.error('[web-app webhook]', e.message);
     return res.status(500).json({ error: 'store_failed' }); // Stripe retries
   }
+}
+
+/** A hung database must never hang the webhook: give up on the slug lookup after this long (the domain sweep is the backstop). */
+const SLUG_LOOKUP_TIMEOUT_MS = 3_000;
+/** The whole domain-renewal step is capped too, so the webhook always answers Stripe in time. */
+const DOMAIN_STEP_TIMEOUT_MS = 8_000;
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+  });
 }
 
 /** The site this plan belongs to when the Stripe metadata has none: the slug stored on its entitlement row, else the user's site in this mode. */

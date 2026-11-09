@@ -44,10 +44,10 @@ describe('welcome mail in the Stripe webhook when the live-site lookup is down',
     const q = sb.calls.find((c) => c.path.startsWith('web_app_sites?'))!.path as string;
     expect(q).toContain('user_id=eq.u1'); expect(q).toContain('environment=eq.test');
   });
-  it('lookup hangs: after ~3 s the webhook still answers 200 and the welcome goes out without the link', async () => {
+  it('lookup hangs: after ~6 s the webhook still answers 200 and the welcome goes out without the link', async () => {
     sb.mode = 'hang'; vi.useFakeTimers();
     const p = post();
-    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.advanceTimersByTimeAsync(6_500); // welcome lookup 3 s + domain slug lookup 3 s
     const r = await p;
     expect(r.code).toBe(200);
     expect(sent.welcome.mock.calls[0][0]).toMatchObject({ siteUrl: null });
