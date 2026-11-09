@@ -103,7 +103,7 @@ describe('createOrderCheckout', () => {
     expect(calls[0].url).toMatch(/\/customers$/);
     expect(calls[0].params.get('shipping[address][line2]')).toBe('Apt 2');
     expect(calls[0].params.get('shipping[address][state]')).toBe('TX');
-    expect(calls[0].init.headers['Stripe-Account']).toBe('acct_1');
+    expect(calls[0].init.headers['Stripe-Account']).toBe('acct_123');
     const p = calls[1].params;
     expect(p.get('customer')).toBe('cus_1');
     expect(p.has('customer_email')).toBe(false);
