@@ -71,7 +71,7 @@ export const PRIME_SCOPED_CSS = `
 .prime-root .p-serif { font-family: 'Newsreader', Georgia, serif; }
 .prime-root .p-display { font-family: 'Newsreader', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; line-height: 1.05; }
 .prime-root h1, .prime-root h2, .prime-root h3, .prime-root h4 { font-family: 'Newsreader', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; }
-.prime-root .p-italic { font-style: italic; }
+.prime-root .p-italic { font-style: normal; }
 .prime-root .p-eyebrow { font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.3em; font-size: 11px; color: var(--p-brand); }
 .prime-root .p-section { padding: 72px 6vw; }
 .prime-root .p-container { max-width: 1200px; margin: 0 auto; }
@@ -94,7 +94,7 @@ export const PRIME_SCOPED_CSS = `
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.34em; color: var(--p-brand);
 }
 .prime-root .p-dropcap::first-letter {
-  font-family: 'Newsreader', Georgia, serif; font-style: italic; font-weight: 700;
+  font-family: 'Newsreader', Georgia, serif; font-style: normal; font-weight: 700;
   color: var(--p-brand); float: left; font-size: 5rem; line-height: 0.8; padding: 8px 14px 0 0;
 }
 .prime-root .p-img-tile { position: relative; overflow: hidden; background: var(--p-bg-3); }
@@ -133,7 +133,7 @@ export const PRIME_SCOPED_CSS = `
 .prime-root .p-review-card:hover { border-color: var(--p-brand); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(212,166,74,0.08); }
 .prime-root .p-avatar {
   width: 38px; height: 38px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
-  font-family: 'Newsreader', serif; font-style: italic; color: #1a1a1a;
+  font-family: 'Newsreader', serif; font-style: normal; color: #1a1a1a;
   background: linear-gradient(135deg, var(--p-brand), var(--p-brand-deep));
 }
 .prime-root .p-hours-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--p-line-soft); }
@@ -207,7 +207,7 @@ const PRIME_SKIN: SectionSkin = {
     + '@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}'
     + '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--p-ink)}'
     + '.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3)}'
-    + ".ab-sp-name{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:1.05rem}"
+    + ".ab-sp-name{font-family:'Newsreader',Georgia,serif;font-style:normal;font-size:1.05rem}"
     + '.ab-sp-price{color:var(--p-brand-bright)}',
 };
 
@@ -425,7 +425,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500;6..72,600;6..72,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #0a0a0a; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
