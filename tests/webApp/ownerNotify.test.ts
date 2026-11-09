@@ -162,7 +162,7 @@ describe('owner email: store', () => {
 describe('ownerEmailFor / sendOwnerEmail', () => {
   const when = { whenShort: 'Sat 3:00 PM', whenLong: 'Saturday, October 24 at 3:00 PM', service: 'Fade' };
   it('subjects are short and personal', () => {
-    expect(ownerEmailFor({ kind: 'booking_created', customerName: 'Jake Lee', ...when }, 'Ibrahim').subject).toBe('New booking: Jake, Sat 3:00 PM');
+    expect(ownerEmailFor({ kind: 'booking_created', customerName: 'Jake Lee', ...when }, 'Ibrahim').subject).toBe('New booking: Jake Lee, Sat Oct 24, 3:00 PM');
     expect(ownerEmailFor({ kind: 'booking_cancelled', customerName: 'Jake Lee', ...when }, null).subject).toBe('Cancelled: Jake, Sat 3:00 PM');
     expect(ownerEmailFor({ kind: 'booking_rescheduled', customerName: null, ...when }, null).subject).toBe('Rescheduled: A customer, Sat 3:00 PM');
     expect(ownerEmailFor({ kind: 'order_created', customerName: 'Sam', itemCount: 2, totalCents: 2400, fulfilment: 'pickup', orderLabel: '#1' }, null).subject).toBe('Order #1 from Sam');
@@ -198,14 +198,14 @@ describe('ownerEmailFor / sendOwnerEmail', () => {
     expect(m.html).not.toContain('<b>Bob</b>');
     expect(m.html).toContain('&lt;img');
     expect(m.subject).not.toMatch(/[\r\n]/);
-    expect(m.subject.length).toBeLessThanOrEqual(45);
+    expect(m.subject.length).toBeLessThanOrEqual(80);
   });
   it('sendOwnerEmail: sends to the resolved address; no address skips; failures never throw', async () => {
     const send = vi.fn(async (_to: string, _m: unknown) => {});
     const ev = { kind: 'booking_created', customerName: 'Jake', ...when } as const;
     const ok: OwnerNotifyDeps = { contact: async () => ({ email: 'o@example.com', firstName: 'Ibrahim' }), send };
     expect(await sendOwnerEmail('u', ev, ok)).toBe('sent');
-    expect(send).toHaveBeenCalledWith('o@example.com', expect.objectContaining({ subject: 'New booking: Jake, Sat 3:00 PM' }));
+    expect(send).toHaveBeenCalledWith('o@example.com', expect.objectContaining({ subject: 'New booking: Jake, Sat Oct 24, 3:00 PM' }));
     expect(await sendOwnerEmail('u', ev, { contact: async () => ({ email: null, firstName: null }), send })).toBe('skipped');
     expect(await sendOwnerEmail('u', ev, { contact: async () => { throw new Error('x'); }, send })).toBe('failed');
     expect(await sendOwnerEmail('u', ev, { ...ok, send: async () => { throw new Error('resend 500'); } })).toBe('failed');

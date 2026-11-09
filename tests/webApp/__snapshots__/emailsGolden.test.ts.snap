@@ -181,7 +181,7 @@ exports[`golden email output (env unset) > owner email 1`] = `
 <p style="margin:0;font-size:12px;line-height:18px;color:#666">You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.</p>
 </body></html>",
   "replyTo": "support@davoxa.com",
-  "subject": "New booking: Jake, Sat 3:00 PM",
+  "subject": "New booking: Jake, Sat Oct 24, 3:00 PM",
   "text": "New booking
 
 Hi Ibrahim, Jake booked Cut.

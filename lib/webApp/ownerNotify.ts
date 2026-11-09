@@ -95,6 +95,11 @@ const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' 
 const cap = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 /** Customer's first name for subjects (short), or "A customer". */
 const who = (n: string | null) => cap(firstOf(clean(n ?? '')) || 'A customer', 16);
+/** "Tuesday, November 10 at 10:00 AM" -> "Tue Nov 10, 10:00 AM" for a subject; falls back to the short form. */
+const subjectWhen = (long: string, short: string) => {
+  const m = /^([A-Za-z]{3})[A-Za-z]*,\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{1,2})\s+at\s+(.+)$/.exec(clean(long));
+  return m ? `${m[1]} ${m[2]} ${m[3]}, ${m[4]}` : short;
+};
 const fullWho = (n: string | null) => clean(n ?? '') || 'A customer';
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 const METHODS: Record<string, string> = { cashapp: 'Cash App', venmo: 'Venmo', zelle: 'Zelle', paypal: 'PayPal' };
@@ -111,7 +116,7 @@ export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_
   let facts: Array<[string, string]> = [];
   switch (e.kind) {
     case 'booking_created':
-      subject = `New booking: ${who(e.customerName)}, ${e.whenShort}`;
+      subject = `New booking: ${cap(fullWho(e.customerName), 40)}, ${subjectWhen(e.whenLong, e.whenShort)}`;
       headline = 'New booking';
       leadText = `${name} booked ${clean(e.service)}.`;
       facts = [['Who', name], ['What', clean(e.service)], ['When', e.whenLong]];
