@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  event: 'customer.subscription.deleted', status: 'canceled', others: [] as any[],
+  event: 'customer.subscription.deleted', status: 'canceled', meta: 'fresh-cuts', stored: [] as any[], sites: [] as any[],
   ended: vi.fn(async () => {}), resumed: vi.fn(async () => {}),
 }));
 vi.mock('../../lib/webApp/domainPlanEnd.js', () => ({ onPlanEnded: h.ended, onPlanResumed: h.resumed, livePlanEndDeps: async (m: string) => ({ mode: m }) }));
@@ -16,8 +16,8 @@ vi.mock('../../lib/ios/siteUrlFor.js', () => ({ stampedSiteUrl: async () => null
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   webAppCheckoutOn: () => false, webAppEntitlementsOn: () => true,
   readRawBody: async () => JSON.stringify({ type: h.event, livemode: false, data: { object: { id: 'sub_1', metadata: { app: 'aibarber-app' } } } }),
-  stripeCall: async () => ({ id: 'sub_1', status: h.status, customer: 'cus_1', metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', site_slug: 'fresh-cuts' }, items: { data: [{ price: { id: 'price_x' } }] } }),
-  sbRest: async (path: string) => (path.startsWith('web_app_entitlements?user_id=') ? h.others : []),
+  stripeCall: async () => ({ id: 'sub_1', status: h.status, customer: 'cus_1', metadata: { app: 'aibarber-app', user_id: 'u1', tier: 'website', site_slug: h.meta }, items: { data: [{ price: { id: 'price_x' } }] } }),
+  sbRest: async (path: string) => (path.startsWith('web_app_entitlements?stripe_subscription_id=') ? h.stored : path.startsWith('web_app_sites?user_id=') ? h.sites : []),
 }));
 
 import webhook from '../../api/web-app/webhook.js';
@@ -26,7 +26,7 @@ const call = async () => { const r = res(); await webhook({ method: 'POST', head
 
 beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_WEBHOOK_SECRET', 'whsec'); vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_x');
-  h.ended.mockClear(); h.resumed.mockClear(); h.others = [];
+  h.ended.mockClear(); h.resumed.mockClear(); h.meta = 'fresh-cuts'; h.stored = []; h.sites = [];
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -38,8 +38,29 @@ describe('webhook: plan and domain renewal', () => {
     expect(h.ended).toHaveBeenCalledTimes(1);
     expect(h.resumed).not.toHaveBeenCalled();
   });
-  it('plan deleted but the owner has another active plan: nothing changes', async () => {
-    h.event = 'customer.subscription.deleted'; h.status = 'canceled'; h.others = [{ stripe_subscription_id: 'sub_2' }];
+  it('plan deleted: the ending sub and customer are passed so the other-plan check (DB and Stripe) can exclude it', async () => {
+    h.event = 'customer.subscription.deleted'; h.status = 'canceled';
+    await call();
+    expect(h.ended).toHaveBeenCalledWith('fresh-cuts', 'u1', expect.anything(), { excludeSub: 'sub_1', customerId: 'cus_1' });
+  });
+  it('no site_slug in the Stripe metadata: the slug stored on the entitlement row is used', async () => {
+    h.meta = ''; h.stored = [{ site_slug: 'stored-slug' }];
+    h.event = 'customer.subscription.deleted'; h.status = 'canceled';
+    expect((await call()).code).toBe(200);
+    expect(h.ended.mock.calls[0][0]).toBe('stored-slug');
+  });
+  it("neither metadata nor stored row: the owner's site in web_app_sites for this mode, for end and for resume", async () => {
+    h.meta = ''; h.sites = [{ slug: 'users-site' }];
+    h.event = 'customer.subscription.deleted'; h.status = 'canceled';
+    await call();
+    expect(h.ended.mock.calls[0][0]).toBe('users-site');
+    h.event = 'customer.subscription.created'; h.status = 'active';
+    await call();
+    expect(h.resumed.mock.calls[0][0]).toBe('users-site');
+  });
+  it('no slug anywhere: nothing runs, still 200', async () => {
+    h.meta = '';
+    h.event = 'customer.subscription.deleted'; h.status = 'canceled';
     expect((await call()).code).toBe(200);
     expect(h.ended).not.toHaveBeenCalled();
   });

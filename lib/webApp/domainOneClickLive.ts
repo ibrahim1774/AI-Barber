@@ -78,6 +78,13 @@ export function livePanelDeps(authorize: AuthorizeOwner): PanelDeps {
     flow: { repo: supabaseDomains(serviceClient()), vercel: liveVercelDomains(), probeHttps },
     getSubscription: stripeSubscription,
     setRenewal: (id, cancel, idem) => stripeSetRenewal(id, cancel, idem),
+    async hasActivePlan(siteSlug) {
+      const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+      if (!mode) return false;
+      const site = (await sbRest(`web_app_sites?slug=eq.${encodeURIComponent(siteSlug)}&environment=eq.${mode}&select=user_id&limit=1`))?.[0];
+      if (!site?.user_id) return false;
+      return ((await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(site.user_id)}&environment=eq.${mode}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&limit=1`)) ?? []).length > 0;
+    },
     async createPortalSession(customer, returnUrl, subscriptionId) {
       const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
         method: 'POST',

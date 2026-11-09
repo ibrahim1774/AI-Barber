@@ -17,7 +17,7 @@
 //
 // Single use: one subscription is one slot (the row's primary key), so replaying a session never
 // buys twice; it resumes or returns the stored status.
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import { newCheckoutMethodParams } from './checkoutPaymentMethods.js';
@@ -561,6 +561,8 @@ export interface PanelDeps {
   /** POST /v1/billing_portal/sessions → { url }. */
   createPortalSession(customer: string, returnUrl: string, subscriptionId: string): Promise<{ ok: boolean; data: any }>;
   /** POST /v1/subscriptions/<id> cancel_at_period_end=<bool> (Idempotency-Key). Only the one domain subscription. */
+  /** Does the owner of this site have an active hosting plan right now? Resume needs one. Absent = no (fail closed). */
+  hasActivePlan?(siteSlug: string): Promise<boolean>;
   setRenewal?(subscriptionId: string, cancelAtPeriodEnd: boolean, idempotencyKey: string): Promise<{ ok: boolean; status: number; data: any }>;
 }
 
@@ -626,7 +628,7 @@ export async function webDomainRenewal(action: 'cancel-renewal' | 'resume-renewa
   const auth = await deps.authorize(body?.siteId, authorization);
   if (!auth.ok || !auth.target) return denied(auth);
   const row = await webRowFor(auth.target, deps);
-  if (!row || row.refunded_at) return { status: 404, body: { error: 'no-domain-subscription' } };
+  if (!row || row.refunded_at || ['failed', 'detached', 'transferred'].includes(row.state)) return { status: 404, body: { error: 'no-domain-subscription' } };
   const subId = row.original_transaction_id.replace(/^stripe:/, '');
   if (!subId) return { status: 404, body: { error: 'no-domain-subscription' } };
   const sub = await deps.getSubscription(subId);
@@ -637,19 +639,37 @@ export async function webDomainRenewal(action: 'cancel-renewal' | 'resume-renewa
   if (!active || (periodEnd && periodEnd <= now())) {
     return { status: 409, body: { error: cancel ? 'not-active' : 'not-resumable' } };
   }
+  // Resuming a domain with no hosting plan would bill $39/year for a site that is offline: the plan comes first.
+  if (!cancel && !(await deps.hasActivePlan?.(auth.target))) return { status: 409, body: { error: 'plan-required' } };
   if (!deps.setRenewal) return { status: 502, body: { error: 'renewal-unavailable' } };
-  const idem = `domain-renewal-${subId}-${cancel ? 'off' : 'on'}-${Math.floor(now() / 60_000)}`;
-  const r = await deps.setRenewal(subId, cancel, idem);
+  const r = await deps.setRenewal(subId, cancel, randomUUID());
   if (!r.ok) {
     console.error(`[web-domain] ${action} failed: stripe ${r.status} ${r.data?.error?.code || r.data?.error?.type || 'unknown'}`);
     return { status: 502, body: { error: 'renewal-unavailable' } };
   }
+  const after = await deps.getSubscription(subId);
+  if (!after || !!after.cancel_at_period_end !== cancel) {
+    console.error(`[web-domain] ${action}: Stripe did not confirm cancel_at_period_end=${cancel}`);
+    return { status: 502, body: { error: 'renewal-unavailable' } };
+  }
   const want = !cancel;
-  const marks = { ...(row.alerts_sent ?? {}) };
-  if (cancel) marks['renewal-off-customer'] = new Date(now()).toISOString(); // the customer's own choice: a new plan never turns it back on
-  else { delete marks['renewal-off-customer']; delete marks['renewal-off-plan-ended']; delete marks['plan-ended-mail']; }
-  const patch: Partial<typeof row> = { auto_renew: want, alerts_sent: marks };
-  if (row.state === 'live' || row.state === 'manual_live') patch.auto_renew_synced = false;
-  const updated = (await deps.flow.repo.update(row.original_transaction_id, [row.state], patch)) ?? { ...row, ...patch };
+  const patchFor = (r: typeof row) => {
+    const marks = { ...(r.alerts_sent ?? {}) };
+    if (cancel) marks['renewal-off-customer'] = new Date(now()).toISOString(); // the customer's own choice: a new plan never turns it back on
+    else { delete marks['renewal-off-customer']; delete marks['renewal-off-plan-ended']; delete marks['plan-ended-mail']; }
+    const patch: Partial<typeof row> = { auto_renew: want, alerts_sent: marks };
+    if (r.state === 'live' || r.state === 'manual_live') patch.auto_renew_synced = false;
+    return patch;
+  };
+  let updated = await deps.flow.repo.update(row.original_transaction_id, [row.state], patchFor(row));
+  if (!updated) {
+    // The row moved under us (a state change): Stripe is already right, so write the markers on the CURRENT row and report its real state.
+    const fresh = await deps.flow.repo.get(row.original_transaction_id);
+    if (fresh && !['failed', 'detached', 'transferred'].includes(fresh.state)) updated = await deps.flow.repo.update(fresh.original_transaction_id, [fresh.state], patchFor(fresh)) ?? await deps.flow.repo.update(fresh.original_transaction_id, null, patchFor(fresh));
+    if (!updated) {
+      console.error(`[web-domain] ${action}: the row changed state and the renewal marker was not stored (${row.original_transaction_id})`);
+      updated = fresh ?? row;
+    }
+  }
   return { status: 200, body: { ...webStatusBody(updated) } };
 }
