@@ -13,7 +13,8 @@ import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
 import { livePlanEndDeps, onPlanEnded, onPlanResumed } from '../../lib/webApp/domainPlanEnd.js';
-import { stampedSiteUrl } from '../../lib/ios/siteUrlFor.js';
+
+import { waitUntil } from '@vercel/functions';
 
 export const config = { api: { bodyParser: false } };
 
@@ -114,7 +115,8 @@ export default async function handler(req: any, res: any) {
       catch (e: any) { console.error('[web-app webhook dup check]', e?.message || e); }
     }
     // The plan's effect on the site's custom domain. Best effort: NEVER changes the response.
-    try { await withTimeout((async () => {
+    try {
+      const domainStep = (async () => {
       const slug = row.site_slug ?? (await withTimeout(storedSlug(row.stripe_subscription_id, row.user_id ?? null, mode), SLUG_LOOKUP_TIMEOUT_MS, null));
       if (slug) {
         if (event.type === 'customer.subscription.deleted' && !isEntitledStatus(row.status)) {
@@ -123,7 +125,12 @@ export default async function handler(req: any, res: any) {
           await onPlanResumed(slug, await livePlanEndDeps(mode));
         }
       }
-    })(), DOMAIN_STEP_TIMEOUT_MS, undefined); } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
+      })().catch((e: any) => console.error('[web-app webhook domain renewal]', e?.message || e));
+      // Keep the function alive until the step really finishes (a frozen half-run could end a paying customer's
+      // domain late), but answer Stripe after at most DOMAIN_STEP_TIMEOUT_MS either way.
+      waitUntil(domainStep);
+      await withTimeout(domainStep, DOMAIN_STEP_TIMEOUT_MS, undefined);
+    } catch (e: any) { console.error('[web-app webhook domain renewal]', e?.message || e); }
     return res.status(200).json({ ok: true });
   } catch (e: any) {
     console.error('[web-app webhook]', e.message);
