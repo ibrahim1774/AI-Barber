@@ -15,17 +15,39 @@ export const PRICES: Record<Tier, Record<Interval, number>> = {
   store: { month: 3999, year: 37999 },
 };
 
-export const PRICE_ENV = (tier: Tier, interval: Interval) => `STRIPE_WEBAPP_PRICE_${tier.toUpperCase()}_${interval.toUpperCase()}`;
+export const PRICE_GROUPS = ['base', 'g10', 'g20'] as const;
+export type PriceGroup = (typeof PRICE_GROUPS)[number];
+export function isPriceGroup(v: unknown): v is PriceGroup { return typeof v === 'string' && (PRICE_GROUPS as readonly string[]).includes(v); }
+
+/** Price test: prices in cents per group. 'base' is PRICES above; g10 / g20 are the test groups (yearly = monthly x12 less 20%). */
+export const PRICE_CENTS: Record<PriceGroup, Record<Tier, Record<Interval, number>>> = {
+  base: PRICES,
+  g10: { website: { month: 1000, year: 9600 }, bookings: { month: 2000, year: 19200 }, store: { month: 4000, year: 38400 } },
+  g20: { website: { month: 2000, year: 19200 }, bookings: { month: 3000, year: 28800 }, store: { month: 4000, year: 38400 } },
+};
+
+/** Env var holding a price id. base keeps its original names; g10 / g20 add the group: STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH. */
+export const PRICE_ENV = (tier: Tier, interval: Interval, group: PriceGroup = 'base') =>
+  `STRIPE_WEBAPP_PRICE_${group === 'base' ? '' : group.toUpperCase() + '_'}${tier.toUpperCase()}_${interval.toUpperCase()}`;
+/** Env var holding a group's billing portal configuration id (null for base, which keeps STRIPE_WEBAPP_PORTAL_CONFIG). */
+export const PORTAL_CONFIG_ENV = (group: PriceGroup): string => (group === 'base' ? 'STRIPE_WEBAPP_PORTAL_CONFIG' : `STRIPE_WEBAPP_PORTAL_CONFIG_${group.toUpperCase()}`);
 
 export function isTier(v: unknown): v is Tier { return typeof v === 'string' && (TIERS as readonly string[]).includes(v); }
 export function isInterval(v: unknown): v is Interval { return typeof v === 'string' && (INTERVALS as readonly string[]).includes(v); }
 
-export function priceIdFor(tier: Tier, interval: Interval, env: Record<string, string | undefined>): string | null {
-  return env[PRICE_ENV(tier, interval)] || null;
+export function priceIdFor(tier: Tier, interval: Interval, env: Record<string, string | undefined>, group: PriceGroup = 'base'): string | null {
+  return env[PRICE_ENV(tier, interval, group)] || null;
 }
 
-export function tierForPriceId(priceId: string, env: Record<string, string | undefined>): { tier: Tier; interval: Interval } | null {
-  for (const tier of TIERS) for (const interval of INTERVALS) if (priceIdFor(tier, interval, env) === priceId) return { tier, interval };
+/** The billing portal configuration for a group; null when unset (callers fail closed for g10 / g20). */
+export function portalConfigFor(group: PriceGroup, env: Record<string, string | undefined>): string | null {
+  return env[PORTAL_CONFIG_ENV(group)] || null;
+}
+
+/** Which tier / interval / group a Stripe price id belongs to, across every group. An empty env var never matches. */
+export function tierForPriceId(priceId: string, env: Record<string, string | undefined>): { tier: Tier; interval: Interval; group: PriceGroup } | null {
+  if (!priceId) return null;
+  for (const group of PRICE_GROUPS) for (const tier of TIERS) for (const interval of INTERVALS) if (priceIdFor(tier, interval, env, group) === priceId) return { tier, interval, group };
   return null;
 }
 
@@ -54,6 +76,8 @@ export interface EntitlementRow {
   environment: 'live' | 'test';
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  /** Price-test group. Only present for g10 / g20, so base rows are written exactly as before (works before migration 034 is applied). */
+  price_group?: PriceGroup;
 }
 
 /** Which Stripe mode a secret key belongs to. */
@@ -85,6 +109,7 @@ export function rowFromSubscription(sub: any, livemode: boolean, env: Record<str
     environment: livemode ? 'live' : 'test',
     current_period_end: typeof end === 'number' ? new Date(end * 1000).toISOString() : null,
     cancel_at_period_end: !!sub.cancel_at_period_end,
+    ...(match && match.group !== 'base' ? { price_group: match.group } : {}),
   };
 }
 
