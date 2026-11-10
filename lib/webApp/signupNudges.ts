@@ -1,5 +1,6 @@
 // Unpaid sign-up reminders (1 h / 24 h / 72 h after sign-up). Pure sweep logic with injected deps (live deps at the
-// bottom); folded into the 10-minute /api/web-app/lapse cron. Rules the code below enforces:
+// bottom); run by its own 10-minute cron, /api/web-app/nudges (it used to ride at the end of the lapse cron and was
+// starved of its time budget by the earlier sweeps). Rules the code below enforces:
 //  - nothing happens unless WEB_APP_NUDGES=1, WEB_APP_NUDGES_SINCE parses, and the secret + Resend key exist;
 //  - at most ONE mail per user per sweep, never catching up a missed window, nothing after 7 days, 3 mails max;
 //  - exactly-once: an atomic claim, then every check again, then the send with a fixed Idempotency-Key;
@@ -23,6 +24,8 @@ export const STALE_CLAIM_MS = 15 * 60_000;
 export const MAX_SENDS_PER_SWEEP = 25;
 export const PACE_MS = 700;
 export const MAX_ENROLL_LOOKUPS = 100;
+export const MAX_USER_PAGES = 5; // x 200 users: the 8-day window is far smaller than this
+export const ENROLL_WINDOW_MS = 8 * 24 * HOUR;
 /** Minimum gap after the previous mail (a second guard on top of the windows). */
 const MIN_GAP_MS: Record<2 | 3, number> = { 2: 20 * HOUR, 3: 40 * HOUR };
 
@@ -49,7 +52,11 @@ export interface NudgeRow {
 export interface AdminUser { email: string | null; emailConfirmedAt: string | null; createdAt: string | null; lastSignInAt: string | null; name: string | null }
 export interface DraftInfo { updatedAt: string | null; deployedUrl: string | null; shopName: string | null }
 
+export interface SignedUpUser extends AdminUser { id: string }
+
 export interface SignupNudgeDeps {
+  /** Auth users created since `sinceIso`, newest first, at most `maxPages` pages of the admin list. */
+  recentUsers(sinceIso: string, maxPages: number): Promise<SignedUpUser[]>;
   /** User ids with a web draft touched since `sinceIso` in this mode (newest first). */
   recentDrafts(sinceIso: string, limit: number): Promise<string[]>;
   /** Existing nudge rows for these users in this mode. */
@@ -116,27 +123,9 @@ export async function sweepSignupNudges(
   let lastSendAt = 0;
 
   try {
-    // 1. Enrollment: recent drafts without a nudge row get one (stopped at once when before launch or already too old).
-    const recent = await deps.recentDrafts(iso(deps.now() - 8 * 24 * HOUR), 200);
-    const have = new Set((recent.length ? await deps.nudgeRows(recent) : []).map((r) => r.user_id));
-    let lookups = 0;
-    for (const uid of recent) {
-      if (have.has(uid)) continue;
-      if (lookups >= MAX_ENROLL_LOOKUPS || deps.now() - start >= deadline) break;
-      lookups++;
-      try {
-        const u = await deps.adminUser(uid);
-        if (!u || !u.createdAt || !Number.isFinite(Date.parse(u.createdAt))) continue; // gone or unreadable: look again next time
-        const created = Date.parse(u.createdAt);
-        const tooOld = deps.now() - created > EXPIRY_MS;
-        const early = created < since;
-        await deps.insertRow({ user_id: uid, signup_at: u.createdAt, email: u.email, ...(early || tooOld ? { stopped_at: iso(deps.now()), stop_reason: early ? 'before_launch' : 'expired' } : {}) });
-        out.enrolled++;
-      } catch (e: any) {
-        if (isMissingTable(e)) throw e;
-        out.errors++; console.error('[web-app nudges] enroll failed', uid, errTag(e));
-      }
-    }
+    // 1. Enrollment: every recent sign-up (and every recent draft owner) without a nudge row gets one.
+    const enr = await enrollSignups(deps, { since, start, deadline });
+    out.enrolled += enr.enrolled; out.errors += enr.errors;
 
     // 2. Visit active rows, least recently checked first.
     const rows = await deps.activeRows(100);
@@ -202,8 +191,9 @@ export async function sweepSignupNudges(
     if (created < since) return stop('before_launch');
     if (deps.now() - created >= EXPIRY_MS) return stop('expired');
     if (await deps.isSuppressed(email)) return stop('suppressed');
-    const draft = await deps.draftInfo(uid);
-    if (!draft) return back();
+    // A sign-up that never saved a draft is still reminded (link goes to the start of the builder).
+    const found = await deps.draftInfo(uid);
+    const draft: DraftInfo = found ?? { updatedAt: null, deployedUrl: null, shopName: null };
     if (draft.deployedUrl || (await deps.isPublished(uid))) return stop('live');
     if ((await deps.appStoreState(uid)) || (await deps.hasIosPurchase(uid)) || (await deps.hasLegacySite(uid))) return stop('not_web');
     if (await deps.isEntitled(uid)) return stop('paid');
@@ -219,7 +209,7 @@ export async function sweepSignupNudges(
     const origin = APP_ORIGIN();
     const t = signContinueToken(uid, step, mode, deps.now(), env.WEB_APP_NUDGE_SECRET, undefined, maskEmail(email));
     const mail = signupNudgeEmail(step, {
-      email, firstName: firstNameOf(user.name), shopName: draft.shopName,
+      email, firstName: firstNameOf(user.name), shopName: draft.shopName, noDraft: !found,
       continueUrl: `${origin}/api/web-app/continue?t=${encodeURIComponent(t)}`,
     });
     let id: string;
@@ -233,12 +223,79 @@ export async function sweepSignupNudges(
   }
 }
 
+/**
+ * Gives every sign-up of the last 8 days a nudge row (stopped at once when before launch or already too old).
+ * Sources: the admin user list (newest first; covers users who never saved a draft) and recent draft owners.
+ * `since` is the nudge launch time in ms (Infinity = nudges are off: every row is born stopped as before_launch).
+ * Idempotent (insert-ignore-duplicates); a failure on one user never stops the others. Throws only on a missing table.
+ */
+export async function enrollSignups(
+  deps: SignupNudgeDeps,
+  opts: { since: number; start?: number; deadline?: number; maxInserts?: number },
+): Promise<{ enrolled: number; errors: number }> {
+  const out = { enrolled: 0, errors: 0 };
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const start = opts.start ?? deps.now();
+  const deadline = opts.deadline ?? 200_000;
+  const windowStart = deps.now() - ENROLL_WINDOW_MS;
+  const known = new Map<string, { createdAt: string; email: string | null }>();
+  try {
+    for (const u of await deps.recentUsers(iso(windowStart), MAX_USER_PAGES)) {
+      const c = u.createdAt ? Date.parse(u.createdAt) : NaN;
+      if (!u.id || !Number.isFinite(c) || c < windowStart) continue;
+      known.set(u.id, { createdAt: u.createdAt as string, email: u.email });
+    }
+  } catch (e: any) {
+    if (isMissingTable(e)) throw e;
+    out.errors++; console.error('[web-app nudges] user list failed', errTag(e)); // drafts below still enroll
+  }
+  const drafts = await deps.recentDrafts(iso(windowStart), 200);
+  const ids = [...new Set([...known.keys(), ...drafts])];
+  const have = new Set<string>();
+  for (let i = 0; i < ids.length; i += 100) for (const r of await deps.nudgeRows(ids.slice(i, i + 100))) have.add(r.user_id);
+  let lookups = 0, inserts = 0;
+  const maxInserts = opts.maxInserts ?? 400;
+  for (const uid of ids) {
+    if (have.has(uid)) continue;
+    if (deps.now() - start >= deadline || inserts >= maxInserts) break;
+    try {
+      let who = known.get(uid);
+      if (!who) { // a draft owner the list did not show: one account lookup
+        if (lookups >= MAX_ENROLL_LOOKUPS) continue;
+        lookups++;
+        const u = await deps.adminUser(uid);
+        if (!u || !u.createdAt || !Number.isFinite(Date.parse(u.createdAt))) continue; // gone or unreadable: look again next time
+        who = { createdAt: u.createdAt, email: u.email };
+      }
+      const created = Date.parse(who.createdAt);
+      const tooOld = deps.now() - created > EXPIRY_MS;
+      const early = created < opts.since;
+      inserts++;
+      await deps.insertRow({ user_id: uid, signup_at: who.createdAt, email: who.email, ...(early || tooOld ? { stopped_at: iso(deps.now()), stop_reason: early ? 'before_launch' : 'expired' } : {}) });
+      out.enrolled++;
+    } catch (e: any) {
+      if (isMissingTable(e)) throw e;
+      out.errors++; console.error('[web-app nudges] enroll failed', uid, errTag(e));
+    }
+  }
+  return out;
+}
+
 const firstNameOf = (n: string | null) => (n || '').trim().split(/\s+/)[0] || null;
 
 // ---------- live deps ----------
 const enc = encodeURIComponent;
 const T = 'web_app_signup_nudges';
 const COLS = 'user_id,environment,signup_at,email,step1_sent_at,step2_sent_at,step3_sent_at,claimed_step,claimed_at,stopped_at,stop_reason';
+
+export function adminShape(u: any): AdminUser {
+  const m = u.user_metadata ?? {};
+  return {
+    email: typeof u.email === 'string' ? u.email : null, emailConfirmedAt: u.email_confirmed_at ?? u.confirmed_at ?? null,
+    createdAt: u.created_at ?? null, lastSignInAt: u.last_sign_in_at ?? null,
+    name: m.first_name || m.given_name || m.full_name || m.name || null,
+  };
+}
 
 export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): SignupNudgeDeps {
   const row = (uid: string) => `${T}?user_id=eq.${enc(uid)}&environment=eq.${mode}`;
@@ -250,14 +307,25 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
     if (!r.ok) throw new Error(`admin lookup ${r.status}`);
     const u: any = await r.json().catch(() => null);
     if (!u || typeof u !== 'object') throw new Error('admin lookup unreadable');
-    const m = u.user_metadata ?? {};
-    return {
-      email: typeof u.email === 'string' ? u.email : null, emailConfirmedAt: u.email_confirmed_at ?? u.confirmed_at ?? null,
-      createdAt: u.created_at ?? null, lastSignInAt: u.last_sign_in_at ?? null,
-      name: m.first_name || m.given_name || m.full_name || m.name || null,
-    };
+    return adminShape(u);
   };
   return {
+    async recentUsers(sinceIso, maxPages) {
+      const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) throw new Error('supabase not configured');
+      const cutoff = Date.parse(sinceIso);
+      const out: SignedUpUser[] = [];
+      for (let page = 1; page <= maxPages; page++) {
+        const r = await fetch(`${url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+        if (!r.ok) throw new Error(`admin lookup ${r.status}`);
+        const j: any = await r.json().catch(() => null);
+        const users: any[] = Array.isArray(j?.users) ? j.users : [];
+        for (const u of users) if (typeof u?.id === 'string') out.push({ id: u.id, ...adminShape(u) });
+        // GoTrue lists newest first: a page with nothing inside the window means everything after it is older too.
+        if (users.length < 200 || !users.some((u) => Date.parse(u?.created_at) >= cutoff)) break;
+      }
+      return out;
+    },
     async recentDrafts(sinceIso, limit) {
       const r: any[] = (await rest(`web_app_drafts?environment=eq.${mode}&updated_at=gt.${enc(sinceIso)}&select=user_id&order=updated_at.desc&limit=${limit}`)) ?? [];
       return r.map((x) => x.user_id);

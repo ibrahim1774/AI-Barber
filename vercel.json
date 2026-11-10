@@ -154,6 +154,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/web-app/nudges",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/web-app/publish-jobs",
       "schedule": "* * * * *"
     }
@@ -238,6 +242,9 @@
       "maxDuration": 300
     },
     "api/web-app/lapse.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/nudges.ts": {
       "maxDuration": 300
     },
     "api/web-app/webhook.ts": {

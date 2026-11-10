@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { liveSignupNudgeDeps, scheduleMs, sweepSignupNudges, HOUR, type NudgeRow, type SignupNudgeDeps, type AdminUser } from '../../lib/webApp/signupNudges.js';
+import { liveSignupNudgeDeps, scheduleMs, sweepSignupNudges, HOUR, type NudgeRow, type SignupNudgeDeps, type AdminUser, type SignedUpUser, enrollSignups } from '../../lib/webApp/signupNudges.js';
 import { verifyContinueToken } from '../../lib/webApp/nudgeToken.js';
 
 const NOW = Date.parse('2026-11-10T12:00:00Z');
@@ -18,14 +18,16 @@ interface World {
   sent: { to: string; key: string; subject: string; text: string }[];
   calls: string[];
   sendFails: boolean;
+  signups: SignedUpUser[];
 }
 const user = (o: Partial<AdminUser> = {}): AdminUser => ({ email: 'jake@gmail.com', emailConfirmedAt: ago(10 * HOUR), createdAt: ago(2 * HOUR), lastSignInAt: ago(2 * HOUR), name: 'Jake Lee', ...o });
 const row = (uid: string, o: Partial<NudgeRow> = {}): NudgeRow => ({ user_id: uid, environment: 'test', signup_at: ago(2 * HOUR), email: 'jake@gmail.com', step1_sent_at: null, step2_sent_at: null, step3_sent_at: null, claimed_step: null, claimed_at: null, stopped_at: null, stop_reason: null, ...o });
 
 function make(w: Partial<World> = {}) {
-  const world: World = { now: NOW, rows: new Map(), drafts: [], users: new Map(), draft: {}, flags: {}, sent: [], calls: [], sendFails: false, ...w };
+  const world: World = { now: NOW, rows: new Map(), drafts: [], users: new Map(), draft: {}, flags: {}, sent: [], calls: [], sendFails: false, signups: [], ...w };
   const f = (k: string, d: any = false) => async (_u: string) => { world.calls.push(k); const v = world.flags[k]; if (v instanceof Error) throw v; return v ?? d; };
   const deps: SignupNudgeDeps = {
+    recentUsers: async () => world.signups,
     recentDrafts: async () => world.drafts,
     nudgeRows: async (ids) => ids.map((i) => world.rows.get(i)).filter(Boolean) as NudgeRow[],
     activeRows: async () => [...world.rows.values()].filter((r) => !r.stopped_at),
@@ -118,7 +120,20 @@ describe('eligibility matrix (one stop/skip per row)', () => {
     await skipped({ draft: { updatedAt: ago(10 * 60_000) } });
     await skipped({ users: new Map([['u1', user({ lastSignInAt: ago(5 * 60_000) })]]) });
   });
-  it('no draft row: skipped', () => skipped({ flags: { noDraft: true } }));
+  it('no draft row: still reminded, with the start-the-builder wording', async () => {
+    const m = one({ flags: { noDraft: true } }); const out = await run(m.deps);
+    expect(out.sent).toBe(1); expect(m.world.sent[0].subject).toBe('Your Prime Barber website');
+    expect(m.world.sent[0].text).toContain('signed up'); expect(m.world.sent[0].text).not.toContain('pick up where');
+    expect(m.world.sent[0].text).toContain('Start my website'); expect(m.world.sent[0].text).toMatch(/continue\?t=/);
+  });
+  it('no draft but active in the last 30 minutes (sign-in): still busy, skipped', async () => {
+    await skipped({ flags: { noDraft: true }, users: new Map([['u1', user({ lastSignInAt: ago(5 * 60_000) })]]) });
+  });
+  it('no draft but paid / published / iOS: stop rules still apply', async () => {
+    await stopped({ flags: { noDraft: true, entitled: true } }, 'paid');
+    await stopped({ flags: { noDraft: true, published: true } }, 'live');
+    await stopped({ flags: { noDraft: true, ios: true } }, 'not_web');
+  });
   it('MX lookup failing (null) skips without stopping', () => skipped({ flags: { mx: null } }));
   it('admin 5xx: nothing sent, row not stopped, claim released', async () => {
     const m = await skipped({ users: new Map([['u1', new Error('admin 503')]]) });
@@ -335,5 +350,83 @@ describe('live deps', () => {
     const rest = vi.fn(async () => null);
     await liveSignupNudgeDeps('test', rest as any).release('u1', '2026-11-10T12:00:00.000Z');
     expect((rest.mock.calls[0] as any[])[0]).toContain('claimed_at=eq.2026-11-10T12%3A00%3A00.000Z');
+  });
+});
+
+describe('enrollment of every sign-up (no draft needed)', () => {
+  const su = (id: string, o: Partial<AdminUser> = {}): SignedUpUser => ({ id, ...user({ createdAt: ago(3 * HOUR), ...o }) });
+  it('a new account with no draft gets a row from the admin user list, without a per-user lookup', async () => {
+    const m = make({ signups: [su('n1', { email: 'new@gmail.com' })] });
+    const out = await run(m.deps);
+    expect(out.enrolled).toBe(1); expect(m.world.rows.get('n1')!.email).toBe('new@gmail.com'); expect(m.world.rows.get('n1')!.stopped_at).toBeNull();
+    expect(m.world.calls).not.toContain('admin' + ':enroll');
+  });
+  it('a no-draft sign-up old enough then receives step 1 (full path: enroll -> visit -> send)', async () => {
+    const m = make({ signups: [su('n1', { createdAt: ago(2 * HOUR) })], flags: { noDraft: true } });
+    const out = await run(m.deps);
+    expect(out.enrolled).toBe(1); expect(out.sent).toBe(1); expect(m.world.sent[0].key).toBe('aibarber-app:nudge:n1:test:1');
+  });
+  it('before the launch gate: enrolled already stopped; too old: enrolled expired', async () => {
+    const m = make({ signups: [su('a', { createdAt: ago(5 * 24 * HOUR) }), su('b', { createdAt: ago(7.5 * 24 * HOUR) })] });
+    await run(m.deps, { ...ENV, WEB_APP_NUDGES_SINCE: ago(4 * 24 * HOUR) });
+    expect(m.world.rows.get('a')?.stop_reason).toBe('before_launch');
+    expect(m.world.rows.get('b')?.stop_reason).toBe('before_launch'); // before the gate wins over too old
+    const m2 = make({ signups: [su('c', { createdAt: ago(7.5 * 24 * HOUR) })] });
+    await run(m2.deps, { ...ENV, WEB_APP_NUDGES_SINCE: '2026-01-01T00:00:00Z' });
+    expect(m2.world.rows.get('c')?.stop_reason).toBe('expired');
+  });
+  it('users older than the 8-day window are ignored', async () => {
+    const m = make({ signups: [su('old', { createdAt: ago(9 * 24 * HOUR) })] });
+    expect((await run(m.deps)).enrolled).toBe(0);
+  });
+  it('a user in both the list and the drafts is enrolled once; list users already enrolled are skipped', async () => {
+    const m = make({ signups: [su('a'), su('b')], drafts: ['a'], rows: new Map([['b', row('b', { stopped_at: ago(HOUR), stop_reason: 'live' })]]) });
+    const out = await run(m.deps);
+    expect(out.enrolled).toBe(1); expect(m.world.calls.filter((c) => c === 'insert')).toHaveLength(1);
+  });
+  it('a failing user list does not stop draft-based enrollment or the sends', async () => {
+    const m = make({ drafts: ['d1'], users: new Map([['d1', user({ createdAt: ago(5 * HOUR) })]]) });
+    m.deps.recentUsers = async () => { throw new Error('admin lookup 503'); };
+    const out = await run(m.deps);
+    expect(out.enrolled).toBe(1); expect(out.errors).toBe(1);
+  });
+  it('stop rules still apply to enrolled no-draft users (paid in Stripe)', async () => {
+    const m = make({ signups: [su('n1')], flags: { noDraft: true, stripePaid: true } });
+    await run(m.deps); expect(m.world.sent).toEqual([]); expect(m.world.rows.get('n1')!.stop_reason).toBe('paid');
+  });
+  it('enrollSignups with since = Infinity (nudges off) enrolls everyone as stopped before_launch', async () => {
+    const m = make({ signups: [su('n1')] });
+    const out = await enrollSignups(m.deps, { since: Number.POSITIVE_INFINITY });
+    expect(out.enrolled).toBe(1); expect(m.world.rows.get('n1')!.stop_reason).toBe('before_launch'); expect(m.world.sent).toEqual([]);
+  });
+});
+
+describe('live recentUsers (admin list, newest first, bounded)', () => {
+  const page = (n: number, createdAt: () => string) => ({ users: Array.from({ length: n }, (_, i) => ({ id: `u${i}`, email: `u${i}@x.co`, created_at: createdAt(), user_metadata: {} })) });
+  const stubFetch = (pages: any[]) => {
+    const f = vi.fn(async (u: string) => ({ ok: true, status: 200, json: async () => pages[Number(/page=(\d+)/.exec(u)![1]) - 1] ?? { users: [] } }));
+    vi.stubGlobal('fetch', f); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc');
+    return f;
+  };
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+  it('stops after a short page', async () => {
+    const f = stubFetch([page(3, () => ago(HOUR))]);
+    const r = await liveSignupNudgeDeps('test', vi.fn() as any).recentUsers(ago(8 * 24 * HOUR), 5);
+    expect(r).toHaveLength(3); expect(f).toHaveBeenCalledTimes(1);
+    expect((f.mock.calls[0] as any[])[0]).toContain('/auth/v1/admin/users?page=1&per_page=200');
+  });
+  it('keeps paging while a full page still has users inside the window, and stops at the page cap', async () => {
+    const f = stubFetch([page(200, () => ago(HOUR)), page(200, () => ago(2 * HOUR)), page(200, () => ago(3 * HOUR))]);
+    expect(await liveSignupNudgeDeps('test', vi.fn() as any).recentUsers(ago(8 * 24 * HOUR), 2)).toHaveLength(400);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it('stops paging when a full page is entirely older than the window', async () => {
+    const f = stubFetch([page(200, () => ago(20 * 24 * HOUR)), page(200, () => ago(HOUR))]);
+    await liveSignupNudgeDeps('test', vi.fn() as any).recentUsers(ago(8 * 24 * HOUR), 5);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it('a non-200 throws (enrollment logs it and goes on)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) }))); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc');
+    await expect(liveSignupNudgeDeps('test', vi.fn() as any).recentUsers(ago(HOUR), 5)).rejects.toThrow('admin lookup 503');
   });
 });
