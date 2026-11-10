@@ -1,9 +1,11 @@
-// GET + Bearer <supabase jwt> -> the caller's web-app subscription: { entitled, tier, interval, status, subscriptionId }.
+// GET + Bearer <supabase jwt> -> the caller's web-app subscription: { entitled, tier, interval, status, subscriptionId, priceGroup }.
+// priceGroup is the stored price-test group ('base' | 'g10' | 'g20'), 'base' when none is stored or the lookup fails (informational only).
 // Read-only; the answer comes from web_app_entitlements for this deployment's Stripe mode.
 import { isEntitledStatus, keyMode } from '../../lib/webApp/stripeCore.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { needsPhone } from '../../lib/webApp/phoneGate.js';
 import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
+import { readStoredGroup } from '../../lib/webApp/priceGroup.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
@@ -36,8 +38,11 @@ export default async function handler(req: any, res: any) {
     const flag = envOn && st.contactsOk; // contacts table unreadable (migration 032 missing): fail open, no gate
     const phone = st.phone;
     const needs = needsPhone({ flag, phone, entitlementRows: rows });
+    // Price-test group. Fails soft to 'base' (a missing table or a Supabase problem never breaks /me).
+    let priceGroup: string = 'base';
+    try { priceGroup = (await readStoredGroup(caller.id)) ?? 'base'; } catch (e: any) { console.error('[web-app me] price group lookup failed:', e?.message || e); }
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live, tier: row?.tier ?? null, interval: row?.billing_interval ?? null, status: row?.status ?? null, subscriptionId: row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
+    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live, tier: row?.tier ?? null, interval: row?.billing_interval ?? null, status: row?.status ?? null, subscriptionId: row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
   } catch (e: any) {
     console.error('[web-app me]', e.message);
     return res.status(502).json({ error: 'lookup_failed' });

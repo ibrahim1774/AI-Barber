@@ -106,6 +106,7 @@ beforeAll(async () => {
       tier text, billing_interval text, status text, environment text, current_period_end timestamptz, cancel_at_period_end boolean, created_at timestamptz default now(), updated_at timestamptz, welcome_sent_at timestamptz);
     create table web_app_customers(user_id uuid, environment text, stripe_customer_id text, primary key(user_id,environment));
     create table site_owners(slug text, user_id uuid);
+    create table web_app_price_groups(user_id uuid primary key, price_group text not null, source text, created_at timestamptz default now());
     create table web_app_sites(slug text primary key, stripe_subscription_id text, user_id uuid, environment text, published_at timestamptz, taken_down_at timestamptz, removed_at timestamptz, created_at timestamptz default now());`);
   await db.exec(readFileSync(new URL('../../supabase/migrations/025_web_app_reliability.sql', import.meta.url),'utf8'));
 }, 30_000);
@@ -295,11 +296,11 @@ describe('S5 checkout snapshot links', () => {
     expect((await checkoutWith({ publication: { bookingUrl: 'https://b.example' } })).code).toBe(200);
     const k = keys(); expect(k).toHaveLength(2); expect(k[0]).not.toBe(k[1]);
   });
-  it('upgrade checkout key is unchanged', async () => {
+  it('upgrade checkout key carries the price group (base)', async () => {
     const w0 = Math.floor(Date.now() / 600_000);
     expect((await call(checkout, { tier: 'website', interval: 'month' })).code).toBe(200);
     const w1 = Math.floor(Date.now() / 600_000);
-    const ok = [w0, w1].map(w => `aibarber-app:cs:${U}:website:month:${w}`);
+    const ok = [w0, w1].map(w => `aibarber-app:cs:${U}:website:month:base:${w}`);
     expect(ok).toContain(keys()[0].replace(/:[0-9a-f]{8}$/, '')); // the trailing 8 hex chars hash the plan text
   });
   it('reports logo-folder on a refused checkout', async () => {
