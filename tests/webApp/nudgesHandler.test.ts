@@ -74,7 +74,7 @@ describe('/api/web-app/nudges sheet log', () => {
     expect(enrollSignups).toHaveBeenCalledTimes(1); expect((enrollSignups.mock.calls[0] as any[])[1].since).toBe(Number.POSITIVE_INFINITY);
     expect(sweepSignupSheet).toHaveBeenCalledTimes(1); expect(r.body.enrolled).toEqual({ enrolled: 3, errors: 0 });
   });
-  it('a nudge sweep that throws does not stop the sheet; a sheet sweep that throws does not fail the cron', async () => {
+  it('a nudge sweep that throws does not stop the sheet and enrolls nothing as stopped; a sheet sweep that throws does not fail the cron', async () => {
     vi.stubEnv('WEB_APP_NUDGES', '1'); vi.stubEnv('MAKE_SIGNUP_WEBHOOK_URL', 'https://hook.make.test/x');
     sweepSignupNudges.mockRejectedValueOnce(new Error('boom'));
     expect((await call()).body.sheet).toEqual({ sent: 4, failed: 0, skipped: 0 });
@@ -83,11 +83,11 @@ describe('/api/web-app/nudges sheet log', () => {
   });
 });
 
-describe('/api/web-app/nudges sheet enrollment when the mail sweep skipped itself', () => {
-  it('nudges on but misconfigured (skippedReason): the sheet still gets its rows via enrollSignups', async () => {
+describe('/api/web-app/nudges: stopped-enroll only when the mails are OFF', () => {
+  it('nudges on but the sweep skipped itself (misconfigured): NO stopped enrollment (rows must stay mailable later)', async () => {
     vi.stubEnv('WEB_APP_NUDGES', '1'); vi.stubEnv('MAKE_SIGNUP_WEBHOOK_URL', 'https://hook.make.test/x');
     sweepSignupNudges.mockResolvedValueOnce({ enrolled: 0, sent: 0, stopped: 0, skipped: 0, errors: 0, skippedReason: 'misconfigured' } as any);
     await call();
-    expect(enrollSignups).toHaveBeenCalledTimes(1); expect(sweepSignupSheet).toHaveBeenCalledTimes(1);
+    expect(enrollSignups).not.toHaveBeenCalled(); expect(sweepSignupSheet).toHaveBeenCalledTimes(1);
   });
 });

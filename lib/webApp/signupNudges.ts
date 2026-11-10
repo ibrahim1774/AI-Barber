@@ -15,7 +15,7 @@ import { sendMail, signupNudgeEmail, type Mail } from './emails.js';
 import { isSuppressed } from './suppressions.js';
 
 type Mode = 'live' | 'test';
-export type StopReason = 'paid' | 'deleted' | 'suppressed' | 'not_web' | 'live' | 'expired' | 'done' | 'before_launch' | 'bad_address';
+export type StopReason = 'paid' | 'deleted' | 'suppressed' | 'not_web' | 'live' | 'expired' | 'done' | 'before_launch' | 'bad_address' | 'late';
 
 export const HOUR = 3600_000;
 export const EXPIRY_MS = 7 * 24 * HOUR;
@@ -84,6 +84,8 @@ export interface SignupNudgeDeps {
   hasLegacySite(userId: string): Promise<boolean>;
   /** A live (published, not removed or taken down) web site for this user. */
   isPublished(userId: string): Promise<boolean>;
+  /** A web-app signal for this user: a web_app_price_groups, web_app_drafts, web_app_customers or checkout-session row. iOS-app sign-ups share the auth project and have none. Throws on error. */
+  hasWebSignal(userId: string): Promise<boolean>;
   isSuppressed(email: string): Promise<boolean>;
   /** true / false = DNS answered; null = lookup failed (try again later). */
   hasMx(email: string): Promise<boolean | null>;
@@ -161,6 +163,8 @@ export async function sweepSignupNudges(
     const step: 1 | 2 | 3 = age < d2 ? 1 : age < d3 ? 2 : 3;
     const sentAt = [row.step1_sent_at, row.step2_sent_at, row.step3_sent_at];
     if (sentAt[step - 1]) { out.skipped++; return; }
+    // A missed first mail is never made up for (also the first-deploy backlog): step 2 / 3 only follow a sent step 1.
+    if (step > 1 && !row.step1_sent_at) return stop('late');
     const gapBlocks = (r: NudgeRow, at: number) => {
       if (step === 1 || sched.overridden) return false;
       const prev = [r.step1_sent_at, r.step2_sent_at].slice(0, step - 1).filter(Boolean).map((x) => Date.parse(x as string));
@@ -193,6 +197,8 @@ export async function sweepSignupNudges(
     if (await deps.isSuppressed(email)) return stop('suppressed');
     // A sign-up that never saved a draft is still reminded (link goes to the start of the builder).
     const found = await deps.draftInfo(uid);
+    // Only people who came through the web app: iOS-app accounts (same auth project, no draft) have no web signal.
+    if (!found && !(await deps.hasWebSignal(uid))) return stop('not_web');
     const draft: DraftInfo = found ?? { updatedAt: null, deployedUrl: null, shopName: null };
     if (draft.deployedUrl || (await deps.isPublished(uid))) return stop('live');
     if ((await deps.appStoreState(uid)) || (await deps.hasIosPurchase(uid)) || (await deps.hasLegacySite(uid))) return stop('not_web');
@@ -302,7 +308,7 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
   const admin = async (uid: string): Promise<AdminUser | null> => {
     const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) throw new Error('supabase not configured');
-    const r = await fetch(`${url}/auth/v1/admin/users/${enc(uid)}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+    const r = await fetch(`${url}/auth/v1/admin/users/${enc(uid)}`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
     if (r.status === 404) return null;
     if (!r.ok) throw new Error(`admin lookup ${r.status}`);
     const u: any = await r.json().catch(() => null);
@@ -316,7 +322,7 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
       const cutoff = Date.parse(sinceIso);
       const out: SignedUpUser[] = [];
       for (let page = 1; page <= maxPages; page++) {
-        const r = await fetch(`${url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+        const r = await fetch(`${url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
         if (!r.ok) throw new Error(`admin lookup ${r.status}`);
         const j: any = await r.json().catch(() => null);
         const users: any[] = Array.isArray(j?.users) ? j.users : [];
@@ -389,6 +395,12 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
     async hasIosPurchase(uid) { return ((await rest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id&limit=1`)) ?? []).length > 0; },
     async hasLegacySite(uid) { return ((await rest(`sites?user_id=eq.${enc(uid)}&site_data->>source=is.null&select=id&limit=1`)) ?? []).length > 0; },
     async isPublished(uid) { return ((await rest(`web_app_sites?user_id=eq.${enc(uid)}&environment=eq.${mode}&published_at=not.is.null&removed_at=is.null&taken_down_at=is.null&select=slug&limit=1`)) ?? []).length > 0; },
+    async hasWebSignal(uid) {
+      for (const q of [`web_app_price_groups?user_id=eq.${enc(uid)}`, `web_app_drafts?user_id=eq.${enc(uid)}`, `web_app_customers?user_id=eq.${enc(uid)}`, `web_app_checkout_sessions?user_id=eq.${enc(uid)}`]) {
+        if (((await rest(`${q}&select=user_id&limit=1`)) ?? []).length > 0) return true;
+      }
+      return false;
+    },
     isSuppressed: (email) => isSuppressed(email),
     async hasMx(email) {
       const domain = email.split('@')[1]?.toLowerCase().replace(/\.$/, '');

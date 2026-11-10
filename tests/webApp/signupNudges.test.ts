@@ -45,6 +45,7 @@ function make(w: Partial<World> = {}) {
     draftInfo: async () => { world.calls.push('draft'); return world.flags.noDraft ? null : { updatedAt: ago(5 * HOUR), deployedUrl: null, shopName: "Jake's Cuts", ...world.draft }; },
     isEntitled: f('entitled'), stripePaid: async (e, u) => { world.calls.push('stripe'); const v = world.flags.stripePaid; if (v instanceof Error) throw v; return !!v; },
     appStoreState: f('appStore', null), hasIosPurchase: f('ios'), hasLegacySite: f('legacy'), isPublished: f('published'),
+    hasWebSignal: async () => { world.calls.push('signal'); const v = world.flags.webSignal; if (v instanceof Error) throw v; return v ?? true; },
     isSuppressed: async (e) => { world.calls.push('suppressed'); return !!world.flags.suppressed; },
     hasMx: async () => { world.calls.push('mx'); return world.flags.mx === undefined ? true : world.flags.mx; },
     send: async (to, mail, key) => { world.calls.push('send'); if (world.sendFails) throw new Error('resend 500'); world.sent.push({ to, key, subject: mail.subject, text: mail.text }); return 'msg_' + world.sent.length; },
@@ -170,7 +171,7 @@ describe('eligibility matrix (one stop/skip per row)', () => {
 
 describe('step selection', () => {
   const stepFor = async (ageMs: number, extra: Partial<NudgeRow> = {}) => {
-    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(ageMs), ...extra })]]), users: new Map([['u1', user({ createdAt: ago(ageMs) })]]) });
+    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(ageMs), ...(ageMs >= 24 * HOUR ? { step1_sent_at: ago(ageMs - HOUR) } : {}), ...extra })]]), users: new Map([['u1', user({ createdAt: ago(ageMs) })]]) });
     await run(m.deps); return m.world.sent.map((s) => s.key.split(':').pop());
   };
   it('windows: 1 h to 24 h is step 1, 24 h to 72 h step 2, 72 h to 7 d step 3', async () => {
@@ -182,8 +183,17 @@ describe('step selection', () => {
     expect(await stepFor(73 * HOUR)).toEqual(['3']);
     expect(await stepFor(6.9 * 24 * HOUR)).toEqual(['3']);
   });
-  it('a missed window is skipped, never caught up: step 1 unsent at 30 h sends step 2 only', async () => {
-    expect(await stepFor(30 * HOUR)).toEqual(['2']);
+  it('a missed first mail is never made up for (first-deploy backlog): step 2 / 3 without a sent step 1 stops the row as late', async () => {
+    for (const age of [30 * HOUR, 80 * HOUR]) {
+      const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(age) })]]), users: new Map([['u1', user({ createdAt: ago(age) })]]) });
+      const out = await run(m.deps);
+      expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stop_reason).toBe('late'); expect(out.stopped).toBe(1);
+      expect(m.world.calls).not.toContain('claim'); expect(m.world.calls).not.toContain('admin');
+    }
+  });
+  it('late applies to users without a draft too', async () => {
+    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(30 * HOUR) })]]), flags: { noDraft: true } });
+    await run(m.deps); expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stop_reason).toBe('late');
   });
   it('a step already sent is not sent again', async () => {
     expect(await stepFor(2 * HOUR, { step1_sent_at: ago(HOUR) })).toEqual([]);
@@ -199,11 +209,11 @@ describe('step selection', () => {
     await run(m.deps); expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stop_reason).toBe('done');
   });
   it('sending step 3 stops the row as done', async () => {
-    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(80 * HOUR) })]]), users: new Map([['u1', user({ createdAt: ago(80 * HOUR) })]]) });
+    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(80 * HOUR), step1_sent_at: ago(79 * HOUR) })]]), users: new Map([['u1', user({ createdAt: ago(80 * HOUR) })]]) });
     await run(m.deps); expect(m.world.sent).toHaveLength(1); expect(m.world.rows.get('u1')!.stop_reason).toBe('done');
   });
   it('the link in the mail is a continue token bound to this user and step, on the app origin', async () => {
-    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(30 * HOUR) })]]), users: new Map([['u1', user({ createdAt: ago(30 * HOUR) })]]) });
+    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(30 * HOUR), step1_sent_at: ago(29 * HOUR) })]]), users: new Map([['u1', user({ createdAt: ago(30 * HOUR) })]]) });
     await run(m.deps);
     const t = decodeURIComponent(/continue\?t=(\S+)/.exec(m.world.sent[0].text)![1]);
     expect(verifyContinueToken(t, { now: NOW, secret: SECRET, mode: 'test', expect: { userId: 'u1', step: 2 } }).ok).toBe(true);
@@ -242,13 +252,10 @@ describe('claim hygiene (C2 fixes)', () => {
     await run(m.deps);
     expect(m.world.calls.filter((c) => c.startsWith('release'))).toEqual([`release:${new Date(NOW).toISOString()}`]);
   });
-  it('overlapping runs near 24 h cannot send step 1 and then step 2 minutes apart: the claimed row is re-checked', async () => {
-    // Run B read the row (age 24h01, so step 2 is due) before run A's step 1 landed; step 1 is on the row at claim time.
-    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(24 * HOUR + 60_000) })]]), users: new Map([['u1', user({ createdAt: ago(24 * HOUR + 60_000) })]]),
-      flags: { onClaim: (r: NudgeRow) => { r.step1_sent_at = ago(2 * 60_000); } } });
-    const out = await run(m.deps);
-    expect(m.world.sent).toEqual([]); expect(out.skipped).toBe(1);
-    expect(m.world.rows.get('u1')!.claimed_at).toBeNull(); expect(m.world.rows.get('u1')!.stopped_at).toBeNull();
+  it('near 24 h with no step 1 on the row: stopped late before any claim (never step 1 then step 2 minutes apart)', async () => {
+    const m = make({ rows: new Map([['u1', row('u1', { signup_at: ago(24 * HOUR + 60_000) })]]), users: new Map([['u1', user({ createdAt: ago(24 * HOUR + 60_000) })]]) });
+    await run(m.deps);
+    expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stop_reason).toBe('late'); expect(m.world.calls).not.toContain('claim');
   });
   it('an earlier step is not sent once a later one is on the claimed row', async () => {
     const m = make({ rows: new Map([['u1', row('u1')]]), flags: { onClaim: (r: NudgeRow) => { r.step2_sent_at = ago(HOUR); } } });
@@ -428,5 +435,29 @@ describe('live recentUsers (admin list, newest first, bounded)', () => {
   it('a non-200 throws (enrollment logs it and goes on)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) }))); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc');
     await expect(liveSignupNudgeDeps('test', vi.fn() as any).recentUsers(ago(HOUR), 5)).rejects.toThrow('admin lookup 503');
+  });
+});
+
+describe('web signal: iOS-app sign-ups are not reminded', () => {
+  const one = (w: Partial<World> = {}) => make({ rows: new Map([['u1', row('u1')]]), ...w });
+  it('no draft and no web signal: stopped as not_web, nothing sent', async () => {
+    const m = one({ flags: { noDraft: true, webSignal: false } }); await run(m.deps);
+    expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stop_reason).toBe('not_web');
+  });
+  it('no draft but a web signal (price group / customer / checkout session row): reminded', async () => {
+    const m = one({ flags: { noDraft: true, webSignal: true } }); expect((await run(m.deps)).sent).toBe(1);
+  });
+  it('a draft is itself the signal: no extra lookup', async () => {
+    const m = one(); await run(m.deps); expect(m.world.calls).not.toContain('signal'); expect(m.world.sent).toHaveLength(1);
+  });
+  it('a signal lookup error: nothing sent, row not stopped, claim released', async () => {
+    const m = one({ flags: { noDraft: true, webSignal: new Error('db 500') } }); const out = await run(m.deps);
+    expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stopped_at).toBeNull(); expect(m.world.rows.get('u1')!.claimed_at).toBeNull(); expect(out.errors).toBe(1);
+  });
+  it('live hasWebSignal checks price groups, drafts, customers and checkout sessions', async () => {
+    const rest = vi.fn(async (p: string) => (p.startsWith('web_app_customers') ? [{ user_id: 'u1' }] : []));
+    expect(await liveSignupNudgeDeps('test', rest as any).hasWebSignal('u1')).toBe(true);
+    expect(rest.mock.calls.map((c: any[]) => String(c[0]).split('?')[0])).toEqual(['web_app_price_groups', 'web_app_drafts', 'web_app_customers']);
+    expect(await liveSignupNudgeDeps('test', (async () => []) as any).hasWebSignal('u1')).toBe(false);
   });
 });

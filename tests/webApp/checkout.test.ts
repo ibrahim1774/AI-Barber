@@ -603,3 +603,30 @@ describe('POST /api/web-app/checkout', () => {
     });
   });
 });
+
+describe('POST /api/web-app/checkout: buyer user agent / IP for the server-side Purchase', () => {
+  const withHeaders = async (h: Record<string, any>) => { const r = res(); await handler({ method: 'POST', headers: { authorization: 'Bearer t', ...h }, body: { tier: 'website', interval: 'month' } }, r); return r; };
+  it('stores the user agent (400 chars max) and the first x-forwarded-for entry on the session AND the subscription metadata', async () => {
+    sb.customers = [];
+    await withHeaders({ 'user-agent': 'Mozilla/5.0 ' + 'x'.repeat(600), 'x-forwarded-for': '203.0.113.9, 10.0.0.1' });
+    const c = created()[0].body;
+    expect(c['subscription_data[metadata][client_ua]']).toHaveLength(400); expect(c['subscription_data[metadata][client_ua]'].startsWith('Mozilla/5.0 xx')).toBe(true);
+    expect(c['subscription_data[metadata][client_ip]']).toBe('203.0.113.9');
+    expect(c['metadata[client_ip]']).toBe('203.0.113.9');
+  });
+  it('no headers: no such metadata and the idempotency key is unchanged', async () => {
+    sb.customers = [];
+    await run();
+    const c = created()[0];
+    expect(c.body['subscription_data[metadata][client_ua]']).toBeUndefined(); expect(c.body['subscription_data[metadata][client_ip]']).toBeUndefined();
+    expect(c.opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:base:\d+:[0-9a-f]{8}$/);
+  });
+  it('a different browser in the same 10-minute window gets a different idempotency key (Stripe rejects changed params on a reused key)', async () => {
+    sb.customers = [];
+    await withHeaders({ 'user-agent': 'UA-one', 'x-forwarded-for': '1.1.1.1' }); await withHeaders({ 'user-agent': 'UA-two', 'x-forwarded-for': '1.1.1.1' });
+    const [a, b] = created().map((x) => x.opts.idempotencyKey);
+    expect(a).not.toBe(b);
+    await withHeaders({ 'user-agent': 'UA-one', 'x-forwarded-for': '1.1.1.1' });
+    expect(created()[2].opts.idempotencyKey).toBe(a);
+  });
+});

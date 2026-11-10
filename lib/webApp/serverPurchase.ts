@@ -35,14 +35,16 @@ export function purchaseFacts(sub: any, env: Record<string, string | undefined> 
 
 export const captureOn = (live: boolean, env: Record<string, string | undefined> = process.env) => live || env.WEB_APP_CAPI_TEST === '1';
 
-export function metaPayload(f: PurchaseFacts, ctx: { email: string | null; userId: string | null; accessToken: string; nowSec: number; fbp?: string | null; fbc?: string | null }) {
-  const userData = buildUserData({ email: ctx.email, externalId: f.subscriptionId, fbp: ctx.fbp ?? null, fbc: ctx.fbc ?? null });
+export function metaPayload(f: PurchaseFacts, ctx: { email: string | null; userId: string | null; accessToken: string; nowSec: number; fbp?: string | null; fbc?: string | null; clientUserAgent?: string | null; clientIp?: string | null }) {
+  const userData = buildUserData({ email: ctx.email, externalId: f.subscriptionId, fbp: ctx.fbp ?? null, fbc: ctx.fbc ?? null, clientUserAgent: ctx.clientUserAgent ?? null, clientIp: ctx.clientIp ?? null });
   // The browser's external_id is the subscription id; the account id is added too (Meta accepts several) for better matching.
   const uid = hashExternalId(ctx.userId);
   if (uid) userData.external_id = [...(userData.external_id ?? []), uid];
   return {
     data: [{
-      event_name: 'Purchase', event_time: ctx.nowSec, event_id: f.subscriptionId, action_source: 'website', event_source_url: EVENT_SOURCE_URL,
+      event_name: 'Purchase', event_time: ctx.nowSec, event_id: f.subscriptionId,
+      // Meta requires client_user_agent for website events: without the buyer's (stored at checkout) it is a server-side event.
+      action_source: ctx.clientUserAgent ? 'website' : 'system_generated', event_source_url: EVENT_SOURCE_URL,
       user_data: userData,
       custom_data: {
         value: f.value, currency: 'USD', content_ids: [f.contentId], content_type: 'product', content_name: f.contentName,
@@ -67,6 +69,12 @@ export function tiktokPayload(f: PurchaseFacts, ctx: { email: string | null; now
   };
 }
 
+/** The buyer's user agent / IP that api/web-app/checkout.ts stored on the subscription's metadata (client_ua, client_ip). */
+export const clientHints = (sub: any) => ({
+  clientUserAgent: typeof sub?.metadata?.client_ua === 'string' && sub.metadata.client_ua ? sub.metadata.client_ua : null,
+  clientIp: typeof sub?.metadata?.client_ip === 'string' && sub.metadata.client_ip ? sub.metadata.client_ip : null,
+});
+
 export interface PurchaseResult { meta: 'sent' | 'skipped' | 'failed'; tiktok: 'sent' | 'skipped' | 'failed' }
 
 /** Sends the Purchase to every configured platform. Never throws; every call is bounded by `timeoutMs`. */
@@ -87,7 +95,7 @@ export async function sendServerPurchase(
     if (pixel && token) {
       jobs.push((async () => {
         try {
-          const r = await doFetch(`https://graph.facebook.com/v21.0/${pixel}/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaPayload(f, { ...who, accessToken: token, nowSec })), signal: signal() });
+          const r = await doFetch(`https://graph.facebook.com/v21.0/${pixel}/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaPayload(f, { ...who, ...clientHints(sub), accessToken: token, nowSec })), signal: signal() });
           out.meta = r.ok ? 'sent' : 'failed';
           if (!r.ok) console.error('[web-app purchase] Meta answered', r.status);
         } catch (e: any) { out.meta = 'failed'; console.error('[web-app purchase] Meta failed', e?.name || 'error'); }

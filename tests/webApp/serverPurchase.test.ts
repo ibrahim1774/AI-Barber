@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
-import { captureOn, EVENT_SOURCE_URL, metaPayload, purchaseFacts, sendServerPurchase, tiktokPayload } from '../../lib/webApp/serverPurchase.js';
+import { captureOn, clientHints, EVENT_SOURCE_URL, metaPayload, purchaseFacts, sendServerPurchase, tiktokPayload } from '../../lib/webApp/serverPurchase.js';
 import { PRICE_CENTS } from '../../lib/webApp/stripeCore.js';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -33,12 +33,27 @@ describe('payloads', () => {
   it('Meta: event_id = subscription id, USD, website, hashed email and external ids, no raw PII', () => {
     const p = metaPayload(f, { ...WHO, accessToken: 'tok', nowSec: 1_800_000_000 });
     const e = p.data[0];
-    expect(e).toMatchObject({ event_name: 'Purchase', event_id: 'sub_1', action_source: 'website', event_source_url: 'https://www.primebarber.org/app/', event_time: 1_800_000_000 });
+    expect(e).toMatchObject({ event_name: 'Purchase', event_id: 'sub_1', action_source: 'system_generated', event_source_url: 'https://www.primebarber.org/app/', event_time: 1_800_000_000 });
     expect(e.custom_data).toMatchObject({ value: 19.99, currency: 'USD', content_ids: ['webapp-website-monthly'], price_group: 'base', tier: 'website' });
     expect(e.user_data.em).toEqual([sha('jake@gmail.com')]);
     expect(e.user_data.external_id).toEqual([sha('sub_1'), sha('user-1')]); // the browser's external_id first
     expect(p.access_token).toBe('tok'); expect(EVENT_SOURCE_URL).toBe(e.event_source_url);
     expect(JSON.stringify(e)).not.toMatch(/Jake@|jake@|user-1"/);
+  });
+  it('Meta: with the buyer\'s user agent and IP (from the subscription metadata) it is a website event carrying both', () => {
+    const e = metaPayload(f, { ...WHO, accessToken: 't', nowSec: 1, ...clientHints({ metadata: { client_ua: 'Mozilla/5.0 X', client_ip: '203.0.113.9' } }) }).data[0];
+    expect(e.action_source).toBe('website'); expect(e.user_data).toMatchObject({ client_user_agent: 'Mozilla/5.0 X', client_ip_address: '203.0.113.9' });
+  });
+  it('Meta: without a stored user agent it falls back to system_generated (website events require one)', () => {
+    const e = metaPayload(f, { ...WHO, accessToken: 't', nowSec: 1, ...clientHints({ metadata: {} }) }).data[0];
+    expect(e.action_source).toBe('system_generated'); expect(e.user_data.client_user_agent).toBeUndefined();
+    expect(clientHints({})).toEqual({ clientUserAgent: null, clientIp: null });
+  });
+  it('sendServerPurchase reads the hints from the subscription it is given', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    await sendServerPurchase({ ...sub(), metadata: { client_ua: 'UA1', client_ip: '1.2.3.4' } }, WHO, { live: true, env: { ...ENV, TIKTOK_ACCESS_TOKEN: '' }, fetchImpl: fetchImpl as any });
+    const body = JSON.parse((fetchImpl.mock.calls[0] as any[])[1].body);
+    expect(body.data[0].action_source).toBe('website'); expect(body.data[0].user_data.client_user_agent).toBe('UA1');
   });
   it('Meta: no email still sends (external id only); fbp/fbc only when given', () => {
     const e = metaPayload(f, { email: null, userId: null, accessToken: 't', nowSec: 1 }).data[0];

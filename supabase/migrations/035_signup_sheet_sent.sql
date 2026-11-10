@@ -12,4 +12,9 @@ alter table public.web_app_signup_nudges add column if not exists sheet_sent_at 
 alter table public.web_app_signup_nudges add column if not exists sheet_claimed_at timestamptz;
 create index if not exists web_app_signup_nudges_sheet_idx on public.web_app_signup_nudges (environment, signup_at) where sheet_sent_at is null;
 
+-- The reminder sweep never sends step 2 / 3 as a first mail: such rows are stopped with the new reason 'late'.
+alter table public.web_app_signup_nudges drop constraint if exists web_app_signup_nudges_stop_reason_check;
+alter table public.web_app_signup_nudges add constraint web_app_signup_nudges_stop_reason_check
+  check (stop_reason in ('paid','deleted','suppressed','not_web','live','expired','done','before_launch','bad_address','late'));
+
 commit;

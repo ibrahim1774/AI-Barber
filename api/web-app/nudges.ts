@@ -36,8 +36,8 @@ export default async function handler(req: any, res: any) {
   } catch (e: any) { console.error('[web-app nudges] sweep threw', e?.message || e); nudges = { error: true }; }
   try {
     if (process.env.MAKE_SIGNUP_WEBHOOK_URL) {
-      // With the mails off (or their sweep skipped / failed before enrolling), the sheet still needs a row per sign-up: enroll them stopped (as before_launch), never mailable.
-      if (!nudgesOn || (nudges as any)?.skippedReason || (nudges as any)?.error) enrolled = await enrollSignups(liveSignupNudgeDeps(mode), { since: Number.POSITIVE_INFINITY, deadline: SHEET_DEADLINE_MS });
+      // With the mails OFF, the sheet still needs a row per sign-up: enroll them stopped (as before_launch), never mailable.
+      if (!nudgesOn) enrolled = await enrollSignups(liveSignupNudgeDeps(mode), { since: Number.POSITIVE_INFINITY, deadline: SHEET_DEADLINE_MS });
       sheet = await sweepSignupSheet(liveSignupSheetDeps(mode), { deadlineMs: Math.max(20_000, SHEET_DEADLINE_MS - (Date.now() - t0)) });
     }
   } catch (e: any) { console.error('[web-app sheet] sweep threw', e?.message || e); sheet = { error: true }; }

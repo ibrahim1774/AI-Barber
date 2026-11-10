@@ -17,6 +17,10 @@ const T = 'web_app_signup_nudges';
 export const SHEET_TIMEOUT_MS = 10_000;
 export const SHEET_STALE_CLAIM_MS = 30 * 60_000;
 export const SHEET_MAX_PER_RUN = 30;
+/** A sign-up is looked at only after this long, so the web client has had time to post its price group / save a draft. */
+export const SHEET_SETTLE_MS = 15 * 60_000;
+/** An account that still has no web signal after this long is an iOS-app (or other) account: closed without a post. */
+export const SHEET_NON_WEB_AFTER_MS = 24 * 3600_000;
 export const SHEET_MAX_CONSECUTIVE_FAILS = 5;
 /** Internal test accounts (ibrahim3709+anything@...) never go to the sheet. */
 export const isInternalTest = (email: string | null | undefined) => /^ibrahim3709\+/i.test((email ?? '').trim());
@@ -32,6 +36,8 @@ export interface SignupSheetDeps {
   release(userId: string, claimedAtIso: string): Promise<void>;
   markSent(userId: string, nowIso: string): Promise<void>;
   details(userId: string): Promise<SheetDetails | null>;
+  /** Web-app signal (price group, draft, customer or checkout-session row). iOS-app accounts have none. Throws on error. */
+  hasWebSignal(userId: string): Promise<boolean>;
   /** The HTTP status Make answered with; throws on a network error or timeout. */
   post(url: string, payload: SheetPayload): Promise<number>;
   now(): number;
@@ -74,6 +80,16 @@ export async function sweepSignupSheet(
   for (const row of rows) {
     if (out.sent >= maxSends || deps.now() - start >= deadline || streak >= SHEET_MAX_CONSECUTIVE_FAILS) break;
     if (isInternalTest(row.email)) { out.skipped++; continue; }
+    const age = deps.now() - Date.parse(row.signup_at);
+    if (!(age >= SHEET_SETTLE_MS)) { out.skipped++; continue; } // too new (or unreadable): the web signal may not exist yet
+    try {
+      if (!(await deps.hasWebSignal(row.user_id))) {
+        out.skipped++;
+        // Left pending (a signal can still appear) until 24 h; then closed WITHOUT a post: sheet_sent_at then means "handled".
+        if (age >= SHEET_NON_WEB_AFTER_MS) await deps.markSent(row.user_id, iso(deps.now()));
+        continue;
+      }
+    } catch (e: any) { out.failed++; console.error('[web-app sheet] signal check failed', row.user_id, e?.status ?? 'error'); continue; }
     const claimedAt = iso(deps.now());
     let claimed = false;
     try {
@@ -134,10 +150,16 @@ export function liveSignupSheetDeps(mode: Mode, rest: typeof sbRest = sbRest, fe
     },
     async release(uid, claimedAtIso) { await rest(`${row(uid)}&sheet_claimed_at=eq.${enc(claimedAtIso)}`, { method: 'PATCH', prefer: 'return=minimal', body: { sheet_claimed_at: null } }); },
     async markSent(uid, nowIso) { await rest(row(uid), { method: 'PATCH', prefer: 'return=minimal', body: { sheet_sent_at: nowIso, sheet_claimed_at: null } }); },
+    async hasWebSignal(uid) {
+      for (const q of [`web_app_price_groups?user_id=eq.${enc(uid)}`, `web_app_drafts?user_id=eq.${enc(uid)}`, `web_app_customers?user_id=eq.${enc(uid)}`, `web_app_checkout_sessions?user_id=eq.${enc(uid)}`]) {
+        if (((await rest(`${q}&select=user_id&limit=1`)) ?? []).length > 0) return true;
+      }
+      return false;
+    },
     async details(uid) {
       const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (!url || !key) throw new Error('supabase not configured');
-      const r = await fetchImpl(`${url}/auth/v1/admin/users/${enc(uid)}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+      const r = await fetchImpl(`${url}/auth/v1/admin/users/${enc(uid)}`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
       if (r.status === 404) return null;
       if (!r.ok) throw Object.assign(new Error(`admin lookup ${r.status}`), { status: r.status });
       const u: any = await r.json().catch(() => null);

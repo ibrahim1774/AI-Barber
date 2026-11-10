@@ -8,7 +8,7 @@ const ENV = { MAKE_SIGNUP_WEBHOOK_URL: 'https://hook.make.test/abc', MAKE_SIGNUP
 const det = (o: Partial<SheetDetails> = {}): SheetDetails => ({ email: 'jake@gmail.com', companyName: "Jake's Cuts", location: 'Austin, TX', phone: '+15125550100', bookingLink: '', priceGroup: 'base', ...o });
 const row = (id: string, o: Partial<SheetRow> = {}): SheetRow => ({ user_id: id, email: `${id}@gmail.com`, signup_at: '2026-11-10T10:00:00.000Z', ...o });
 
-function make(rows: SheetRow[], o: { status?: number | Error; claimLost?: string[]; details?: Record<string, SheetDetails | null | Error> } = {}) {
+function make(rows: SheetRow[], o: { status?: number | Error; claimLost?: string[]; details?: Record<string, SheetDetails | null | Error>; signal?: boolean | Error } = {}) {
   const sent = new Map<string, string>(); const claimed = new Set<string>(); const posts: { url: string; payload: any }[] = []; const calls: string[] = [];
   const deps: SignupSheetDeps = {
     pending: async () => rows.filter((r) => !sent.has(r.user_id)),
@@ -16,6 +16,7 @@ function make(rows: SheetRow[], o: { status?: number | Error; claimLost?: string
     release: async (id) => { calls.push('release:' + id); claimed.delete(id); },
     markSent: async (id, at) => { calls.push('markSent:' + id); sent.set(id, at); claimed.delete(id); },
     details: async (id) => { calls.push('details:' + id); const d = o.details?.[id]; if (d instanceof Error) throw d; return d === undefined ? det({ email: `${id}@gmail.com` }) : d; },
+    hasWebSignal: async (id) => { calls.push('signal:' + id); if (o.signal instanceof Error) throw o.signal; return o.signal ?? true; },
     post: async (url, payload) => { calls.push('post'); posts.push({ url, payload }); if (o.status instanceof Error) throw o.status; return o.status ?? 200; },
     now: () => NOW,
   };
@@ -52,7 +53,7 @@ describe('sending', () => {
     const m = make([row('u1')]);
     const out = await sweepSignupSheet(m.deps, { env: ENV });
     expect(out).toEqual({ sent: 1, failed: 0, skipped: 0 });
-    expect(m.calls).toEqual(['claim:u1', 'details:u1', 'post', 'markSent:u1']);
+    expect(m.calls).toEqual(['signal:u1', 'claim:u1', 'details:u1', 'post', 'markSent:u1']);
     expect(m.posts[0].url).toBe(ENV.MAKE_SIGNUP_WEBHOOK_URL);
     expect(m.posts[0].payload).toEqual({
       companyName: "Jake's Cuts", location: 'Austin, TX', phone: '+15125550100', bookingLink: '', timestamp: '2026-11-10T10:00:00.000Z',
@@ -118,7 +119,7 @@ describe('sending', () => {
   });
   it('does not depend on any nudge state: a paid / live / iOS user is still posted (the deps have no stop-rule hook)', async () => {
     const m = make([row('paid')]);
-    expect(Object.keys(m.deps).sort()).toEqual(['claim', 'details', 'markSent', 'now', 'pending', 'post', 'release']);
+    expect(Object.keys(m.deps).sort()).toEqual(['claim', 'details', 'hasWebSignal', 'markSent', 'now', 'pending', 'post', 'release']);
     expect((await sweepSignupSheet(m.deps, { env: ENV })).sent).toBe(1);
   });
   it('logs never carry the webhook URL, address, phone or payload', async () => {
@@ -192,5 +193,46 @@ describe('live deps', () => {
     const gone = vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) }));
     expect(await liveSignupSheetDeps('test', rest as any, gone as any).details('u1')).toBeNull();
     vi.unstubAllEnvs();
+  });
+});
+
+describe('web signal and settle time (iOS-app accounts are not sign-ups for this sheet)', () => {
+  const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+  it('a sign-up younger than 15 minutes is left alone (the web client may not have posted yet)', async () => {
+    const m = make([row('u1', { signup_at: at(5 * 60_000) })]);
+    const out = await sweepSignupSheet(m.deps, { env: ENV });
+    expect(out.skipped).toBe(1); expect(m.calls).toEqual([]);
+  });
+  it('no web signal yet: skipped and left pending (not marked) while under 24 h', async () => {
+    const m = make([row('u1', { signup_at: at(3 * 3600_000) })], { signal: false });
+    const out = await sweepSignupSheet(m.deps, { env: ENV });
+    expect(out.skipped).toBe(1); expect(m.posts).toEqual([]); expect(m.sent.size).toBe(0); expect(m.calls).not.toContain('claim:u1');
+  });
+  it('no web signal after 24 h: closed without a post (sheet_sent_at = handled)', async () => {
+    const m = make([row('u1', { signup_at: at(25 * 3600_000) })], { signal: false });
+    await sweepSignupSheet(m.deps, { env: ENV });
+    expect(m.posts).toEqual([]); expect(m.sent.has('u1')).toBe(true);
+  });
+  it('a signal that appears later is posted on the next run', async () => {
+    const m = make([row('u1', { signup_at: at(3 * 3600_000) })], { signal: false });
+    await sweepSignupSheet(m.deps, { env: ENV });
+    (m.deps as any).hasWebSignal = async () => true;
+    expect((await sweepSignupSheet(m.deps, { env: ENV })).sent).toBe(1);
+  });
+  it('a signal lookup error counts as a failure and posts nothing', async () => {
+    const m = make([row('u1')], { signal: new Error('db') });
+    const out = await sweepSignupSheet(m.deps, { env: ENV });
+    expect(out.failed).toBe(1); expect(m.posts).toEqual([]); expect(m.sent.size).toBe(0);
+  });
+  it('live hasWebSignal checks the four web tables', async () => {
+    const rest = vi.fn(async () => []);
+    expect(await liveSignupSheetDeps('live', rest as any).hasWebSignal('u1')).toBe(false);
+    expect(rest.mock.calls.map((c: any[]) => String(c[0]).split('?')[0])).toEqual(['web_app_price_groups', 'web_app_drafts', 'web_app_customers', 'web_app_checkout_sessions']);
+  });
+  it('the admin fetch has a 10 s timeout', async () => {
+    vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'svc');
+    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ id: 'u1', email: 'a@b.co' }) }));
+    await liveSignupSheetDeps('test', (async () => []) as any, f as any).details('u1');
+    expect((f.mock.calls[0] as any[])[1].signal).toBeDefined(); vi.unstubAllEnvs();
   });
 });
