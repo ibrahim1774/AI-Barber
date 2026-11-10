@@ -1,4 +1,5 @@
 import { buildUserData, extractClientIp } from './_buildUserData.js';
+import { priceGroupField } from '../lib/priceGroupField.js';
 
 // Meta CAPI Purchase event. Mirrors the browser-side fbq('track',
 // 'Purchase', ...) with shared event_id so Meta dedupes them.
@@ -86,6 +87,9 @@ export default async function handler(req: any, res: any) {
         ? contents
         : [{ id: content_id, quantity: 1, item_price: typeof value === 'number' ? value : 9 }];
     }
+
+    const priceGroup = priceGroupField(req.body);
+    if (priceGroup) customData.price_group = priceGroup;
 
     const eventData = {
       data: [

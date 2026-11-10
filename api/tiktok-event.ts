@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { hashEmail, hashPhone, hashExternalId } from './_hashPii.js';
+import { priceGroupField } from '../lib/priceGroupField.js';
 
 // TikTok Events API (v1.3). Fires server-side Lead, Purchase,
 // InitiateCheckout, ViewContent, CompleteRegistration events.
@@ -103,6 +104,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }];
     }
   }
+
+  const priceGroup = priceGroupField(req.body);
+  if (priceGroup) properties.price_group = priceGroup;
 
   // Advanced matching — TikTok user object. Hashes computed by
   // _hashPii (trim → lowercase → SHA-256 hex). TikTok ignores empty

@@ -1,4 +1,5 @@
 import { buildUserData, extractClientIp } from './_buildUserData.js';
+import { priceGroupField } from '../lib/priceGroupField.js';
 
 // Meta CAPI CompleteRegistration event. Fires after a visitor creates
 // an account via the PostDeploymentModal → AuthModal signup flow.
@@ -76,6 +77,9 @@ export default async function handler(req: any, res: any) {
       customData.content_type = content_type || 'product';
       if (content_name) customData.content_name = content_name;
     }
+
+    const priceGroup = priceGroupField(req.body);
+    if (priceGroup) customData.price_group = priceGroup;
 
     const eventData = {
       data: [
