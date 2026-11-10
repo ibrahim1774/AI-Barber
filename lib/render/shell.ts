@@ -353,9 +353,9 @@ const THEME_CSS: Record<TemplateId, string> = {
 };
 
 const FONT_LINK: Record<TemplateId, string> = {
-  luxe: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&family=Instrument+Serif:ital@0;1&display=swap',
-  prime: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,600&family=Inter:wght@300;400;500;600;700&display=swap',
-  euphoria: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600&display=swap',
+  luxe: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&family=Instrument+Serif&display=swap',
+  prime: 'https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500;6..72,600;6..72,700&family=Inter:wght@300;400;500;600;700&display=swap',
+  euphoria: 'https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap',
 };
 
 /** The page bodies' CSS (pageBodies.ts), shared by the three designs through the --ab-* variables above. */
@@ -401,7 +401,7 @@ ul.ab-copy li,ol.ab-copy li{margin:0 0 6px}
 .ab-rating{display:inline-flex;gap:12px;align-items:center;border:1px solid var(--ab-line);padding:10px 18px;margin:0 0 24px}
 .ab-rating b{color:var(--ab-accent)}
 .ab-stars{color:var(--ab-accent);letter-spacing:2px}
-.ab-quote{margin:0;color:var(--ab-soft);font-style:italic}
+.ab-quote{margin:0;color:var(--ab-soft);font-style:normal}
 .ab-by{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--ab-muted);margin-top:auto;padding-top:10px;border-top:1px solid var(--ab-line)}
 .ab-rows{border:1px solid var(--ab-line);border-radius:var(--ab-radius);background:var(--ab-bg2)}
 .ab-row{display:flex;justify-content:space-between;gap:16px;padding:14px 18px;border-bottom:1px solid var(--ab-line)}

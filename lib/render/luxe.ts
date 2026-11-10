@@ -62,7 +62,7 @@ export const AIB_THEMES: Record<string, AibTheme> = {
 export const AIB_THEME_CSS = `
         /* Glossy LUXE pass — gradient depth + hairline section seam +
            gold glow on accent buttons + glass-card treatment. */
-        .aib-themed .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+        .aib-themed .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: normal; font-weight: 400; }
         .aib-themed section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
         .aib-themed a[class*="bg-[#f4a100]"][class*="px-"] {
           box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
@@ -198,7 +198,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
     ? `<section class="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-3xl text-center">
       <svg class="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg>
-      <p class="text-white/85 text-base md:text-xl leading-relaxed" style="font-family:'Instrument Serif',Georgia,serif;font-style:italic;">${esc(siteData.bio)}</p>
+      <p class="text-white/85 text-base md:text-xl leading-relaxed" style="font-family:'Instrument Serif',Georgia,serif;font-style:normal;">${esc(siteData.bio)}</p>
     </div>
   </section>`
     : '';
@@ -291,7 +291,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
           return `
           <div class="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
             ${stars !== null ? `<div class="flex items-center gap-1">${Array.from({ length: 5 }, (_, s) => `<span class="${s < stars ? 'text-[#f4a100]' : 'text-white/15'}">★</span>`).join('')}</div>` : ''}
-            <p class="text-white/80 text-sm md:text-base leading-relaxed italic">"${esc(r.comment)}"</p>
+            <p class="text-white/80 text-sm md:text-base leading-relaxed">"${esc(r.comment)}"</p>
             <div class="flex items-center justify-between text-[10px] uppercase tracking-[2px] text-white/50 mt-auto pt-2 border-t border-white/5">
               <span class="font-bold text-white/80">${esc(r.author || 'Customer')}</span>
               ${r.date ? `<span>${esc(r.date)}</span>` : ''}
@@ -373,7 +373,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&family=Instrument+Serif&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -383,7 +383,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
        depth via gradient surfaces + a hairline highlight on every
        section seam + a soft gold glow on accent buttons. Scoped tight
        so the upgrade doesn't bleed into elements that should stay flat. */
-    .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+    .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: normal; font-weight: 400; }
     /* Header on a narrow phone: one row, the number right next to the call icon in one call link, never wrapping;
        the name gives way first (it wraps to two lines). */
     .ab-call-text { font-variant-numeric: tabular-nums; }

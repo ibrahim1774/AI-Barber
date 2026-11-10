@@ -55,6 +55,11 @@ export interface DeployRenderedSiteInput {
    * exactly what it always was.
    */
   redirects?: SiteRedirect[];
+  /**
+   * The taken-down page (offline.html). With SITE_OFFLINE_410=1 and no shop subpages, vercel.json answers every path with
+   * HTTP 410 and this same page body, instead of 200. Off by default: unverified on a live deploy (see GONE_VERCEL_CONFIG).
+   */
+  gone?: boolean;
 }
 
 export interface DeployRenderedSiteResult {
@@ -292,11 +297,20 @@ export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, str
  * segments of [a-z0-9-], and no reserved top segment (a book/index.html would sit ahead of the /book
  * proxy rewrite).
  */
+/**
+ * vercel.json for a taken-down site that answers 410 Gone with the offline page. Vercel's legacy `routes` accept `status` together
+ * with `dest` (the documented custom-404 pattern), but `routes` cannot be combined with `headers`/`rewrites`, so this is only for a
+ * site without shop subpages. Never deployed unless SITE_OFFLINE_410=1.
+ */
+export const GONE_VERCEL_CONFIG = { routes: [{ src: '/(.*)', status: 410, dest: '/index.html' }] };
+
+export const goneStatusEnabled = (): boolean => process.env.SITE_OFFLINE_410 === '1';
+
 export function buildSiteFiles(
   pages: SiteFile[],
   css: string | undefined,
   subpages: SiteSubpages | null,
-  extra: { sitemap?: string | null; robots?: string | null; redirects?: readonly SiteRedirect[] } = {},
+  extra: { sitemap?: string | null; robots?: string | null; redirects?: readonly SiteRedirect[]; gone?: boolean } = {},
 ): VercelFile[] {
   if (!Array.isArray(pages) || pages.length === 0) throw new Error('a deploy needs at least the home page');
   const seen = new Set<string>();
@@ -312,7 +326,7 @@ export function buildSiteFiles(
     { file: 'index.html', data: b64(home.html), encoding: 'base64' },
     ...pages.filter((p) => p !== home).map((p): VercelFile => ({ file: p.path, data: b64(p.html), encoding: 'base64' })),
     { file: 'styles.css', data: b64(css || '/* No custom styles */'), encoding: 'base64' },
-    { file: 'vercel.json', data: b64(JSON.stringify(siteVercelConfig(subpages, { nestedPages: pages.length > 1, redirects: extra.redirects }))), encoding: 'base64' },
+    { file: 'vercel.json', data: b64(JSON.stringify(extra.gone && !subpages ? GONE_VERCEL_CONFIG : siteVercelConfig(subpages, { nestedPages: pages.length > 1, redirects: extra.redirects }))), encoding: 'base64' },
   ];
   if (subpages?.mode === 'full') {
     files.push({ file: SITE_CONFIG_FILE.replace(/^\//, ''), data: b64(siteConfigFile(subpages.shopSlug)), encoding: 'base64' });
@@ -383,7 +397,7 @@ export async function deployRenderedSite(
 
   // Step 5: build the file set. Cache-Control on the HTML so a republish is
   // visible immediately instead of being served stale from the CDN.
-  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap, robots: input.robots, redirects: input.redirects });
+  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap, robots: input.robots, redirects: input.redirects, gone: !!input.gone && goneStatusEnabled() });
   const htmlBytes = finalPages.reduce((n, p) => n + Buffer.byteLength(p.html, 'utf-8'), 0);
   const cssBuffer = Buffer.from(cssContent, 'utf-8');
 

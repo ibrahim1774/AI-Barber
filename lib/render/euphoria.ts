@@ -155,7 +155,7 @@ export const EUPHORIA_SCOPED_CSS = `
 .euphoria-root .eu-service-row:last-child { border-bottom: 1px solid var(--eu-line-soft); }
 .euphoria-root .eu-service-num {
   font-family: 'Newsreader', Georgia, serif;
-  font-style: italic;
+  font-style: normal;
   color: var(--eu-ink-muted);
   font-size: 14px;
   letter-spacing: 0.06em;
@@ -334,7 +334,7 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData, ctx?: R
           <div class="eu-service-row">
             <div class="eu-service-num">${String(i + 1).padStart(2, '0')}</div>
             <div>
-              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">${escapeHtml(s.title)}${price ? ` <span style="color:var(--eu-brand);font-style:italic;white-space:nowrap;">${escapeHtml(price)}</span>` : ''}</h3>
+              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">${escapeHtml(s.title)}${price ? ` <span style="color:var(--eu-brand);font-style:normal;white-space:nowrap;">${escapeHtml(price)}</span>` : ''}</h3>
               ${meta ? `<div class="eu-eyebrow" style="margin-bottom:12px;font-size:10px;">${escapeHtml(meta)}</div>` : ''}
               ${s.description ? `<p style="color:var(--eu-ink-soft);font-size:15px;line-height:1.6;margin:0;max-width:640px;">${escapeHtml(s.description)}</p>` : ''}
             </div>
@@ -369,7 +369,7 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData, ctx?: R
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #000; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
@@ -399,7 +399,7 @@ ${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
       <h1 class="eu-display" style="font-size:clamp(40px,8vw,96px);margin:0 0 28px;font-weight:500;color:var(--eu-ink);">
         ${escapeHtml(siteData.hero.heading)}
       </h1>
-      <p class="eu-serif" style="font-size:clamp(16px,2.2vw,22px);font-style:italic;color:var(--eu-ink-soft);max-width:640px;margin:0 auto 40px;">
+      <p class="eu-serif" style="font-size:clamp(16px,2.2vw,22px);font-style:normal;color:var(--eu-ink-soft);max-width:640px;margin:0 auto 40px;">
         ${escapeHtml(siteData.hero.tagline)}
       </p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">

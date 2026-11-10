@@ -156,7 +156,7 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
     clearTakenDown: (slug) => patch(slug, { taken_down_at: null }).then(() => {}),
     deployOffline: async (slug) => {
       const shop = await findShopForSite(slug); // a failed lookup throws: retried next sweep
-      await deployRenderedSite({ siteId: slug, html: offlineHtml(), subpages: shop ? { mode: 'manage-only' } : null });
+      await deployRenderedSite({ siteId: slug, html: offlineHtml(), gone: true, subpages: shop ? { mode: 'manage-only' } : null });
     },
     publish: (slug, opts) => publishSite(slug, opts),
     planEnded: async (row) => {

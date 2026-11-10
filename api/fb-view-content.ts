@@ -1,4 +1,5 @@
 import { buildUserData, extractClientIp } from './_buildUserData.js';
+import { priceGroupField } from '../lib/priceGroupField.js';
 
 // Meta CAPI ViewContent event. Fires when a visitor lands on any
 // /booksy /free-barber /primebarber /new or the homepage funnel.
@@ -77,6 +78,9 @@ export default async function handler(req: any, res: any) {
       customData.content_type = content_type || 'product';
       if (content_name) customData.content_name = content_name;
     }
+
+    const priceGroup = priceGroupField(req.body);
+    if (priceGroup) customData.price_group = priceGroup;
 
     const eventData = {
       data: [

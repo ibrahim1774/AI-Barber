@@ -31,6 +31,19 @@ describe('buildSiteFiles', () => {
     expect(JSON.parse(decode(files[2])).rewrites.map((r: any) => r.source)).not.toContain('/book');
   });
 
+  it('a taken-down site without a shop can answer 410 with the same page (routes status + dest)', () => {
+    const files = buildSiteFiles([page('index.html', '<p>offline</p>')], undefined, null, { gone: true });
+    expect(decode(files[0])).toBe('<p>offline</p>');
+    expect(JSON.parse(decode(files[2]))).toEqual({ routes: [{ src: '/(.*)', status: 410, dest: '/index.html' }] });
+  });
+
+  it('gone never replaces the manage rewrites of a shop owner, and is off unless asked', () => {
+    const shop = buildSiteFiles([page('index.html')], undefined, { mode: 'manage-only' }, { gone: true });
+    expect(JSON.parse(decode(shop[2])).routes).toBeUndefined();
+    const plain = buildSiteFiles([page('index.html')], undefined, null);
+    expect(JSON.parse(decode(plain[2])).routes).toBeUndefined();
+  });
+
   it('writes every page, base64, at its own path (home first, the rest in order)', () => {
     const files = buildSiteFiles(
       [page('index.html'), page('about/index.html'), page('services/index.html'), page('services/fade/index.html')],

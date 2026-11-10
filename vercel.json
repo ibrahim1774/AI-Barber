@@ -56,6 +56,46 @@
       "destination": "https://prime-barber-web.vercel.app/app/"
     },
     {
+      "source": "/10",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
+      "source": "/10/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
+      "source": "/20",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
+      "source": "/20/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
       "source": "/app",
       "destination": "https://prime-barber-web.vercel.app/app/"
     },

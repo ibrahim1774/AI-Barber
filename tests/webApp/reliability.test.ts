@@ -86,7 +86,8 @@ beforeAll(async () => {
     create table web_app_entitlements(stripe_subscription_id text primary key, stripe_customer_id text, user_id uuid, site_slug text,
       tier text, billing_interval text, status text, environment text, current_period_end timestamptz, cancel_at_period_end boolean, created_at timestamptz default now(), updated_at timestamptz);
     create table web_app_customers(user_id uuid, environment text, stripe_customer_id text, primary key(user_id,environment));
-    create table site_owners(slug text, user_id uuid);`);
+    create table site_owners(slug text, user_id uuid);
+    create table web_app_price_groups(user_id uuid primary key, price_group text not null, source text, created_at timestamptz default now());`);
   await db.exec(readFileSync(new URL('../../supabase/migrations/025_web_app_reliability.sql', import.meta.url),'utf8'));
 }, 30_000);
 afterAll(async () => { await db?.close(); });

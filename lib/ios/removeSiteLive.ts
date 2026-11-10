@@ -112,7 +112,7 @@ export function liveRemoveDeps(): RemoveSiteDeps {
     async deployOffline(slug) {
       // Same page and same manage/order-link rule as the lapse sweep (api/ios/sweep.ts).
       const shop = await findShopForSite(slug);
-      await deployRenderedSite({ siteId: slug, html: offlineHtml(), subpages: shop ? { mode: 'manage-only' } : null });
+      await deployRenderedSite({ siteId: slug, html: offlineHtml(), gone: true, subpages: shop ? { mode: 'manage-only' } : null });
     },
     async releaseDomains(slug) {
       await releaseDomainsForRemoval(slug, { repo: supabaseDomains(), vercel: liveVercelDomains(), now: () => Date.now() });

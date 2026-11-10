@@ -1,4 +1,5 @@
 import { buildUserData, extractClientIp } from './_buildUserData.js';
+import { priceGroupField } from '../lib/priceGroupField.js';
 
 // Server-side companion to `fbq('track', 'Lead')`. Same event_id from
 // both ends so Meta dedupes. Carries the full advanced-matching field
@@ -87,6 +88,9 @@ export default async function handler(req: any, res: any) {
     } else if (contentName) {
       customData.content_name = contentName;
     }
+
+    const priceGroup = priceGroupField(req.body);
+    if (priceGroup) customData.price_group = priceGroup;
 
     const eventData = {
       data: [

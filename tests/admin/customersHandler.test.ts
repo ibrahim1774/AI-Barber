@@ -150,3 +150,43 @@ describe('/api/admin/customers', () => {
     expect(maskEmail('ibrahim@davoxa.com')).toBe('i***@d***.com');
   });
 });
+
+import { resetLimitKind, resetFailedText, resetSecondsLeft, RESET_RATE_LIMITED_TEXT, RESET_EMAIL_LIMIT_TEXT, RESET_TOO_MANY_TEXT } from '../../lib/admin/customersView.js';
+
+describe('send-reset rate limit', () => {
+  it('the API answers 429 reset-rate-limited / email-limit when sendReset reports them', async () => {
+    for (const error of ['reset-rate-limited', 'email-limit'] as const) {
+      const sendReset = vi.fn(async () => ({ ok: false as const, error }));
+      const { call } = make({ sendReset });
+      const r = await call('POST', { body: { action: 'send-reset', userId: UID } });
+      expect(r.statusCode).toBe(429);
+      expect(r.body).toEqual({ ok: false, error });
+    }
+  });
+  it('the admin write limiter still answers plain rate-limited (a different message)', async () => {
+    const { call } = make();
+    let last: any;
+    for (let i = 0; i < 12; i++) last = await call('POST', { body: { action: 'send-reset', userId: UID } });
+    expect(last.statusCode).toBe(429);
+    expect(last.body).toEqual({ ok: false, error: 'rate-limited' });
+  });
+  it('tells the per-address limit from the project-wide email cap', () => {
+    expect(resetLimitKind({ status: 429, message: 'For security purposes, you can only request this after 52 seconds.' })).toBe('address');
+    expect(resetLimitKind({ code: 'over_email_send_rate_limit', message: 'email rate limit exceeded' })).toBe('email');
+    expect(resetLimitKind({ status: 429, message: 'x' })).toBe('email');
+    expect(resetLimitKind({ status: 500, message: 'smtp down' })).toBe(null);
+    expect(resetLimitKind(null)).toBe(null);
+  });
+  it('shows a different text for each case and Reset failed otherwise', () => {
+    expect(resetFailedText('reset-rate-limited')).toBe(RESET_RATE_LIMITED_TEXT);
+    expect(resetFailedText('email-limit')).toBe(RESET_EMAIL_LIMIT_TEXT);
+    expect(resetFailedText('rate-limited')).toBe(RESET_TOO_MANY_TEXT);
+    expect(resetFailedText('failed')).toBe('Reset failed: failed');
+  });
+  it('counts the cooldown down to zero', () => {
+    expect(resetSecondsLeft(61_000, 1_000)).toBe(60);
+    expect(resetSecondsLeft(61_000, 60_500)).toBe(1);
+    expect(resetSecondsLeft(61_000, 61_000)).toBe(0);
+    expect(resetSecondsLeft(undefined, 5)).toBe(0);
+  });
+});

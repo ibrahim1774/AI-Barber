@@ -20,11 +20,19 @@ import { IOS_SITES } from './helpers/iosSites';
 import { baselineAvailable, loadBaseline } from './helpers/iosBaseline';
 
 const FIXTURE_FILE = join(__dirname, 'fixtures/ios-unchanged.json');
-const FIXTURE_DIGEST = '1bf0c61c23ef95c93e2e23bad03268e9b361a3bc';
+const FIXTURE_DIGEST = '2d65bd50608224bcdbdd0dc18708a63154533a82';
 
 beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2031-06-01T12:00:00Z')); });
 afterAll(() => { vi.useRealTimers(); });
 
+/** 2026-11: italics were removed from every published design on purpose. The old renderer's output is put through the same
+ *  change (slant and italic font axes only) before it is hashed, so everything else is still compared byte for byte. */
+const deItalic = (h: string): string => h
+  .replace(/font-style:\s*italic/g, (m) => m.replace('italic', 'normal'))
+  .replace(/leading-relaxed italic/g, 'leading-relaxed')
+  .replace('Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,600', 'Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500;6..72,600;6..72,700')
+  .replace('Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600', 'Newsreader:wght@400;500;600;700')
+  .replace('Instrument+Serif:ital@0;1', 'Instrument+Serif');
 const sha = (s: string): string => createHash('sha1').update(s).digest('hex');
 const strip = (h: string): string => h.replace(/published-at" content="\d+"/, '');
 type Snap = { pages: Record<string, string>; sitemap: string | null; robots: unknown; noindex: boolean };
@@ -36,7 +44,7 @@ function snap(m: Mods, name: string, template: (typeof TEMPLATES)[number], opts:
   const site = JSON.parse(JSON.stringify({ ...IOS_SITES[name], template }));
   const out = pending ? m.renderPendingBundle({ siteData: site, imageUrlMap: {} }, opts) : m.renderSiteBundle(site, opts);
   return {
-    pages: Object.fromEntries(out.pages.map((p: { path: string; html: string }) => [p.path, sha(strip(p.html))])),
+    pages: Object.fromEntries(out.pages.map((p: { path: string; html: string }) => [p.path, sha(strip(deItalic(p.html)))])),
     sitemap: out.sitemap == null ? null : sha(out.sitemap), robots: out.robots ?? null,
     noindex: out.pages.some((p: { html: string }) => p.html.includes('name="robots"')),
   };
