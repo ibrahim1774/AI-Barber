@@ -464,6 +464,20 @@ describe('POST /api/web-app/checkout', () => {
     expect((await run()).code).toBe(200);
   });
 
+  describe('Stripe price missing', () => {
+    const failCreate = (err: any) => { const h = stripe.handler; stripe.handler = (path: string, body: any, m: string, o: any) => { if (path === 'checkout/sessions' && m === 'POST') throw err; return h(path, body, m, o); }; };
+    it('resource_missing on the line-item price is 503 price_not_configured, not invalid_draft', async () => {
+      failCreate(Object.assign(new Error('No such price: price_w_m'), { status: 400, code: 'resource_missing', param: 'line_items[0][price]' }));
+      const r = await run();
+      expect(r.code).toBe(503); expect(r.body).toEqual({ error: 'price_not_configured' });
+    });
+    it('other Stripe 400s stay invalid_draft', async () => {
+      failCreate(Object.assign(new Error('bad'), { status: 400, code: 'resource_missing', param: 'customer' }));
+      const r = await run();
+      expect(r.code).toBe(400); expect(r.body.error).toBe('invalid_draft');
+    });
+  });
+
   describe('price test groups', () => {
     const sessionBody = () => created()[0].body;
     beforeEach(() => {

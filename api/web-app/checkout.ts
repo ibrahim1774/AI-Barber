@@ -21,6 +21,7 @@ export default async function handler(req: any, res: any) {
   if (!isTier(tier) || !isInterval(interval)) return res.status(400).json({ error: 'bad_plan' });
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
   if (!mode) return res.status(500).json({ error: 'price_not_configured' });
+  let logGroup = 'base'; let logPrice = ''; // for the loud log if Stripe says the price does not exist
   try {
     const uid = encodeURIComponent(caller.id);
     const rows: any[] = (await sbRest(`web_app_entitlements?user_id=eq.${uid}&environment=eq.${mode}&select=stripe_customer_id,status&order=created_at.desc`)) ?? [];
@@ -54,6 +55,7 @@ export default async function handler(req: any, res: any) {
       }
     } catch (e: any) { console.error('[web-app checkout] price group lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
     if (!price) return res.status(500).json({ error: 'price_not_configured' });
+    logGroup = group; logPrice = price;
 
     // Only a site this user owns can be attached to the subscription.
     let slug = '';
@@ -220,6 +222,11 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ url: session.url });
   } catch (e: any) {
     console.error('[web-app checkout]', e.message);
+    // Stripe says the line-item price does not exist (wrong / other-mode / deleted price id): a configuration problem, never a draft problem.
+    if (e?.code === 'resource_missing' && typeof e?.param === 'string' && /^line_items\[0\]\[price\]$/.test(e.param)) {
+      console.error(`[web-app checkout] PRICE NOT FOUND IN STRIPE: group=${logGroup} tier=${tier} interval=${interval} price=${logPrice}`);
+      return res.status(503).json({ error: 'price_not_configured' });
+    }
     if (e?.status === 400) return res.status(400).json({ error: 'invalid_draft', reason: e?.reason ?? 'invalid_snapshot' });
     return res.status(e?.status === 409 ? 409 : 502).json({ error: e?.status === 409 ? 'draft_changed' : 'checkout_failed' });
   }
