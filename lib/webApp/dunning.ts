@@ -1,7 +1,7 @@
 // Failed-payment emails: one at once when a renewal fails, then a reminder every 2 days while the subscription is
 // still past_due (Stripe retries for about two weeks). The "last sent" stamp is claimed atomically so a webhook retry
 // and the cron can never both send. Best effort: a mail problem never fails the caller.
-import { keyMode, rowFromSubscription } from './stripeCore.js';
+import { keyMode, portalConfigFor, rowFromSubscription, tierForPriceId } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { failedPaymentEmail, sendMail } from './emails.js';
 import { stampedSiteUrl } from '../ios/siteUrlFor.js';
@@ -60,7 +60,7 @@ export async function liveSiteUrlFor(slug: string | null, userId: string | null,
 }
 
 /** The Stripe-hosted page where this customer can pay / replace the card for the open invoice. */
-async function updateUrlFor(sub: any, eventInvoiceUrl?: string | null): Promise<string | null> {
+export async function updateUrlFor(sub: any, eventInvoiceUrl?: string | null): Promise<string | null> {
   if (eventInvoiceUrl) return eventInvoiceUrl;
   const inv = typeof sub.latest_invoice === 'string' ? sub.latest_invoice : sub.latest_invoice?.id;
   if (!inv) return null;
@@ -68,8 +68,13 @@ async function updateUrlFor(sub: any, eventInvoiceUrl?: string | null): Promise<
   if (i?.hosted_invoice_url) return i.hosted_invoice_url;
   // No hosted invoice: this customer's own billing portal session (card update) instead.
   const customer = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
-  const cfg = process.env.STRIPE_WEBAPP_PORTAL_CONFIG;
   if (!customer) return null;
+  // The portal configuration follows the subscription's price group. A price-test group (g10 / g20) without its configuration fails
+  // closed (no link, never the base configuration); base keeps the old behaviour (default portal when none is set).
+  const priceId = sub?.items?.data?.[0]?.price?.id;
+  const group = (priceId ? tierForPriceId(priceId, process.env)?.group : null) ?? 'base';
+  const cfg = portalConfigFor(group, process.env);
+  if (group !== 'base' && !cfg) { console.error(`[web-app dunning] portal_not_configured for group ${group}`); return null; }
   const ps = await stripeCall('billing_portal/sessions', { customer, ...(cfg ? { configuration: cfg } : {}) }).catch(() => null);
   return ps?.url ?? null;
 }
