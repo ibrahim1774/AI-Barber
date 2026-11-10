@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const h = vi.hoisted(() => ({ stripe: [] as any[], group: null as string | null, groupErr: null as any, ents: [] as any[] }));
+const h = vi.hoisted(() => ({ subPrice: 'price_base', stripe: [] as any[], group: null as string | null, groupErr: null as any, ents: [] as any[] }));
 
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   APP_ORIGIN: () => 'https://app.test',
   webAppCors: () => false,
   webAppCheckoutOn: () => true,
   callerFrom: async () => ({ id: 'u1', email: 'o@example.com' }),
-  stripeCall: async (path: string, body: any) => { h.stripe.push({ path, body }); return { url: 'https://portal.test/x', id: 'in_1', hosted_invoice_url: null }; },
+  stripeCall: async (path: string, body: any) => { h.stripe.push({ path, body }); if (path.startsWith('subscriptions/')) return { id: 'sub_1', items: { data: [{ price: { id: h.subPrice } }] } }; return { url: 'https://portal.test/x', id: 'in_1', hosted_invoice_url: null }; },
   sbRest: async (path: string) => {
     if (path.startsWith('web_app_price_groups')) { if (h.groupErr) throw h.groupErr; return h.group ? [{ price_group: h.group }] : []; }
     if (path.startsWith('web_app_entitlements')) return h.ents;
@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG_G20', 'bpc_g20');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_base');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH', 'price_g10');
-  h.stripe = []; h.group = null; h.groupErr = null; h.ents = [{ stripe_customer_id: 'cus_1', status: 'active' }];
+  h.stripe = []; h.group = null; h.groupErr = null; h.subPrice = 'price_base'; h.ents = [{ stripe_customer_id: 'cus_1', stripe_subscription_id: 'sub_1', status: 'active' }];
 });
 
 describe('portal: configuration per price group', () => {
@@ -37,16 +37,30 @@ describe('portal: configuration per price group', () => {
     const r = await callPortal();
     expect(r.code).toBe(200); expect(sessionCall().body.configuration).toBe('bpc_base');
   });
-  it('g10 and g20 users get their own configuration', async () => {
-    h.group = 'g10'; await callPortal(); expect(sessionCall().body.configuration).toBe('bpc_g10');
-    h.stripe = []; h.group = 'g20'; await callPortal(); expect(sessionCall().body.configuration).toBe('bpc_g20');
+  it('g10 and g20 subscribers get their own configuration', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_PRICE_G20_WEBSITE_MONTH', 'price_g20');
+    h.group = 'g10'; h.subPrice = 'price_g10'; await callPortal(); expect(sessionCall().body.configuration).toBe('bpc_g10');
+    h.stripe = []; h.group = 'g20'; h.subPrice = 'price_g20'; await callPortal(); expect(sessionCall().body.configuration).toBe('bpc_g20');
+  });
+  it('stored group differing from the subscription price group: 409 price_group_mismatch, no portal session', async () => {
+    h.group = 'g10'; h.subPrice = 'price_base';
+    const r = await callPortal();
+    expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'price_group_mismatch' });
+    expect(sessionCall()).toBeUndefined();
+    h.group = null; h.subPrice = 'price_g10'; // no stored group = base, but the sub is g10
+    expect((await callPortal()).code).toBe(409);
+  });
+  it('a subscription on an unrecognised price fails closed', async () => {
+    h.subPrice = 'price_unknown';
+    const r = await callPortal();
+    expect(r.code).toBe(500); expect(r.body).toEqual({ error: 'portal_not_configured' }); expect(sessionCall()).toBeUndefined();
   });
   it('g10 with the group configuration missing fails closed, never the base configuration', async () => {
     vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG_G10', '');
-    h.group = 'g10';
+    h.group = 'g10'; h.subPrice = 'price_g10';
     const r = await callPortal();
     expect(r.code).toBe(500); expect(r.body).toEqual({ error: 'portal_not_configured' });
-    expect(h.stripe).toHaveLength(0);
+    expect(sessionCall()).toBeUndefined();
   });
   it('base with no configuration still fails closed as before', async () => {
     vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG', '');
@@ -60,7 +74,7 @@ describe('portal: configuration per price group', () => {
   it('another lookup failure is 502 portal_failed (no guess)', async () => {
     h.groupErr = Object.assign(new Error('supabase 500'), { status: 500 });
     const r = await callPortal();
-    expect(r.code).toBe(502); expect(h.stripe).toHaveLength(0);
+    expect(r.code).toBe(502); expect(sessionCall()).toBeUndefined();
   });
 });
 
