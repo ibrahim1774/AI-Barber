@@ -101,6 +101,10 @@ export interface SignupNudgeSummary {
 
 const isMissingTable = (e: any) => e?.status === 404;
 /** What is safe to log about an error: a status/code/type or a plain "resend 500", never provider message text (it can echo addresses). */
+/** Resend's own error name + message (200 chars, addresses blanked) so a 403 says WHY. Never the key, never a recipient. */
+export const resendWhy = (e: any): string => [e?.resendName, typeof e?.resendMessage === 'string' ? e.resendMessage.replace(/\S+@\S+/g, '[email]').slice(0, 200) : ''].filter(Boolean).join(': ');
+/** Internal QA accounts (ibrahim3709+anything@...) are never mailed. */
+export const isInternalTestEmail = (email: string | null | undefined) => /^ibrahim3709\+/i.test((email ?? '').trim());
 const errTag = (e: any): string => e?.status ?? e?.code ?? e?.type ?? (/^(resend|supabase|admin lookup) \d{3}$/.test(e?.message ?? '') ? e.message : 'error');
 
 export async function sweepSignupNudges(
@@ -194,7 +198,7 @@ export async function sweepSignupNudges(
     if (!Number.isFinite(created)) return back();
     if (created < since) return stop('before_launch');
     if (deps.now() - created >= EXPIRY_MS) return stop('expired');
-    if (await deps.isSuppressed(email)) return stop('suppressed');
+    if (isInternalTestEmail(email) || (await deps.isSuppressed(email))) return stop('suppressed');
     // A sign-up that never saved a draft is still reminded (link goes to the start of the builder).
     const found = await deps.draftInfo(uid);
     // Only people who came through the web app: iOS-app accounts (same auth project, no draft) have no web signal.
@@ -220,7 +224,7 @@ export async function sweepSignupNudges(
     });
     let id: string;
     try { id = await deps.send(email, mail, `aibarber-app:nudge:${uid}:${mode}:${step}`); }
-    catch (e: any) { await deps.release(uid, claimedAtIso).catch(() => {}); ctx.claimedAt = null; out.errors++; console.error('[web-app nudges] send failed', uid, step, errTag(e)); return; }
+    catch (e: any) { await deps.release(uid, claimedAtIso).catch(() => {}); ctx.claimedAt = null; out.errors++; console.error('[web-app nudges] send failed', uid, step, errTag(e), resendWhy(e)); return; }
     lastSendAt = deps.now();
     out.sent++;
     await deps.markSent(uid, step, id, iso(lastSendAt));
@@ -371,7 +375,7 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
     async stripePaid(email, uid) {
       const customers = new Set<string>();
       const subIds = new Set<string>();
-      const known: any[] = (await rest(`web_app_customers?user_id=eq.${enc(uid)}&select=stripe_customer_id&limit=5`)) ?? [];
+      const known: any[] = (await rest(`web_app_customers?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=stripe_customer_id&limit=5`)) ?? [];
       for (const k of known) if (k.stripe_customer_id) customers.add(k.stripe_customer_id);
       const mine = await stripeCall(`checkout/sessions?customer_details[email]=${enc(email)}&limit=20`, null, 'GET');
       for (const o of mine?.data ?? []) {

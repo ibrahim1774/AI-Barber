@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { liveSignupNudgeDeps, scheduleMs, sweepSignupNudges, HOUR, type NudgeRow, type SignupNudgeDeps, type AdminUser, type SignedUpUser, enrollSignups } from '../../lib/webApp/signupNudges.js';
+import { liveSignupNudgeDeps, scheduleMs, sweepSignupNudges, HOUR, type NudgeRow, type SignupNudgeDeps, type AdminUser, type SignedUpUser, enrollSignups, isInternalTestEmail, resendWhy } from '../../lib/webApp/signupNudges.js';
 import { verifyContinueToken } from '../../lib/webApp/nudgeToken.js';
 
 const NOW = Date.parse('2026-11-10T12:00:00Z');
@@ -459,5 +459,38 @@ describe('web signal: iOS-app sign-ups are not reminded', () => {
     expect(await liveSignupNudgeDeps('test', rest as any).hasWebSignal('u1')).toBe(true);
     expect(rest.mock.calls.map((c: any[]) => String(c[0]).split('?')[0])).toEqual(['web_app_price_groups', 'web_app_drafts', 'web_app_customers']);
     expect(await liveSignupNudgeDeps('test', (async () => []) as any).hasWebSignal('u1')).toBe(false);
+  });
+});
+
+describe('first-run production errors (400 from Stripe, 403 from Resend, QA accounts)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+  it('stripePaid only reads THIS mode\'s customer ids (a test-mode cus_ id against the live key made Stripe answer 400)', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x');
+    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })); vi.stubGlobal('fetch', f);
+    const rest = vi.fn(async () => []);
+    expect(await liveSignupNudgeDeps('live', rest as any).stripePaid('a@b.co', 'u1')).toBe(false);
+    const path = (rest.mock.calls[0] as any[])[0] as string;
+    expect(path).toContain('web_app_customers?'); expect(path).toContain('environment=eq.live');
+  });
+  it('ibrahim3709+ accounts are stopped as suppressed, never mailed', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]), users: new Map([['u1', user({ email: 'ibrahim3709+pt1@gmail.com' })]]) });
+    await run(m.deps);
+    expect(m.world.sent).toEqual([]); expect(m.world.rows.get('u1')!.stop_reason).toBe('suppressed');
+    expect(isInternalTestEmail('ibrahim3709+x@gmail.com')).toBe(true); expect(isInternalTestEmail('ibrahim3709@gmail.com')).toBe(false);
+  });
+  it('a failed send logs Resend\'s error name and message (200 chars, addresses blanked) so a 403 explains itself', async () => {
+    const m = make({ rows: new Map([['u1', row('u1')]]) });
+    m.deps.send = async () => { throw Object.assign(new Error('resend 403'), { status: 403, resendName: 'validation_error', resendMessage: 'The davoxa.com domain is not verified for jake@gmail.com' }); };
+    await run(m.deps);
+    const line = (console.error as any).mock.calls.find((c: any[]) => String(c[0]).includes('send failed'))!;
+    expect(line.slice(1).join(' ')).toContain('403'); expect(line.join(' ')).toContain('validation_error: The davoxa.com domain is not verified for [email]');
+    expect(line.join(' ')).not.toContain('jake@gmail.com');
+    expect(resendWhy({ resendName: 'x', resendMessage: 'y'.repeat(500) })).toHaveLength(203);
+  });
+  it('sendMail keeps Resend\'s message on the error', async () => {
+    vi.stubEnv('RESEND_API_KEY', 'k');
+    const { sendMail } = await import('../../lib/webApp/emails.js');
+    const f = vi.fn(async () => ({ ok: false, status: 403, json: async () => ({ name: 'validation_error', message: 'domain not verified' }) }));
+    await expect(sendMail('a@b.co', { subject: 's', html: 'h', text: 't' } as any, f as any)).rejects.toMatchObject({ status: 403, resendName: 'validation_error', resendMessage: 'domain not verified' });
   });
 });

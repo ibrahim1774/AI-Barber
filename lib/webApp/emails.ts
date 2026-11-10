@@ -237,9 +237,10 @@ export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch =
     r = await fetchImpl('https://api.resend.com/emails', init);
   }
   if (!r.ok) {
-    // Keep Resend's error name (not its message) so callers can tell an Idempotency-Key conflict from an outage.
-    const name = ((await r.json().catch(() => null)) as any)?.name;
-    throw Object.assign(new Error(`resend ${r.status}`), { status: r.status, resendName: typeof name === 'string' ? name : undefined });
+    // Keep Resend's error name and message (callers must not log either unredacted) so callers can tell an Idempotency-Key conflict from an outage.
+    const j: any = await r.json().catch(() => null);
+    const name = j?.name;
+    throw Object.assign(new Error(`resend ${r.status}`), { status: r.status, resendName: typeof name === 'string' ? name : undefined, resendMessage: typeof j?.message === 'string' ? j.message.slice(0, 200) : undefined });
   }
   // A 2xx without a message id is not an accepted email: never report it as sent.
   const body: any = await r.json().catch(() => null);
