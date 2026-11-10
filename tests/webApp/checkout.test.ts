@@ -18,6 +18,12 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
     if (path.startsWith('web_app_customers')) { if (!sb.customers.length) sb.customers.push(init.body); return null; }
     if (path.startsWith('web_app_checkout_sessions')) { if ((globalThis as any).__csFail) throw new Error('relation does not exist'); if ((init.method ?? 'GET') === 'GET') return (globalThis as any).__cs ? [{ stripe_session_id: (globalThis as any).__cs }] : []; (globalThis as any).__csSaved = init.body; return null; }
     if (path.startsWith('web_app_drafts')) return (globalThis as any).__shop === undefined ? [] : [{ shop: (globalThis as any).__shop }];
+    if (path.startsWith('web_app_price_groups')) {
+      const g = globalThis as any;
+      if (g.__pgFail) throw Object.assign(new Error('supabase 500'), { status: g.__pgFail });
+      if ((init.method ?? 'GET') === 'GET') return g.__pg ? [{ price_group: g.__pg }] : [];
+      g.__pg ??= init.body.price_group; g.__pgWrites = (g.__pgWrites ?? 0) + 1; return null;
+    }
     if (path.startsWith('site_owners')) return [];
     if (path.startsWith('web_app_publish_intents') && init.method === 'PATCH') return [{ id: 'int1' }];
     return [];
@@ -44,6 +50,7 @@ beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_w_m');
   stripe.calls = []; sb.calls = []; sb.customers = [{ stripe_customer_id: 'cus_stored' }]; sb.ents = []; guard.state = null; guard.err = null;
+  (globalThis as any).__pg = undefined; (globalThis as any).__pgFail = undefined; (globalThis as any).__pgWrites = 0;
   subs = []; open = []; real = {}; nextId = ['cs_new'];
   const keyed = new Map<string, any>();
   stripe.handler = (path: string, body: any, method: string, opts: any) => {
@@ -346,7 +353,7 @@ describe('POST /api/web-app/checkout', () => {
     expect(exp).toBeGreaterThanOrEqual(Math.floor(now / 1000) + 1800);
     expect(exp).toBeGreaterThanOrEqual(Math.floor(now / 1000) + 1800 + 120);
     expect(exp).toBeLessThanOrEqual(Math.floor(now / 1000) + 2400 + 120 + 1);
-    expect(c.opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:\d+:[0-9a-f]{8}$/);
+    expect(c.opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:base:\d+:[0-9a-f]{8}$/);
     expect(c.body['metadata[interval]']).toBe('month');
     expect(c.body['subscription_data[metadata][app]']).toBe('aibarber-app');
   });
@@ -455,5 +462,99 @@ describe('POST /api/web-app/checkout', () => {
   it('fail-soft: web_app_checkout_sessions missing (migration 026 not applied) never blocks checkout', async () => {
     (globalThis as any).__csFail = true;
     expect((await run()).code).toBe(200);
+  });
+
+  describe('price test groups', () => {
+    const sessionBody = () => created()[0].body;
+    beforeEach(() => {
+      vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH', 'price_g10_w_m');
+      vi.stubEnv('STRIPE_WEBAPP_PRICE_G20_WEBSITE_MONTH', 'price_g20_w_m');
+      vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_STORE_YEAR', 'price_g10_s_y');
+    });
+    it('no stored group and no priceGroup: base price, metadata price_group=base, nothing stored', async () => {
+      const r = await run();
+      expect(r.code).toBe(200);
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect(sessionBody()['metadata[price_group]']).toBe('base');
+      expect(sessionBody()['subscription_data[metadata][price_group]']).toBe('base');
+      expect((globalThis as any).__pgWrites).toBe(0);
+    });
+    it('a stored g10 user is charged the g10 price, even if the body asks for g20', async () => {
+      (globalThis as any).__pg = 'g10';
+      const r = await run({ tier: 'website', interval: 'month', priceGroup: 'g20' });
+      expect(r.code).toBe(200);
+      expect(sessionBody()['line_items[0][price]']).toBe('price_g10_w_m');
+      expect(sessionBody()['metadata[price_group]']).toBe('g10');
+      expect(sessionBody()['subscription_data[metadata][price_group]']).toBe('g10');
+    });
+    it('yearly g10 works', async () => {
+      (globalThis as any).__pg = 'g10';
+      await run({ tier: 'store', interval: 'year' });
+      expect(sessionBody()['line_items[0][price]']).toBe('price_g10_s_y');
+    });
+    it('a new user asking for g20 gets the g20 price and the group is stored', async () => {
+      sb.customers = []; // a brand-new sign-up: no Stripe history
+      const r = await run({ tier: 'website', interval: 'month', priceGroup: 'g20' });
+      expect(r.code).toBe(200);
+      expect(sessionBody()['line_items[0][price]']).toBe('price_g20_w_m');
+      expect((globalThis as any).__pg).toBe('g20');
+    });
+    it('a user with Stripe history asking for g10 is stored and charged base', async () => {
+      sb.ents = [{ stripe_customer_id: 'cus_old', status: 'canceled' }];
+      const r = await run({ tier: 'website', interval: 'month', priceGroup: 'g10' });
+      expect(r.code).toBe(200);
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect((globalThis as any).__pg).toBe('base');
+    });
+    it('an invalid priceGroup is ignored (base)', async () => {
+      await run({ tier: 'website', interval: 'month', priceGroup: 'g99' });
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect((globalThis as any).__pgWrites).toBe(0);
+    });
+    it('requested group with the price env empty: base price, no group stored', async () => {
+      vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH', '');
+      const r = await run({ tier: 'website', interval: 'month', priceGroup: 'g10' });
+      expect(r.code).toBe(200);
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect((globalThis as any).__pg).toBeUndefined();
+    });
+    it('a STORED g10 user with the price env empty: 503 price_not_configured, no session', async () => {
+      vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH', '');
+      (globalThis as any).__pg = 'g10';
+      const r = await run();
+      expect(r.code).toBe(503); expect(r.body).toEqual({ error: 'price_not_configured' });
+      expect(created()).toHaveLength(0);
+    });
+    it('a price group lookup failure is 503 try_again (never guesses a price)', async () => {
+      (globalThis as any).__pgFail = 500;
+      const r = await run({ tier: 'website', interval: 'month', priceGroup: 'g10' });
+      expect(r.code).toBe(503); expect(r.body).toEqual({ error: 'try_again' });
+      expect(created()).toHaveLength(0);
+    });
+    it('table missing (404 on read): treated as no group, base', async () => {
+      (globalThis as any).__pgFail = 404;
+      const r = await run();
+      expect(r.code).toBe(200);
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+    });
+    it('the idempotency key carries the group', async () => {
+      (globalThis as any).__pg = 'g10';
+      await run();
+      expect(created()[0].opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:g10:\d+:/);
+    });
+    it('declined-session reuse requires the same group', async () => {
+      (globalThis as any).__pg = 'g10';
+      subs = incompleteWith({ id: 'pi_1', status: 'requires_payment_method' });
+      (globalThis as any).__cs = 'cs_open';
+      const meta = (price_group?: string) => ({ app: 'aibarber-app', user_id: 'u1', tier: 'website', interval: 'month', ...(price_group ? { price_group } : {}) });
+      real.cs_open = { id: 'cs_open', status: 'open', url: 'https://stripe.test/cs_open', mode: 'subscription', expires_at: Math.floor(Date.now() / 1000) + 1800, metadata: meta('g10') };
+      expect((await run()).body).toEqual({ url: 'https://stripe.test/cs_open' });
+      expect(created()).toHaveLength(0);
+      // an old base session (no price_group metadata) is NOT reused for a g10 user
+      real.cs_open = { ...real.cs_open, status: 'open', metadata: meta() };
+      const r = await run();
+      expect(r.body.url).not.toBe('https://stripe.test/cs_open');
+      expect(created()).toHaveLength(1);
+    });
   });
 });

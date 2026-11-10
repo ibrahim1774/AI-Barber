@@ -1,10 +1,11 @@
 import { draftPath, planIntent, submitIntent, publicationFrom, reliabilityOn, enc, digest, type IntentPlan } from '../../lib/webApp/reliability.js';
-// POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
+// POST { tier, interval, siteSlug?, priceGroup? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
 // 409 already_subscribed (manage in the portal) | payment_processing (only a payment really in flight; a declined card does not block) | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
 // Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers etc.) must be applied BEFORE turning on ANY web-app
 // flag (WEB_APP_CHECKOUT, and WEB_APP_ENTITLEMENTS too: delete-account reads web_app_customers). Until then checkout fails closed
 // with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
-import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, planDescription, priceIdFor } from '../../lib/webApp/stripeCore.js';
+import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, isPriceGroup, keyMode, planDescription, priceIdFor, type PriceGroup } from '../../lib/webApp/stripeCore.js';
+import { assignGroup, readStoredGroup } from '../../lib/webApp/priceGroup.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { expireSession, rememberSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
@@ -18,9 +19,8 @@ export default async function handler(req: any, res: any) {
   if (!caller) return res.status(401).json({ error: 'unauthorized' });
   const { tier, interval, siteSlug, draftId, revision, publish } = req.body ?? {};
   if (!isTier(tier) || !isInterval(interval)) return res.status(400).json({ error: 'bad_plan' });
-  const price = priceIdFor(tier, interval, process.env);
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
-  if (!price || !mode) return res.status(500).json({ error: 'price_not_configured' });
+  if (!mode) return res.status(500).json({ error: 'price_not_configured' });
   try {
     const uid = encodeURIComponent(caller.id);
     const rows: any[] = (await sbRest(`web_app_entitlements?user_id=eq.${uid}&environment=eq.${mode}&select=stripe_customer_id,status&order=created_at.desc`)) ?? [];
@@ -31,6 +31,28 @@ export default async function handler(req: any, res: any) {
     catch (e: any) { console.error('[web-app checkout] app store lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
     if (appStore === 'active') return res.status(409).json({ error: 'ios_subscription_active' });
     if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
+
+    // Price test group: the stored group wins; else a valid requested test group (new sign-ups only; stored now); else base.
+    // A stored g10 / g20 user whose price is not configured fails closed: never silently charge a different price.
+    let group: PriceGroup = 'base';
+    let price: string | null;
+    try {
+      const stored = await readStoredGroup(caller.id);
+      if (stored) {
+        group = stored;
+        price = priceIdFor(tier, interval, process.env, group);
+        if (!price && group !== 'base') return res.status(503).json({ error: 'price_not_configured' });
+      } else {
+        const asked = req.body?.priceGroup;
+        price = null;
+        // Not stored yet: use the asked group only if its price exists, else the base price (and no group is stored).
+        if (isPriceGroup(asked) && asked !== 'base' && priceIdFor(tier, interval, process.env, asked)) {
+          group = await assignGroup(caller.id, asked, 'checkout'); // 'base' when the user has Stripe history
+        }
+        price = priceIdFor(tier, interval, process.env, group);
+      }
+    } catch (e: any) { console.error('[web-app checkout] price group lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
+    if (!price) return res.status(500).json({ error: 'price_not_configured' });
 
     // Only a site this user owns can be attached to the subscription.
     let slug = '';
@@ -91,7 +113,7 @@ export default async function handler(req: any, res: any) {
       if (declinedPrev && !plan) {
         const prev = await stripeCall(`checkout/sessions/${encodeURIComponent(declinedPrev)}`, null, 'GET').catch(() => null);
         const m = prev?.metadata ?? {};
-        if (prev?.status === 'open' && prev.url && prev.mode === 'subscription' && m.tier === tier && m.interval === interval
+        if (prev?.status === 'open' && prev.url && prev.mode === 'subscription' && m.tier === tier && m.interval === interval && (m.price_group ?? 'base') === group
           && (m.site_slug ?? '') === slug && !m.intent_id && m.app === WEB_APP_TAG && m.user_id === caller.id
           && Number(prev.expires_at) > Math.floor(Date.now() / 1000) + 300) return res.status(200).json({ url: prev.url });
       }
@@ -103,7 +125,7 @@ export default async function handler(req: any, res: any) {
     // Existing Stripe billing is checked before superseding any recoverable publish submission.
     const shopName = (await sbRest(`${draftPath(caller.id, mode)}&select=shop:site_data->>shopName&limit=1`).catch(() => null))?.[0]?.shop;
     const description = planDescription(tier, shopName);
-    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, ...(plan ? { intent_id: plan.id } : {}) };
+    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, price_group: group, ...(plan ? { intent_id: plan.id } : {}) };
     const nowMs = Date.now();
     const window = Math.floor(nowMs / 600_000);
     // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (32-42 min ahead; Stripe's minimum is 30).
@@ -121,7 +143,7 @@ export default async function handler(req: any, res: any) {
       expires_at: String((window + 1) * 600 + 1800 + 120),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
     };
-    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}:${digest([description]).slice(0, 8)}`;
+    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${group}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}:${digest([description]).slice(0, 8)}`;
     // Stripe replays the FIRST response for a repeated key, so that response can be stale: always read the session's real status.
     const createOrReplay = async (k: string) => {
       const made = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: k });
