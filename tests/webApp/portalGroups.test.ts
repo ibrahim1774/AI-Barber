@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const h = vi.hoisted(() => ({ subPrice: 'price_base', stripe: [] as any[], group: null as string | null, groupErr: null as any, ents: [] as any[] }));
+const h = vi.hoisted(() => ({ subPrice: 'price_base', subFail: false, stripe: [] as any[], group: null as string | null, groupErr: null as any, ents: [] as any[] }));
 
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   APP_ORIGIN: () => 'https://app.test',
   webAppCors: () => false,
   webAppCheckoutOn: () => true,
   callerFrom: async () => ({ id: 'u1', email: 'o@example.com' }),
-  stripeCall: async (path: string, body: any) => { h.stripe.push({ path, body }); if (path.startsWith('subscriptions/')) return { id: 'sub_1', items: { data: [{ price: { id: h.subPrice } }] } }; return { url: 'https://portal.test/x', id: 'in_1', hosted_invoice_url: null }; },
+  stripeCall: async (path: string, body: any) => { h.stripe.push({ path, body }); if (path.startsWith('subscriptions/')) { if (h.subFail) throw new Error('stripe 500'); } if (path.startsWith('subscriptions/')) return { id: 'sub_1', items: { data: [{ price: { id: h.subPrice } }] } }; return { url: 'https://portal.test/x', id: 'in_1', hosted_invoice_url: null }; },
   sbRest: async (path: string) => {
     if (path.startsWith('web_app_price_groups')) { if (h.groupErr) throw h.groupErr; return h.group ? [{ price_group: h.group }] : []; }
     if (path.startsWith('web_app_entitlements')) return h.ents;
@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG_G20', 'bpc_g20');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_base');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH', 'price_g10');
-  h.stripe = []; h.group = null; h.groupErr = null; h.subPrice = 'price_base'; h.ents = [{ stripe_customer_id: 'cus_1', stripe_subscription_id: 'sub_1', status: 'active' }];
+  h.stripe = []; h.group = null; h.groupErr = null; h.subFail = false; h.subPrice = 'price_base'; h.ents = [{ stripe_customer_id: 'cus_1', stripe_subscription_id: 'sub_1', status: 'active' }];
 });
 
 describe('portal: configuration per price group', () => {
@@ -50,10 +50,20 @@ describe('portal: configuration per price group', () => {
     h.group = null; h.subPrice = 'price_g10'; // no stored group = base, but the sub is g10
     expect((await callPortal()).code).toBe(409);
   });
-  it('a subscription on an unrecognised price fails closed', async () => {
-    h.subPrice = 'price_unknown';
+  it('unrecognised price + no stored group: unchanged base behaviour (base configuration)', async () => {
+    h.subPrice = 'price_old_base';
     const r = await callPortal();
-    expect(r.code).toBe(500); expect(r.body).toEqual({ error: 'portal_not_configured' }); expect(sessionCall()).toBeUndefined();
+    expect(r.code).toBe(200); expect(sessionCall().body.configuration).toBe('bpc_base');
+  });
+  it('unrecognised price + stored test group: fails closed (409), no session', async () => {
+    h.subPrice = 'price_old_base'; h.group = 'g10';
+    const r = await callPortal();
+    expect(r.code).toBe(409); expect(sessionCall()).toBeUndefined();
+  });
+  it('base subscriber: a Stripe subscription lookup failure still gets the base configuration', async () => {
+    h.subFail = true;
+    const r = await callPortal();
+    expect(r.code).toBe(200); expect(sessionCall().body.configuration).toBe('bpc_base');
   });
   it('g10 with the group configuration missing fails closed, never the base configuration', async () => {
     vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG_G10', '');
