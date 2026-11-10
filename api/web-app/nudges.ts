@@ -4,12 +4,14 @@
 // Gates: WEB_APP_ENTITLEMENTS=1 (like lapse), WEB_APP_NUDGES=1 + WEB_APP_NUDGES_SINCE (mails), MAKE_SIGNUP_WEBHOOK_URL +
 // MAKE_SIGNUP_SINCE (sheet). Answers 200 with the summaries so a skipped step is visible (skippedReason). See lib/webApp/signupNudges.ts.
 import { authorizedStrict } from '../../lib/cronAuth.js';
-import { liveSignupNudgeDeps, sweepSignupNudges } from '../../lib/webApp/signupNudges.js';
+import { enrollSignups, liveSignupNudgeDeps, sweepSignupNudges } from '../../lib/webApp/signupNudges.js';
+import { liveSignupSheetDeps, sweepSignupSheet } from '../../lib/webApp/signupSheet.js';
 import { keyMode } from '../../lib/webApp/stripeCore.js';
 import { webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 
 export const config = { maxDuration: 300 };
 export const NUDGE_DEADLINE_MS = 170_000;
+export const SHEET_DEADLINE_MS = 80_000;
 
 export default async function handler(req: any, res: any) {
   if (!webAppEntitlementsOn()) return res.status(200).json({ skipped: true });
@@ -24,13 +26,22 @@ export default async function handler(req: any, res: any) {
 
   const t0 = Date.now();
   let nudges: unknown = null;
+  let sheet: unknown = null;
+  let enrolled: unknown = null;
   const nudgesOn = process.env.WEB_APP_NUDGES === '1';
   try {
     if (nudgesOn) {
       nudges = await sweepSignupNudges(liveSignupNudgeDeps(mode), { mode, deadlineMs: NUDGE_DEADLINE_MS });
     }
   } catch (e: any) { console.error('[web-app nudges] sweep threw', e?.message || e); nudges = { error: true }; }
-  const summary = { ok: true, nudges, ms: Date.now() - t0 };
+  try {
+    if (process.env.MAKE_SIGNUP_WEBHOOK_URL) {
+      // With the mails off (or their sweep skipped / failed before enrolling), the sheet still needs a row per sign-up: enroll them stopped (as before_launch), never mailable.
+      if (!nudgesOn || (nudges as any)?.skippedReason || (nudges as any)?.error) enrolled = await enrollSignups(liveSignupNudgeDeps(mode), { since: Number.POSITIVE_INFINITY, deadline: SHEET_DEADLINE_MS });
+      sheet = await sweepSignupSheet(liveSignupSheetDeps(mode), { deadlineMs: Math.max(20_000, SHEET_DEADLINE_MS - (Date.now() - t0)) });
+    }
+  } catch (e: any) { console.error('[web-app sheet] sweep threw', e?.message || e); sheet = { error: true }; }
+  const summary = { ok: true, nudges, sheet, ...(enrolled ? { enrolled } : {}), ms: Date.now() - t0 };
   console.log('[web-app nudges] run', JSON.stringify(summary));
   return res.status(200).json(summary);
 }
