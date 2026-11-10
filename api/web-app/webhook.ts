@@ -13,6 +13,7 @@ import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/
 import { userExists } from '../../lib/webApp/userExists.js';
 import { draftPath } from '../../lib/webApp/reliability.js';
 import { livePlanEndDeps, onPlanEnded, onPlanResumed } from '../../lib/webApp/domainPlanEnd.js';
+import { sendServerPurchase } from '../../lib/webApp/serverPurchase.js';
 
 import { waitUntil } from '@vercel/functions';
 
@@ -97,6 +98,13 @@ export default async function handler(req: any, res: any) {
     if (row.status === 'active' || row.status === 'trialing') {
       const claimed = await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${encodeURIComponent(row.stripe_subscription_id)}&welcome_sent_at=is.null`, { method: 'PATCH', body: { welcome_sent_at: new Date().toISOString() }, prefer: 'return=representation' });
       if (claimed?.length) {
+        // The sale for Meta / TikTok (server side, deduped with the browser's Purchase by the subscription id). This
+        // claim fires once per subscription, so it is the "first paid" moment. Best effort: NEVER changes the response.
+        const purchase = (async () => {
+          const who = await contactFor(row.user_id, row.stripe_customer_id).catch(() => ({ email: null as string | null }));
+          await sendServerPurchase(sub, { email: who.email ?? null, userId: row.user_id ?? null }, { live: mode === 'live' });
+        })().catch((e: any) => console.error('[web-app webhook purchase]', e?.message || e));
+        try { waitUntil(purchase); } catch { /* not on Vercel */ }
         try {
           const { email: to, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
           if (to) await sendMail(to, welcomeEmail({ email: to, firstName, siteUrl: await liveSiteUrlFor(row.site_slug, row.user_id, row.environment), tier: row.tier }));
@@ -106,6 +114,7 @@ export default async function handler(req: any, res: any) {
           console.error('[web-app webhook welcome email]', e?.message || e);
           await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${encodeURIComponent(row.stripe_subscription_id)}`, { method: 'PATCH', body: { welcome_sent_at: null } }).catch(() => {});
         }
+        await withTimeout(purchase, PURCHASE_STEP_TIMEOUT_MS, undefined);
       }
     }
     // Safety net for "paid twice" (fast path; the lapse cron is the backstop). NEVER changes the response: an
@@ -142,6 +151,8 @@ export default async function handler(req: any, res: any) {
 const SLUG_LOOKUP_TIMEOUT_MS = 3_000;
 /** The whole domain-renewal step is capped too, so the webhook always answers Stripe in time. */
 const DOMAIN_STEP_TIMEOUT_MS = 8_000;
+/** The server-side Purchase never holds the webhook longer than this (its own HTTP calls are capped at 5 s). */
+const PURCHASE_STEP_TIMEOUT_MS = 6_000;
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise<T>((resolve) => {
     const t = setTimeout(() => resolve(fallback), ms);
