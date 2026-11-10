@@ -39,6 +39,12 @@ export function priceIdFor(tier: Tier, interval: Interval, env: Record<string, s
   return env[PRICE_ENV(tier, interval, group)] || null;
 }
 
+/** A group can be handed to new sign-ups only when ALL six of its price ids and its portal configuration are set (for the current Stripe mode's env). */
+export function groupConfigured(group: PriceGroup, env: Record<string, string | undefined>): boolean {
+  if (group === 'base') return true;
+  return TIERS.every((t) => INTERVALS.every((i) => !!priceIdFor(t, i, env, group))) && !!portalConfigFor(group, env);
+}
+
 /** The billing portal configuration for a group; null when unset (callers fail closed for g10 / g20). */
 export function portalConfigFor(group: PriceGroup, env: Record<string, string | undefined>): string | null {
   return env[PORTAL_CONFIG_ENV(group)] || null;

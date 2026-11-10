@@ -470,6 +470,37 @@ describe('POST /api/web-app/checkout', () => {
       vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_WEBSITE_MONTH', 'price_g10_w_m');
       vi.stubEnv('STRIPE_WEBAPP_PRICE_G20_WEBSITE_MONTH', 'price_g20_w_m');
       vi.stubEnv('STRIPE_WEBAPP_PRICE_G10_STORE_YEAR', 'price_g10_s_y');
+      // Fully configure both test groups (all 6 prices + portal config), open the test, and stub the auth user lookup.
+      for (const g of ['G10', 'G20']) for (const t of ['WEBSITE', 'BOOKINGS', 'STORE']) for (const i of ['MONTH', 'YEAR']) {
+        const k = `STRIPE_WEBAPP_PRICE_${g}_${t}_${i}`; if (!process.env[k]) vi.stubEnv(k, `price_${g}_${t}_${i}`);
+      }
+      vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG_G10', 'bpc_10'); vi.stubEnv('STRIPE_WEBAPP_PORTAL_CONFIG_G20', 'bpc_20');
+      vi.stubEnv('WEB_APP_PRICE_TEST_OPEN', '1'); vi.stubEnv('WEB_APP_PRICE_TEST_START', '2026-11-09T00:00:00Z');
+      vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
+      (globalThis as any).__created = '2026-11-10T00:00:00Z';
+      vi.stubGlobal('fetch', async () => ({ ok: true, status: 200, json: async () => ({ created_at: (globalThis as any).__created }) }));
+    });
+    afterEach(() => { vi.unstubAllGlobals(); });
+    it('test closed: a requested group is ignored, base price, nothing stored; a stored group is still honoured', async () => {
+      sb.customers = []; vi.stubEnv('WEB_APP_PRICE_TEST_OPEN', '0');
+      await run({ tier: 'website', interval: 'month', priceGroup: 'g10' });
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect((globalThis as any).__pg).toBeUndefined();
+      (globalThis as any).__pg = 'g10'; stripe.calls = []; nextId = ['cs_2'];
+      await run({ tier: 'website', interval: 'month' });
+      expect(sessionBody()['line_items[0][price]']).toBe('price_g10_w_m');
+    });
+    it('group not fully configured (one price missing): base, nothing stored', async () => {
+      sb.customers = []; vi.stubEnv('STRIPE_WEBAPP_PRICE_G20_STORE_MONTH', '');
+      await run({ tier: 'website', interval: 'month', priceGroup: 'g20' });
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect((globalThis as any).__pg).toBeUndefined();
+    });
+    it('an account older than the test start gets base (stored base)', async () => {
+      sb.customers = []; (globalThis as any).__created = '2026-10-01T00:00:00Z';
+      await run({ tier: 'website', interval: 'month', priceGroup: 'g20' });
+      expect(sessionBody()['line_items[0][price]']).toBe('price_w_m');
+      expect((globalThis as any).__pg).toBe('base');
     });
     it('no stored group and no priceGroup: base price, metadata price_group=base, nothing stored', async () => {
       const r = await run();

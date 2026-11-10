@@ -45,9 +45,10 @@ export default async function handler(req: any, res: any) {
       } else {
         const asked = req.body?.priceGroup;
         price = null;
-        // Not stored yet: use the asked group only if its price exists, else the base price (and no group is stored).
-        if (isPriceGroup(asked) && asked !== 'base' && priceIdFor(tier, interval, process.env, asked)) {
-          group = await assignGroup(caller.id, asked, 'checkout'); // 'base' when the user has Stripe history
+        // Not stored yet: a requested test group is stored and used only when assignGroup allows it (test open, group fully configured,
+        // new sign-up); otherwise 'base' (and nothing is stored when the test is closed or unconfigured).
+        if (isPriceGroup(asked) && asked !== 'base') {
+          group = await assignGroup(caller.id, caller.email, asked, 'checkout');
         }
         price = priceIdFor(tier, interval, process.env, group);
       }
