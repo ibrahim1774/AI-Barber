@@ -25,6 +25,8 @@ import { supabasePurchases } from '../ios/purchases.js';
 import { normEmail, supabaseSiteOwners, type SiteOwnerRow, type SiteOwnerStore } from '../siteOwners.js';
 import { isEntitledStatus, keyMode, type EntitlementRow, type Interval, type Tier } from './stripeCore.js';
 import { callerFrom, sbRest, stripeCall } from './webAppServer.js';
+import { entitlementOrFree, isFreeSubscriptionId } from './priceGroup.js';
+import { savedPhoneState } from './contactPhoneLive.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
@@ -52,6 +54,8 @@ export interface WebPublishDeps {
   entitlementOf(userId: string): Promise<EntitlementRow | null>;
   /** Read-only: is this (not web-entitled) caller an App Store subscriber? Only asked when the caller is not entitled; an error falls back to 402. */
   appStoreState?(userId: string): Promise<AppStoreState>;
+  /** Free accounts (in-memory 'free:<uid>' entitlement) must have a saved phone before they can publish. Omitted = no check. */
+  phoneOnFile?(userId: string): Promise<boolean>;
   sites: {
     /** The user's bound site in this environment (newest), or null. */
     byUser(userId: string, env: 'live' | 'test'): Promise<WebSiteRow | null>;
@@ -204,6 +208,12 @@ export async function runWebPublish(
       }
       return { status: 402, body: { error: 'subscription-inactive' } };
     }
+    // 2b. A free account (no payment) must have passed the phone gate first: the one abuse control on free publishing.
+    if (isFreeSubscriptionId(ent.stripe_subscription_id) && deps.phoneOnFile) {
+      let has = false;
+      try { has = await deps.phoneOnFile(caller.id); } catch { return unavailable; }
+      if (!has) return { status: 403, body: { error: 'phone-required' } };
+    }
     // 3. Tier links.
     pendingData = stripLapsedLinks(pendingData, webProductId(ent.tier, ent.billing_interval));
     await deps.assertCurrent?.();
@@ -264,7 +274,7 @@ export async function runWebPublish(
       if (freshBind) await deps.sites.releaseUnpublished(slug).catch(() => {});
       return { status: 409, body: { error: 'slug-owned' } };
     }
-    if (freshBind && deps.rememberSlug) await deps.rememberSlug(ent.stripe_subscription_id, slug).catch(() => {});
+    if (freshBind && deps.rememberSlug && !isFreeSubscriptionId(ent.stripe_subscription_id)) await deps.rememberSlug(ent.stripe_subscription_id, slug).catch(() => {});
 
     // Model text: the signed-in owner and the site are known now. Only text approved to THIS account, for the draft being published or this
     // account's own site, survives; it is re-stamped to this slug ('s:<slug>') so every later deploy render can verify it against the site it
@@ -359,7 +369,8 @@ export const liveWebSites = (): WebPublishDeps['sites'] => ({
 
 export async function liveEntitlementOf(userId: string, env: 'live' | 'test'): Promise<EntitlementRow | null> {
   const r = await sbRest(`web_app_entitlements?user_id=eq.${enc(userId)}&environment=eq.${env}&status=in.(active,trialing,past_due)&order=updated_at.desc&limit=1`);
-  return r?.[0] ?? null;
+  // A paid row wins; otherwise a free-group account gets the in-memory free entitlement (never stored).
+  return entitlementOrFree(userId, r?.[0] ?? null, env);
 }
 
 export function liveWebPublishDeps(): WebPublishDeps {
@@ -380,6 +391,8 @@ export function liveWebPublishDeps(): WebPublishDeps {
     userOf: callerFrom,
     entitlementOf: (uid) => liveEntitlementOf(uid, environment),
     appStoreState: (uid) => appStoreStateOf(uid, environment),
+    // Contacts unreadable (migration 032 missing): skip the check, otherwise free publish would 403 forever.
+    phoneOnFile: async (uid) => { const s = await savedPhoneState(uid); return !!s.phone || !s.contactsOk; },
     sites,
     owners,
     isTaken: async (s) => (await iosTaken(s)) || !!(await owners.get(s)) || !!(await sites.get(s)),
@@ -387,7 +400,7 @@ export function liveWebPublishDeps(): WebPublishDeps {
     publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
     readPending: readPendingSite,
     readPendingVersioned,
-    rememberSlug: async (subId, slug) => { await stripeCall(`subscriptions/${enc(subId)}`, { 'metadata[site_slug]': slug }); },
+    rememberSlug: async (subId, slug) => { if (isFreeSubscriptionId(subId)) return; await stripeCall(`subscriptions/${enc(subId)}`, { 'metadata[site_slug]': slug }); },
     now: () => Date.now(),
   };
 }

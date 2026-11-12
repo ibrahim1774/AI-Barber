@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TIER_NAME, failedPaymentEmail, resetLink, signInLink, welcomeEmail } from '../../lib/webApp/emails';
+import { TIER_NAME, failedPaymentEmail, resetLink, signInLink, signupNudgeEmail, welcomeEmail } from '../../lib/webApp/emails';
 
 const O = 'https://www.aibarber.org';
 const site = 'https://joes.vercel.app';
@@ -87,5 +87,20 @@ describe('web app emails', () => {
   });
   it('escapes html in the account email', () => {
     expect(welcomeEmail({ email: '<b>x</b>@y.co', siteUrl: null, tier: 'website' }, O).html).not.toContain('<b>x</b>');
+  });
+});
+
+describe('signupNudgeEmail without a draft', () => {
+  const base = { email: 'a@b.co', firstName: 'Jake', shopName: null, continueUrl: 'https://www.primebarber.org/api/web-app/continue?t=abc', noDraft: true };
+  it.each([1, 2, 3] as const)('step %i invites the user to start, never claims a draft exists', (s) => {
+    const m = signupNudgeEmail(s, base);
+    const all = `${m.subject}\n${m.text}\n${m.html}`;
+    expect(all).not.toMatch(/started a website|pick up where|left it|finish my website|saved/i);
+    expect(m.text).toContain('Start my website: https://www.primebarber.org/api/web-app/continue?t=abc');
+    expect(m.html).toContain('href="https://www.primebarber.org/api/web-app/continue?t=abc"');
+    expect(m.text).toContain('reply "stop"');
+  });
+  it('the with-draft wording is unchanged when noDraft is not set', () => {
+    expect(signupNudgeEmail(1, { ...base, noDraft: undefined, shopName: "Jake's Cuts" }).subject).toBe("Your Jake's Cuts website");
   });
 });

@@ -4,6 +4,7 @@ import { enc, draftPath, leaseId, modeOf, readDraft, reliabilityOn, type Intent 
 import { sbRest, stripeCall } from './webAppServer.js';
 import { alertOwner } from './emails.js';
 import { isEntitledStatus, rowFromSubscription } from './stripeCore.js';
+import { isFree, isFreeSubscriptionId } from './priceGroup.js';
 
 /** A failing job is retried with backoff, then parked (cancelled, with an alert in the logs) so it cannot be polled forever. */
 export const MAX_JOB_ATTEMPTS = 20;
@@ -94,6 +95,8 @@ export function liveJobDeps(): JobDeps {
       // An unlinked checkout submission (its own session was never created or linked) is still covered by a paid
       // hosting plan: the customer may have paid an older open session. That is checked from Stripe below.
       let subId = job.stripe_subscription_id;
+      // A free-group account's in-memory 'free:<uid>' id is not a Stripe subscription: re-check the group server side instead.
+      if (isFreeSubscriptionId(subId)) return isFree(job.user_id);
       if (job.stripe_session_id) {
         const session = await stripeCall(`checkout/sessions/${enc(job.stripe_session_id)}`, null, 'GET');
         if (session.client_reference_id !== job.user_id || session.metadata?.intent_id !== job.id) return false;

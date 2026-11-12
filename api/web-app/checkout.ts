@@ -40,7 +40,7 @@ export default async function handler(req: any, res: any) {
     try {
       const stored = await readStoredGroup(caller.id);
       if (stored) {
-        group = stored;
+        group = stored === 'free' ? 'base' : stored; // a free-group account upgrades at base prices (and the subscription is tagged base)
         price = priceIdFor(tier, interval, process.env, group);
         if (!price && group !== 'base') return res.status(503).json({ error: 'price_not_configured' });
       } else {
@@ -48,7 +48,7 @@ export default async function handler(req: any, res: any) {
         price = null;
         // Not stored yet: a requested test group is stored and used only when assignGroup allows it (test open, group fully configured,
         // new sign-up); otherwise 'base' (and nothing is stored when the test is closed or unconfigured).
-        if (isPriceGroup(asked) && asked !== 'base') {
+        if (isPriceGroup(asked) && asked !== 'base' && asked !== 'free') { // 'free' is never assigned from checkout
           group = await assignGroup(caller.id, caller.email, asked, 'checkout');
         }
         price = priceIdFor(tier, interval, process.env, group);
@@ -128,7 +128,11 @@ export default async function handler(req: any, res: any) {
     // Existing Stripe billing is checked before superseding any recoverable publish submission.
     const shopName = (await sbRest(`${draftPath(caller.id, mode)}&select=shop:site_data->>shopName&limit=1`).catch(() => null))?.[0]?.shop;
     const description = planDescription(tier, shopName);
-    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, price_group: group, ...(plan ? { intent_id: plan.id } : {}) };
+    // The buyer's browser, kept for the server-side Meta Purchase (it needs client_user_agent / client_ip_address). Read back from the subscription's metadata.
+    const hdr = (n: string) => { const v = req.headers?.[n]; return typeof v === 'string' ? v : Array.isArray(v) ? String(v[0] ?? '') : ''; };
+    const clientUa = hdr('user-agent').replace(/[\r\n]+/g, ' ').trim().slice(0, 400);
+    const clientIp = hdr('x-forwarded-for').split(',')[0].trim().slice(0, 64);
+    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval, price_group: group, ...(plan ? { intent_id: plan.id } : {}), ...(clientUa ? { client_ua: clientUa } : {}), ...(clientIp ? { client_ip: clientIp } : {}) };
     const nowMs = Date.now();
     const window = Math.floor(nowMs / 600_000);
     // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (32-42 min ahead; Stripe's minimum is 30).
@@ -146,7 +150,7 @@ export default async function handler(req: any, res: any) {
       expires_at: String((window + 1) * 600 + 1800 + 120),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
     };
-    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${group}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}:${digest([description]).slice(0, 8)}`;
+    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${group}:${window}${plan ? ':' + digest([draftId, revision, true, plan.id]).slice(0,24) : ''}:${digest([description]).slice(0, 8)}${clientUa || clientIp ? ':' + digest([clientUa, clientIp]).slice(0, 6) : ''}`;
     // Stripe replays the FIRST response for a repeated key, so that response can be stale: always read the session's real status.
     const createOrReplay = async (k: string) => {
       const made = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: k });

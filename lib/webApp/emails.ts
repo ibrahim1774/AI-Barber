@@ -140,6 +140,8 @@ export interface NudgeInput {
   shopName?: string | null;
   /** Signed one-tap sign-in link (on the app origin). The only link in the mail. */
   continueUrl: string;
+  /** true = the account never saved a draft: the wording says "get started" instead of "pick up where you left off". */
+  noDraft?: boolean;
 }
 
 /** "Ibrahim from Prime Barber <addr>": the address comes from WEB_APP_NUDGE_FROM, else WEB_APP_EMAIL_FROM, else support@davoxa.com. */
@@ -161,7 +163,24 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
   const hi = first ? `Hi ${first},` : 'Hi there,';
   const site = shop ? `your ${shop} website` : 'your website';
   let subject: string; let paragraphs: string[]; let closing: string[];
-  if (step === 1) {
+  if (i.noDraft) {
+    // Signed up but never started a draft: nothing to "pick up", so invite them to begin.
+    if (step === 1) {
+      subject = 'Your Prime Barber website';
+      paragraphs = [hi, 'I saw you signed up earlier today. Your website takes about a minute to set up, and you can start whenever you like.',
+        "Here's the link to get going:"];
+      closing = ['If anything got in the way, just reply and let me know.'];
+    } else if (step === 2) {
+      subject = 'Did you get stuck setting up your website?';
+      paragraphs = [hi, 'Just checking in. Your website is still waiting, and it only takes a minute to start.', "Here's the link to jump in:"];
+      closing = ["If something wasn't clear, reply and tell me. I read every email."];
+    } else {
+      subject = 'Still want your website?';
+      paragraphs = [hi, 'This is the last reminder from me. Your account is ready, and your website takes about a minute to set up.',
+        'Tap the link below to sign back in and start it.'];
+      closing = ["If you decided it's not for you, no problem. You won't get any more emails about it."];
+    }
+  } else if (step === 1) {
     subject = shop ? `Your ${shop} website` : 'Your website';
     paragraphs = [hi, `I saw you started a website${shop ? ` for ${shop}` : ''} earlier today. It's still there whenever you want to finish it.`,
       "Here's the link to pick up where you left off:"];
@@ -178,7 +197,7 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
     closing = ["If you decided it's not for you, no problem. You won't get any more emails about it."];
   }
   const optOut = 'P.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.';
-  const linkLabel = 'Finish my website';
+  const linkLabel = i.noDraft ? 'Start my website' : 'Finish my website';
   const p = (t: string) => `<p>${esc(t)}</p>`;
   const grey = (t: string) => `<p style="color:#777777;font-size:13px">${esc(t)}</p>`;
   const html = [
@@ -218,9 +237,10 @@ export async function sendMail(to: string, mail: Mail, fetchImpl: typeof fetch =
     r = await fetchImpl('https://api.resend.com/emails', init);
   }
   if (!r.ok) {
-    // Keep Resend's error name (not its message) so callers can tell an Idempotency-Key conflict from an outage.
-    const name = ((await r.json().catch(() => null)) as any)?.name;
-    throw Object.assign(new Error(`resend ${r.status}`), { status: r.status, resendName: typeof name === 'string' ? name : undefined });
+    // Keep Resend's error name and message (callers must not log either unredacted) so callers can tell an Idempotency-Key conflict from an outage.
+    const j: any = await r.json().catch(() => null);
+    const name = j?.name;
+    throw Object.assign(new Error(`resend ${r.status}`), { status: r.status, resendName: typeof name === 'string' ? name : undefined, resendMessage: typeof j?.message === 'string' ? j.message.slice(0, 200) : undefined });
   }
   // A 2xx without a message id is not an accepted email: never report it as sent.
   const body: any = await r.json().catch(() => null);

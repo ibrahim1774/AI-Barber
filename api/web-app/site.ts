@@ -6,6 +6,7 @@ import { serviceClient } from '../../lib/bookings/repo.js';
 import { webRowFor } from '../../lib/webDomains.js';
 import { isEntitledStatus } from '../../lib/webApp/stripeCore.js';
 import { sbRest, webAppCors, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
+import { isFree } from '../../lib/webApp/priceGroup.js';
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
@@ -18,7 +19,9 @@ export default async function handler(req: any, res: any) {
       // Any entitled subscription of this mode counts (an older canceled one must not hide a newer active one); else the newest.
       subscriptionOf: async (uid) => {
         const rows: Array<{ status: string }> = (await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(uid)}&environment=eq.${deps.environment}&select=status&order=updated_at.desc`)) ?? [];
-        return rows.find((r) => isEntitledStatus(r.status)) ?? rows[0] ?? null;
+        const hit = rows.find((r) => isEntitledStatus(r.status));
+        if (hit) return hit;
+        return (await isFree(uid)) ? { status: 'active' } : rows[0] ?? null; // a free-group account has no stored row
       },
       // The site's website-bought domain (plain status, no probe: the dashboard's status call carries the probe).
       domainOf: async (slug) => {

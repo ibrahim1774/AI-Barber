@@ -6,6 +6,7 @@ import type { PublishOutcome } from '../publishSite.js';
 import { isIndefiniteDeployError } from '../ios/sweep.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
+import { isFree } from './priceGroup.js';
 import type { WebSiteRow } from './publishFlow.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 import { alertOwner, iosOverlapEmail, sendMail } from './emails.js';
@@ -135,10 +136,10 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
   const { findShopForSite } = await import('../siteSubpages.js');
   const patch = (slug: string, body: Record<string, unknown>) => sbRest(`web_app_sites?slug=eq.${enc(slug)}`, { method: 'PATCH', body: { ...body, updated_at: new Date().toISOString() } });
   return {
-    takedownCandidates: async (limit) => (await sbRest(`web_app_sites?environment=eq.${env}&published_at=not.is.null&removed_at=is.null&taken_down_at=is.null&select=${COLS}&order=lapse_checked_at.asc.nullsfirst&limit=${limit}`)) ?? [],
+    takedownCandidates: async (limit) => (await sbRest(`web_app_sites?environment=eq.${env}&published_at=not.is.null&removed_at=is.null&taken_down_at=is.null&stripe_subscription_id=not.like.free:*&select=${COLS}&order=lapse_checked_at.asc.nullsfirst&limit=${limit}`)) ?? [],
     restoreCandidates: async (limit) => (await sbRest(`web_app_sites?environment=eq.${env}&published_at=not.is.null&removed_at=is.null&taken_down_at=not.is.null&select=${COLS}&order=lapse_checked_at.asc.nullsfirst&limit=${limit}`)) ?? [],
     iosOwnsSlug: async (slug) => ((await sbRest(`ios_purchases?site_slug=eq.${enc(slug)}&select=original_transaction_id&limit=1`)) ?? []).length > 0,
-    hasEntitledRow: async (uid) => ((await sbRest(`web_app_entitlements?user_id=eq.${enc(uid)}&environment=eq.${env}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&limit=1`)) ?? []).length > 0,
+    hasEntitledRow: async (uid) => ((await sbRest(`web_app_entitlements?user_id=eq.${enc(uid)}&environment=eq.${env}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&limit=1`)) ?? []).length > 0 || (await isFree(uid)),
     subscriptionStatus: async (id) => {
       const st = (await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status;
       if (typeof st !== 'string' || !st) throw new Error('stripe returned no status');

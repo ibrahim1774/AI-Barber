@@ -613,7 +613,11 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
           if (!mode) return false;
           const { data, error } = await db.from('web_app_entitlements').select('environment, status').eq('user_id', uid).eq('environment', mode);
           if (error) dbFail('webReturnBase(entitlements)', error);
-          return hasCurrentWebPlan((data ?? []) as WebPlanRow[], mode);
+          if (hasCurrentWebPlan((data ?? []) as WebPlanRow[], mode)) return true;
+          // A free-group account (no entitlement row) is a web shop too: Connect returns to the web app.
+          const { data: g, error: ge } = await db.from('web_app_price_groups').select('price_group').eq('user_id', uid).maybeSingle();
+          if (ge && !/does not exist|not find the table|PGRST205|42P01/i.test(`${ge.code ?? ''} ${ge.message ?? ''}`)) dbFail('webReturnBase(price group)', ge);
+          return (g as { price_group?: string } | null)?.price_group === 'free';
         },
       );
     },

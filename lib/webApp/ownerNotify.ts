@@ -42,7 +42,10 @@ export async function ownerHasWebPlan(ownerId: string, rest: typeof sbRest = sbR
   if (!mode) { console.warn('[web-app owner notify] plan lookup: Stripe mode unknown, treating as no plan', { kind: 'ownerHasWebPlan' }); return false; }
   const rows = await rest(`web_app_entitlements?user_id=eq.${encodeURIComponent(ownerId)}&environment=eq.${mode}&select=environment,status`);
   if (rows != null && !Array.isArray(rows)) throw new Error('web_app_entitlements lookup returned a non-array');
-  return hasCurrentWebPlan((rows ?? []) as WebPlanRow[], mode);
+  if (hasCurrentWebPlan((rows ?? []) as WebPlanRow[], mode)) return true;
+  // A free-group account has no entitlement row but is a web shop. A missing price-group table (404) reads as no group.
+  try { return (await rest(`web_app_price_groups?user_id=eq.${encodeURIComponent(ownerId)}&select=price_group&limit=1`))?.[0]?.price_group === 'free'; }
+  catch (e: any) { if (e?.status === 404) return false; throw e; }
 }
 
 export type WebPlanLookup = (ownerId: string) => Promise<boolean>;

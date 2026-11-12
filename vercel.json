@@ -56,6 +56,26 @@
       "destination": "https://prime-barber-web.vercel.app/app/"
     },
     {
+      "source": "/free-site",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
+      "source": "/free-site/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.primebarber.org"
+        }
+      ],
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
       "source": "/10",
       "has": [
         {
@@ -154,6 +174,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/web-app/nudges",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/web-app/publish-jobs",
       "schedule": "* * * * *"
     }
@@ -238,6 +262,9 @@
       "maxDuration": 300
     },
     "api/web-app/lapse.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/nudges.ts": {
       "maxDuration": 300
     },
     "api/web-app/webhook.ts": {

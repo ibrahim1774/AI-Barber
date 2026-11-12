@@ -6,6 +6,8 @@ import { callerFrom, sbRest } from '../../lib/webApp/webAppServer.js';
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
 import { liveWebPublishDeps, runWebPublish } from '../../lib/webApp/publishFlow.js';
 import { webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
+import { entitlementOrFree, isFreeSubscriptionId } from '../../lib/webApp/priceGroup.js';
+import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
 
 export const config = { maxDuration: 300 };
 
@@ -37,8 +39,14 @@ export default async function handler(req: any, res: any) {
     if (reliabilityOn() && drafted) {
       const caller = await callerFrom(req.headers?.authorization);
       if (!caller) return res.status(401).json({ error: 'unauthorized' });
-      const ent = (await sbRest(`web_app_entitlements?user_id=eq.${enc(caller.id)}&environment=eq.${modeOf()}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&order=created_at.desc&limit=1`))?.[0];
+      const paidRow = (await sbRest(`web_app_entitlements?user_id=eq.${enc(caller.id)}&environment=eq.${modeOf()}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&order=created_at.desc&limit=1`))?.[0];
+      // A free-group account counts as entitled (in-memory 'free:<uid>' id, never a stored row), but only with a saved phone.
+      const ent = paidRow ?? (await entitlementOrFree(caller.id, null, modeOf()));
       if (!ent) return res.status(402).json({ error: 'subscription-inactive' });
+      if (isFreeSubscriptionId(ent.stripe_subscription_id)) {
+        const ps = await savedPhoneState(caller.id); // contacts unreadable: skip the check rather than 403 forever
+        if (!ps.phone && ps.contactsOk) return res.status(403).json({ error: 'phone-required' });
+      }
       const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, input?.siteData, input?.republish === true);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);

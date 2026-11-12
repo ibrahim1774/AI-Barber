@@ -289,3 +289,11 @@ describe('/api/web-app/continue handler', () => {
   });
   it('other methods are 405', async () => { expect((await call({ method: 'DELETE' })).code).toBe(405); });
 });
+
+describe('performContinue for a sign-up with no draft', () => {
+  it('needs no draft: a valid link goes to the start of the builder like any other', async () => {
+    const { d } = deps();
+    expect(Object.keys(d)).not.toContain('draft');
+    expect(await performContinue(tok(), d)).toMatchObject({ kind: 'redirect', location: '/app/?from=nudge1' });
+  });
+});
