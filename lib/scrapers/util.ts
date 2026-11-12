@@ -220,6 +220,7 @@ export async function runApifyWebScraper(opts: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        ...(opts.timeoutSec ? { signal: AbortSignal.timeout((opts.timeoutSec + 3) * 1000) } : {}),
       },
     );
     if (!resp.ok) {
@@ -259,7 +260,7 @@ export function finalize(
       price: normalizePrice(s.price) || undefined,
       duration: normalizeDuration(s.duration) || undefined,
     })),
-    photos: dedupeBy(cleanPhotoUrls(shop.photos), (p) => p.replace(/\?.*$/, '')).slice(0, photoCap),
+    photos: dedupeBy(cleanPhotoUrls(shop.photos), photoKey).slice(0, photoCap),
     reviews: dedupeBy(shop.reviews || [], (r) => r.comment.slice(0, 80)).slice(0, reviewCap),
   };
 }
@@ -278,6 +279,18 @@ export function cleanPhotoUrls(list: unknown): string[] {
     out.push(u);
   }
   return out;
+}
+
+/** Dedupe key for a photo: the URL without its query, except Next.js `/_next/image?url=…`, which keys on the decoded url= value. */
+export function photoKey(p: string): string {
+  try {
+    const u = new URL(p);
+    if (u.pathname === '/_next/image') {
+      const inner = u.searchParams.get('url');
+      if (inner) return `${u.hostname}|${inner.replace(/\?.*$/, '')}`.toLowerCase();
+    }
+  } catch { /* fall through */ }
+  return p.replace(/\?.*$/, '');
 }
 
 function dedupeBy<T>(arr: T[], key: (t: T) => string): T[] {

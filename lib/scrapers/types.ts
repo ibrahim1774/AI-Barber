@@ -31,6 +31,10 @@ export interface ScrapedShop {
   enriched?: Partial<Record<'hours' | 'phone' | 'address' | 'area' | 'aggregateRating', 'google'>>;
   // `rating` is absent when the star count could not be read (never defaulted).
   reviews: { author: string; rating?: number; comment: string; date?: string }[];
+  // Only set by the generic website importer (lib/scrapers/website.ts); booking adapters never fill these.
+  email?: string;
+  logo?: string;
+  socials?: Partial<Record<'instagram' | 'facebook' | 'tiktok' | 'x' | 'youtube', string>>;
 }
 
 export interface ScrapeOptions {
@@ -40,6 +44,9 @@ export interface ScrapeOptions {
   // Cross-source enrichment (lib/scrapers/enrich.ts): one Google Places lookup for fields the page lacked. Absent
   // = no enrichment (tests, no key configured).
   placeLookup?: import('./enrich.js').PlaceLookup | null;
+  // Website importer only: asked (with the page URL) right before the one paid Apify run; false = skip it and return
+  // what the static pass found. Wired in api/import-scrape to the shared daily cap + the per-URL 24 h no_data memory.
+  apifyAllow?: (url: string) => boolean | Promise<boolean>;
 }
 
 export interface PlatformAdapter {
@@ -56,8 +63,12 @@ export interface PlatformAdapter {
 // Thrown by an adapter when it can't extract data. Callers catch and
 // surface the message to the user as a friendly 422.
 export class ScrapeError extends Error {
-  constructor(message: string) {
+  // Optional machine-readable reason (the website importer sets it: blocked_url, not_html, too_large, timeout,
+  // fetch_failed, no_data). Booking adapters leave it unset.
+  code?: string;
+  constructor(message: string, code?: string) {
     super(message);
     this.name = 'ScrapeError';
+    this.code = code;
   }
 }

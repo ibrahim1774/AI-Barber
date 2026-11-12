@@ -14,6 +14,8 @@ import { glossGeniusAdapter } from './glossgenius.js';
 import { squireAdapter } from './squire.js';
 import { acuityAdapter } from './acuity.js';
 import { enrichFromGoogle } from './enrich.js';
+import { scrapeWebsite } from './website.js';
+import type { SafeFetchDeps } from './safeFetch.js';
 
 const ADAPTERS: PlatformAdapter[] = [
   booksyAdapter,
@@ -74,6 +76,20 @@ export async function scrapeBookingUrl(rawUrl: string, opts: ScrapeOptions): Pro
   // Fill ONLY what the booking page lacked (hours, phone, address, rating) from the Google listing; never throws.
   const shop = await enrichFromGoogle(scraped, opts.placeLookup ?? null);
   return { platform: adapter.id, shop };
+}
+
+// Any shop website (api/import-scrape with source 'website'). A known booking-platform host still goes to its adapter
+// (better data); everything else is read generically (lib/scrapers/website.ts). Gaps are filled by the same Google
+// enrichment as booking imports.
+export async function scrapeWebsiteUrl(rawUrl: string, opts: ScrapeOptions, deps: SafeFetchDeps = {}): Promise<{
+  platform: string;
+  shop: ScrapedShop;
+}> {
+  const { adapter } = detectPlatform(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
+  if (adapter) return scrapeBookingUrl(rawUrl, opts);
+  const scraped = await scrapeWebsite(rawUrl, opts, deps);
+  const shop = await enrichFromGoogle(scraped, opts.placeLookup ?? null);
+  return { platform: 'website', shop };
 }
 
 export { ScrapeError } from './types.js';
