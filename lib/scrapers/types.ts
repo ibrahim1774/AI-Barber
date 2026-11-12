@@ -31,6 +31,10 @@ export interface ScrapedShop {
   enriched?: Partial<Record<'hours' | 'phone' | 'address' | 'area' | 'aggregateRating', 'google'>>;
   // `rating` is absent when the star count could not be read (never defaulted).
   reviews: { author: string; rating?: number; comment: string; date?: string }[];
+  // Only set by the generic website importer (lib/scrapers/website.ts); booking adapters never fill these.
+  email?: string;
+  logo?: string;
+  socials?: Partial<Record<'instagram' | 'facebook' | 'tiktok' | 'x' | 'youtube', string>>;
 }
 
 export interface ScrapeOptions {
@@ -56,8 +60,12 @@ export interface PlatformAdapter {
 // Thrown by an adapter when it can't extract data. Callers catch and
 // surface the message to the user as a friendly 422.
 export class ScrapeError extends Error {
-  constructor(message: string) {
+  // Optional machine-readable reason (the website importer sets it: blocked_url, not_html, too_large, timeout,
+  // fetch_failed, no_data). Booking adapters leave it unset.
+  code?: string;
+  constructor(message: string, code?: string) {
     super(message);
     this.name = 'ScrapeError';
+    this.code = code;
   }
 }
