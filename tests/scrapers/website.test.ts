@@ -95,7 +95,7 @@ describe('JS-rendered shell -> Apify fallback (mocked)', () => {
     const net = stub({
       'https://shell.example/': page(fx('website-shell.html')),
       // Recorded shape of run-sync-get-dataset-items output
-      [`https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=tok&clean=1&timeout=90`]: page(JSON.stringify([{ html: fx('website-rendered.html'), photos: ['https://cdn.shell.example/g1.jpg', 'http://10.1.1.1/x.jpg'] }]), { headers: { 'content-type': 'application/json' } }),
+      [`https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=tok&clean=1&timeout=45`]: page(JSON.stringify([{ html: fx('website-rendered.html'), photos: ['https://cdn.shell.example/g1.jpg', 'http://10.1.1.1/x.jpg'] }]), { headers: { 'content-type': 'application/json' } }),
     });
     const { shop } = await scrapeWebsiteUrl('https://shell.example', { apifyToken: 'tok' }, deps);
     expect(net.apify()).toHaveLength(1);
@@ -114,7 +114,7 @@ describe('JS-rendered shell -> Apify fallback (mocked)', () => {
   it('Apify returns nothing useful: still no_data, and only ONE run', async () => {
     const net = stub({
       'https://shell.example/': page(fx('website-shell.html')),
-      'https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=tok&clean=1&timeout=90': page('[]'),
+      'https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=tok&clean=1&timeout=45': page('[]'),
     });
     await expect(scrapeWebsiteUrl('https://shell.example', { apifyToken: 'tok' }, deps)).rejects.toBeInstanceOf(ScrapeError);
     expect(net.apify()).toHaveLength(1);

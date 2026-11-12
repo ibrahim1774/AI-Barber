@@ -16,6 +16,7 @@ import { fetchPublicHtml, isPublicImageUrl, type SafeFetchDeps } from './safeFet
 import type { ScrapedShop, ScrapeOptions } from './types.js';
 import { ScrapeError } from './types.js';
 
+const safeDecode = (s: string): string => { try { return decodeURIComponent(s); } catch { return s; } };
 const clean = (s: unknown): string => decodeEntities(String(s ?? '')).replace(/\s+/g, ' ').trim();
 
 // ── HTML -> visible text lines ─────────────────────────────────────────────────────────────────────────────────
@@ -71,39 +72,76 @@ function priceText(a: string, b?: string): string {
   return pb && pb !== pa ? `${pa.replace(/\+$/, '')} - ${pb}` : pa;
 }
 
+const BUTTON_WORDS = String.raw`(?:book(?:\s+(?:now|online|appointment|this|today))?|select|reserve|choose|schedule|add(?:\s+to\s+cart)?|buy(?:\s+now)?)`;
+const BUTTON_TAIL = new RegExp(String.raw`\s*[-–—|·•]?\s*${BUTTON_WORDS}\s*[→>»›]*\s*$`, 'i');
+const BUTTON_LINE = new RegExp(String.raw`^${BUTTON_WORDS}\s*[→>»›]*$`, 'i');
+const PROMO_WORDS = /\b(deposits?|gift|gifts|save|saves|saving|off|tips?|promo|promotion|discount|coupon|voucher|required|credits?|membership|refund|per\s+person)\b/i;
+const DURATION_LINE = /^\(?\s*(?:\d{1,3}\s*(?:min|mins|minutes)|\d\s*(?:hr|hrs|hour|hours)(?:\s*\d{1,2}\s*(?:min|mins))?)\s*\)?$/i;
+
+const LEADING_DURATION = /^\(?\s*(\d{1,3}\s*(?:min|mins|minutes)|\d\s*(?:hr|hrs|hour|hours)(?:\s*\d{1,2}\s*(?:min|mins))?)\b/i;
+
+/** A short, sentence-free line that can head a service card: not a duration, a button or a price. */
+function headingLike(l: string): boolean {
+  if (l.includes('$') || l.length > 45 || DURATION_LINE.test(l) || BUTTON_LINE.test(l)) return false;
+  if (/[.!?,;:]/.test(l.replace(/\(.*?\)/g, ''))) return false;
+  if (PROMO_WORDS.test(l)) return false;
+  const n = tidyName(l);
+  return n.title.split(' ').length <= 6 && goodName(n.title);
+}
+
 export function servicesFromLines(lines: string[]): NonNullable<ScrapedShop['services']> {
   const out: NonNullable<ScrapedShop['services']> = [];
   const seen = new Set<string>();
   const push = (title: string, price: string, duration?: string) => {
     const key = title.toLowerCase();
-    if (!goodName(title) || !price || seen.has(key)) return;
+    if (!goodName(title) || PROMO_WORDS.test(title) || !price || seen.has(key)) return;
     seen.add(key);
     out.push({ title, price, duration });
   };
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.includes('$')) continue;
-    // A line that is only a price belongs to the name on the previous line.
+    const line = lines[i].replace(BUTTON_TAIL, '').trim();
+    if (!line.includes('$') || PROMO_WORDS.test(line)) continue;
+    // A line that is only a price ("$25", "$25 Book") belongs to the heading a few lines above (a card).
     const only = line.match(PRICE_ONLY);
     if (only) {
-      const prev = lines[i - 1];
-      if (prev && !prev.includes('$')) {
-        const n = tidyName(prev);
-        push(n.title, priceText(only[1], only[2]), n.duration);
+      let duration: string | undefined;
+      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+        const prev = lines[j];
+        if (prev.includes('$') || BUTTON_LINE.test(prev)) break;
+        if (DURATION_LINE.test(prev)) {
+          duration = duration || normalizeDuration(prev.replace(/[()]/g, '')) || undefined;
+          continue;
+        }
+        // "30 min A timeless cut…": an inline duration chip that ran into the description line
+        const lead = prev.match(LEADING_DURATION);
+        if (lead) {
+          duration = duration || normalizeDuration(lead[1]) || undefined;
+          continue;
+        }
+        if (headingLike(prev)) {
+          const n = tidyName(prev);
+          push(n.title, priceText(only[1], only[2]), n.duration || duration);
+          break;
+        }
       }
       continue;
     }
     const prices = line.match(new RegExp(PRICE, 'g')) || [];
     if (!prices.length || prices.length > 2) continue;
     const first = line.indexOf(prices[0]);
+    const last = prices[prices.length - 1];
+    const after = tidyName(line.slice(line.indexOf(last) + last.length)).title;
     // "Haircut ..... $30", "Haircut - $30 - $40", "Haircut (30 min) $30"
     let before = line.slice(0, first);
     if (!/[A-Za-z]/.test(before)) {
       // "$30 Haircut" (price first): the name is what follows the last price.
-      const last = prices[prices.length - 1];
       before = line.slice(line.indexOf(last) + last.length);
+    } else if (/[A-Za-z]{3}/.test(after) && after.length > 12) {
+      continue; // prose after the price ("Haircut $30 includes a shampoo..."): not a menu row
     }
     const n = tidyName(before.replace(/\b(from|starting at)\s*$/i, ''));
+    // The name must be most of the line, not a few words in a sentence.
+    if (n.title.length < line.replace(new RegExp(PRICE, 'g'), '').replace(DURATION, '').replace(/[\s.…·•|:–—()-]+/g, ' ').trim().length * 0.6) continue;
     const range = prices.length === 2 ? priceText(prices[0], prices[1]) : priceText(prices[0]);
     push(n.title, range, n.duration);
   }
@@ -186,7 +224,7 @@ const PHONE = /(?:\+?1[\s.-]?)?\(?\b([2-9]\d{2})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})\
 export function phoneFrom(html: string, lines: string[]): string {
   const tel = html.match(/href=["']tel:([^"']+)["']/i);
   if (tel) {
-    const f = formatUsPhone(decodeURIComponent(tel[1]).replace(/[^\d+]/g, ''));
+    const f = formatUsPhone(safeDecode(tel[1]).replace(/[^\d+]/g, ''));
     if (f) return f;
   }
   for (const l of lines) {
@@ -199,7 +237,7 @@ export function phoneFrom(html: string, lines: string[]): string {
 
 export function emailFrom(html: string): string {
   const m = html.match(/href=["']mailto:([^"'?]+)/i);
-  const e = m ? decodeURIComponent(m[1]).trim() : '';
+  const e = m ? safeDecode(m[1]).trim() : '';
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : '';
 }
 
@@ -243,6 +281,20 @@ export function socialsFrom(html: string): NonNullable<ScrapedShop['socials']> {
 
 const JUNK_IMG = /logo|icon|avatar|sprite|placeholder|favicon|emoji|badge|flag|pixel|spinner|blank|loader|arrow|star|payment|visa|mastercard|paypal|stripe|\.svg|\.gif|1x1|tracking/i;
 
+const JUNK_HINT = /\b(?:[\w-]*icon[\w-]*|[\w-]*logo[\w-]*|sprite|avatar|favicon|pixel|tracking)\b/i;
+
+/** `/_next/image?url=%2Fimg%2Fa.jpg&w=640`: the real image when it is same-site https; otherwise the URL unchanged. */
+function unwrapNextImage(u: string, base: string): string {
+  try {
+    const p = new URL(u);
+    if (p.pathname !== '/_next/image') return u;
+    const inner = p.searchParams.get('url');
+    if (!inner) return u;
+    const real = new URL(inner, base);
+    return real.protocol === 'https:' && real.hostname === new URL(base).hostname ? real.toString() : u;
+  } catch { return u; }
+}
+
 function resolveUrl(raw: string, base: string): string {
   if (!raw || !raw.trim()) return '';
   try { return new URL(decodeAll(raw.trim()), base).toString(); } catch { return ''; }
@@ -253,14 +305,17 @@ export function imagesFrom(html: string, base: string): string[] {
   const stripped = body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, ' ');
   const urls: string[] = [];
   const consider = (raw: string) => {
-    const u = resolveUrl(raw, base);
+    const u = unwrapNextImage(resolveUrl(raw, base), base);
     if (u && !JUNK_IMG.test(u.replace(/^https?:\/\/[^/]+/, '')) && isPublicImageUrl(u)) urls.push(u);
   };
   for (const m of stripped.matchAll(/<img\b[^>]*>/gi)) {
     const tag = m[0];
     const w = Number((tag.match(/\bwidth=["']?(\d+)/i) || [])[1] || 0);
     const h = Number((tag.match(/\bheight=["']?(\d+)/i) || [])[1] || 0);
-    if ((w && w < 150) || (h && h < 100)) continue;
+    if ((w && w < 200) || (h && h < 200)) continue;
+    // class / alt that says icon, logo, sprite, avatar, favicon or tracking pixel
+    const hint = [(tag.match(/\bclass=["']([^"']*)["']/i) || [])[1], (tag.match(/\balt=["']([^"']*)["']/i) || [])[1]].join(' ');
+    if (JUNK_HINT.test(decodeAll(hint))) continue;
     const srcset = (tag.match(/\b(?:data-)?srcset=["']([^"']+)["']/i) || [])[1];
     const src = (tag.match(/\bdata-(?:src|lazy-src|original)=["']([^"']+)["']/i) || tag.match(/\bsrc=["']([^"']+)["']/i) || [])[1];
     if (srcset) {
@@ -270,7 +325,8 @@ export function imagesFrom(html: string, base: string): string[] {
     }
     if (src) consider(src);
   }
-  for (const m of stripped.matchAll(/background(?:-image)?\s*:\s*url\((["']?)([^)"']+)\1\)/gi)) consider(m[2]);
+  // style="background-image:url(&quot;…&quot;)": decode the entities first so the quotes are real quotes.
+  for (const m of decodeAll(stripped).matchAll(/background(?:-image)?\s*:\s*url\(\s*(["']?)([^)"']+)\1\s*\)/gi)) consider(m[2]);
   return urls;
 }
 
@@ -293,6 +349,14 @@ function logoFrom(html: string, base: string, ldLogo: unknown): string {
     if (u && isPublicImageUrl(u)) return u;
   }
   return '';
+}
+
+const GENERIC_SEG = /^(home|welcome|index|homepage|main)$/i;
+
+/** "Sharp Edge Barbers | Best Fades in Brooklyn": keep the first segment unless it is generic ("Home", "Welcome"). */
+export function stripSeoTail(raw: string): string {
+  const segs = clean(raw).split(/\s+[-–—]\s+|\s*[|·]\s*/).map((x) => x.trim()).filter(Boolean);
+  return segs.find((x) => !GENERIC_SEG.test(x)) || '';
 }
 
 function nameFrom(html: string, lines: string[]): string {
@@ -320,7 +384,10 @@ export function parseWebsiteHtml(html: string, pageUrl: string): ScrapedShop | n
   const structured = shopFromStructuredHtml(html);
   const ldLogo = (() => { const m = html.match(/"logo"\s*:\s*("(?:[^"\\]|\\.)*"|\{[^}]*\})/); try { return m ? JSON.parse(m[1]) : undefined; } catch { return undefined; } })();
 
-  const shopName = structured?.shopName || nameFrom(html, lines);
+  // structured.ts falls back to the raw og:title; for websites the SEO tail (" | Best fades in…") is cut off.
+  const sn = structured?.shopName;
+  const ogRaw = clean(metaContent(html, 'og:title'));
+  const shopName = (sn && ogRaw.startsWith(sn) ? stripSeoTail(sn) || sn : sn) || nameFrom(html, lines);
   if (!shopName) return null;
 
   const addr = structured?.address ? null : addressFromLines(lines);
@@ -355,13 +422,16 @@ export function parseWebsiteHtml(html: string, pageUrl: string): ScrapedShop | n
 
 // ── Entry point ────────────────────────────────────────────────────────────────────────────────────────────────
 
+// Total server time stays under 60 s: 8 s page fetch + at most this wait for the one Apify run + one Places lookup.
+export const APIFY_WAIT_SEC = 45;
+
 export async function scrapeWebsite(rawUrl: string, opts: ScrapeOptions, deps: SafeFetchDeps = {}): Promise<ScrapedShop> {
   const { html, finalUrl } = await fetchPublicHtml(rawUrl, deps);
   let shop = parseWebsiteHtml(html, finalUrl);
 
-  if (!hasShopData(shop) && opts.apifyToken) {
+  if (!hasShopData(shop) && opts.apifyToken && (!opts.apifyAllow || (await opts.apifyAllow(finalUrl)))) {
     // JS-rendered shell: ONE paid Apify run renders the page; the same readers parse the rendered HTML.
-    const rendered = await runApifyWebScraper({ url: finalUrl, pageFunction: galleryPageFunction('', 2500, true), token: opts.apifyToken, label: 'website', timeoutSec: 90 });
+    const rendered = await runApifyWebScraper({ url: finalUrl, pageFunction: galleryPageFunction('', 2500, true), token: opts.apifyToken, label: 'website', timeoutSec: APIFY_WAIT_SEC });
     const renderedHtml = typeof rendered?.html === 'string' ? rendered.html : '';
     if (renderedHtml && renderedHtml.length <= 6 * 1024 * 1024) {
       const second = parseWebsiteHtml(renderedHtml, finalUrl);
@@ -374,7 +444,7 @@ export async function scrapeWebsite(rawUrl: string, opts: ScrapeOptions, deps: S
 
   if (!hasShopData(shop)) {
     throw new ScrapeError(
-      "We couldn't find shop details (services, hours, phone or address) on that page. Try a page that lists your services, or use your booking link or “Find me on Google”.",
+      "We couldn't find shop details on that page. Try a page that lists your services, or use your booking link.",
       'no_data',
     );
   }

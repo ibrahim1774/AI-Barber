@@ -44,6 +44,9 @@ export interface ScrapeOptions {
   // Cross-source enrichment (lib/scrapers/enrich.ts): one Google Places lookup for fields the page lacked. Absent
   // = no enrichment (tests, no key configured).
   placeLookup?: import('./enrich.js').PlaceLookup | null;
+  // Website importer only: asked (with the page URL) right before the one paid Apify run; false = skip it and return
+  // what the static pass found. Wired in api/import-scrape to the shared daily cap + the per-URL 24 h no_data memory.
+  apifyAllow?: (url: string) => boolean | Promise<boolean>;
 }
 
 export interface PlatformAdapter {

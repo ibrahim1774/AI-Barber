@@ -5,8 +5,9 @@
 //   - the host is resolved and EVERY address must be public (loopback, private, link-local, CGNAT, metadata, multicast,
 //     IPv4-mapped / NAT64 forms of those are all refused); IP-literal hosts are checked directly;
 //   - redirects are followed by hand (max 3), each hop re-validated; HTML only; 3 MB body cap; 8 s total timeout.
-// Known limit: fetch() resolves the name again itself, so a DNS-rebinding host could answer differently the second
-// time. Our own check removes every static case; the rebinding window needs the platform's network egress rules too.
+// Known limit (not fixed): fetch() resolves the name again itself, so a DNS-rebinding host could answer differently the
+// second time. Pinning the checked IPs needs an undici Agent with a custom lookup, but undici is not a declared
+// dependency of this repo (only a transitive one), so it was left out; the rebinding window needs egress rules too.
 import { isIP } from 'node:net';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { ScrapeError } from './types.js';
@@ -68,11 +69,13 @@ export function isPrivateAddress(ip: string): boolean {
   if (g[0] === 0x2002) return v4Private(`${g[1] >> 8}.${g[1] & 255}.${g[2] >> 8}.${g[2] & 255}`); // 6to4
   if ((g[0] & 0xfe00) === 0xfc00) return true; // unique local
   if ((g[0] & 0xffc0) === 0xfe80) return true; // link-local
+  if ((g[0] & 0xffc0) === 0xfec0) return true; // deprecated site-local fec0::/10
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return true; // documentation 2001:db8::/32
   if ((g[0] & 0xff00) === 0xff00) return true; // multicast
   return false;
 }
 
-const blocked = (why: string) => new ScrapeError(`We can't read that address (${why}). Paste your shop's public website link, like https://yourshop.com.`, 'blocked_url');
+const blocked = (why: string) => new ScrapeError(`We can't read that address (${why}). Paste your shop's public website link.`, 'blocked_url');
 
 /** Parse + validate a user-typed website URL. Throws ScrapeError('blocked_url'). Does not touch the network. */
 export function parseWebsiteUrl(raw: string): URL {
