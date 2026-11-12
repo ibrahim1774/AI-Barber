@@ -22,10 +22,11 @@ import { placesKey, searchPlacesForEnrichment } from '../lib/gbp/gbpPlaces.js';
 // open) so the limits hold across instances:
 //   - per IP: 6 imports a minute;
 //   - global: WEBSITE_IMPORT_APIFY_DAILY_CAP Apify fallback runs a day (default 100); over it the fallback is skipped;
-//   - per URL: the fallback runs at most once per 24 h for a URL (a hashed-URL key), so a page that came back no_data
+//   - per URL: the fallback runs at most 3 times per 24 h for a URL (a hashed-URL key), so a page that came back no_data
 //     is not paid for again. (The store can only count, so the mark is made when the run is allowed, not after it.)
 const WEBSITE_PER_MINUTE = 6;
 const DAY_MS = 86_400_000;
+const URL_RUNS_PER_DAY = 3;
 const store = withFallback(supabaseRateStore(() => serviceClient()));
 
 export function apifyDailyCap(): number {
@@ -37,7 +38,7 @@ export async function allowApifyFallback(url: string, now = Date.now()): Promise
   let key = url;
   try { const u = new URL(url); key = `${u.hostname}${u.pathname.replace(/\/$/, '')}`; } catch { /* hash as typed */ }
   const hash = createHash('sha256').update(key.toLowerCase()).digest('hex').slice(0, 32);
-  if (!(await store.hit(`website-apify-url:${hash}`, 1, DAY_MS, now))) return false;
+  if (!(await store.hit(`website-apify-url:${hash}`, URL_RUNS_PER_DAY, DAY_MS, now))) return false;
   return store.hit('website-apify-daily', apifyDailyCap(), DAY_MS, now);
 }
 

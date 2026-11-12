@@ -112,8 +112,10 @@ describe('Apify cost bounds', () => {
     vi.stubEnv('WEBSITE_IMPORT_APIFY_DAILY_CAP', '2');
     const now = Date.now();
     expect(await allowApifyFallback('https://cap-a.example/', now)).toBe(true);
-    expect(await allowApifyFallback('https://cap-a.example/', now + 1000)).toBe(false); // same URL again
-    expect(await allowApifyFallback('https://cap-b.example/', now)).toBe(true);
-    expect(await allowApifyFallback('https://cap-c.example/', now)).toBe(false); // cap of 2 used up
+    expect(await allowApifyFallback('https://cap-a.example/', now + 1000)).toBe(true); // 2nd run of the same URL is fine
+    expect(await allowApifyFallback('https://cap-c.example/', now)).toBe(false); // global cap of 2 used up
+    vi.stubEnv('WEBSITE_IMPORT_APIFY_DAILY_CAP', '100');
+    expect(await allowApifyFallback('https://cap-a.example/', now + 2000)).toBe(true); // 3rd
+    expect(await allowApifyFallback('https://cap-a.example/', now + 3000)).toBe(false); // 4th within 24 h
   });
 });
