@@ -2,6 +2,7 @@
 // (migration 034). A user's group is written once and never changes; only NEW sign-ups (no Stripe history) can get a test group.
 import { WEB_APP_TAG, groupConfigured, isPriceGroup, keyMode, type EntitlementRow, type PriceGroup } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
+import { appStoreStateOf } from './appStoreGuard.js';
 
 const enc = encodeURIComponent;
 
@@ -78,7 +79,11 @@ export function freeEntitlementOf(uid: string, environment?: 'live' | 'test'): E
 
 /** The entitlement to use for a user: a real paid row wins (passed in), else the free one when the stored group is 'free', else null. */
 export async function entitlementOrFree(uid: string, real: EntitlementRow | null, environment?: 'live' | 'test'): Promise<EntitlementRow | null> {
-  if (real) return real;
+  if (real) {
+    // Free floor: a free-group account whose paid row is hosting-only ('website') still gets at least 'bookings'; everything else stays the paid row's.
+    if (real.tier === 'website' && (await isFree(uid))) return { ...real, tier: 'bookings' };
+    return real;
+  }
   return (await isFree(uid)) ? freeEntitlementOf(uid, environment) : null;
 }
 
@@ -101,6 +106,11 @@ export async function assignGroup(uid: string, email: string | null, requested: 
     if (start === null) return 'base';
     const isNew = (await userCreatedAt(uid)) >= start && !(await hasStripeHistory(uid)) && !(await hasCompletedCheckout(uid, email));
     if (!isNew) group = 'base';
+    else {
+      // An App Store subscriber (or an iOS-linked shop) never gets the free site: publish would refuse it ('app-store-account') anyway.
+      const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+      if (!mode || (await appStoreStateOf(uid, mode)) !== null) group = 'base';
+    }
   } else if (requested !== 'base') {
     const start = priceTestStart();
     if (start === null || !groupConfigured(requested, process.env)) return 'base';

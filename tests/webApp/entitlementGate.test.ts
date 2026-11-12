@@ -124,6 +124,18 @@ describe('fetchWebEntitlementOf for a free-group account', () => {
   });
 });
 
+describe('fetchWebEntitlementOf free floor', () => {
+  it('free group + entitled website-tier paid row: product is the bookings one, paid id kept; base group keeps website', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    const rows = [rec({ environment: 'test', tier: 'website' })];
+    const free = await fetchWebEntitlementOf(fakeDb({ web_app_entitlements: rows, web_app_sites: [], web_app_price_groups: [{ user_id: 'u1', price_group: 'free' }] }), 'u1');
+    expect(free?.original_transaction_id).toBe('web:sub_1');
+    expect(free?.product_id).toBe('com.ibrahim1774.aibarber.bookings.monthly');
+    const base = await fetchWebEntitlementOf(fakeDb({ web_app_entitlements: rows, web_app_sites: [], web_app_price_groups: [{ user_id: 'u1', price_group: 'base' }] }), 'u1');
+    expect(base?.product_id).toBe(webProductId('website', 'month'));
+  });
+});
+
 describe('gateRow', () => {
   const shop = { ios_otid: null as string | null, owner_id: 'u1' };
   const mk = () => ({ purchase: vi.fn(async (o: string) => ({ id: `ios:${o}` })), webEntitlementOf: vi.fn(async (u: string) => ({ id: `web:${u}` })) });

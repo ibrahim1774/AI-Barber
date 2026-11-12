@@ -9,6 +9,9 @@ import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
 import { readStoredGroup } from '../../lib/webApp/priceGroup.js';
 import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
+// Free floor: a free-group account with a hosting-only ('website') paid row still gets at least the bookings tier.
+const floorTier = (tier: string | null | undefined, isFreeGroup: boolean) => (isFreeGroup && tier === 'website' ? 'bookings' : tier);
+
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });
@@ -39,13 +42,14 @@ export default async function handler(req: any, res: any) {
     // A free-group account (no paid row) is entitled to hosting + bookings through its group alone; a paid row always wins.
     const free = priceGroup === 'free' && !live;
     // Required-phone state (server truth for the client gate). Fails soft: a lookup problem never breaks /me.
-    const envOn = process.env.WEB_APP_PHONE_GATE === '1';
-    const st = envOn ? await savedPhoneState(caller.id) : { phone: null, contactsOk: true }; // flag off: no extra reads on every /me
+    // A free-group account is always gated (publish answers 403 phone-required unconditionally), so /me must agree even with the env flag off.
+    const envOn = process.env.WEB_APP_PHONE_GATE === '1' || priceGroup === 'free';
+    const st = envOn ? await savedPhoneState(caller.id) : { phone: null, contactsOk: true }; // flag off and not free: no extra reads on every /me
     const flag = envOn && st.contactsOk; // contacts table unreadable (migration 032 missing): fail open, no gate
     const phone = st.phone;
     const needs = needsPhone({ flag, phone, entitlementRows: rows, free: priceGroup === 'free' });
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : row?.tier ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
+    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : floorTier(row?.tier, priceGroup === 'free' && !!live) ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
   } catch (e: any) {
     console.error('[web-app me]', e.message);
     return res.status(502).json({ error: 'lookup_failed' });

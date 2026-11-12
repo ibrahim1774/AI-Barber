@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 // Free site portal (primebarber.org/free-site): the 'free' group, its in-memory entitlement, and every place that must accept or skip it.
 const db = vi.hoisted(() => ({
   groups: [] as any[], ents: [] as any[], custs: [] as any[], calls: [] as any[], sessions: [] as any[],
-  user: 'u1', created: '2026-11-13T00:00:00Z', phone: null as string | null, sites: [] as any[],
+  user: 'u1', created: '2026-11-13T00:00:00Z', phone: null as string | null, sites: [] as any[], contactsOk: true, appStore: null as any,
 }));
 
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
@@ -26,9 +26,9 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
   },
 }));
 vi.mock('../../lib/webApp/contactPhoneLive.js', () => ({
-  savedPhoneOf: async () => db.phone, savedPhoneState: async () => ({ phone: db.phone, contactsOk: true }),
+  savedPhoneOf: async () => db.phone, savedPhoneState: async () => ({ phone: db.phone, contactsOk: db.contactsOk }),
 }));
-vi.mock('../../lib/webApp/appStoreGuard.js', () => ({ appStoreStateOf: async () => null }));
+vi.mock('../../lib/webApp/appStoreGuard.js', () => ({ appStoreStateOf: async () => db.appStore }));
 
 import handler from '../../api/web-app/price-group.js';
 import me from '../../api/web-app/me.js';
@@ -51,7 +51,7 @@ beforeEach(() => {
   vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
   vi.stubEnv('WEB_APP_FREE_OPEN', '1'); vi.stubEnv('WEB_APP_FREE_START', '2026-11-12T00:00:00Z');
   vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
-  db.created = '2026-11-13T00:00:00Z'; db.sessions = []; db.groups = []; db.ents = []; db.custs = []; db.calls = []; db.phone = null; db.sites = [];
+  db.created = '2026-11-13T00:00:00Z'; db.sessions = []; db.groups = []; db.ents = []; db.custs = []; db.calls = []; db.phone = null; db.sites = []; db.contactsOk = true; db.appStore = null;
   db.user = `u${++n}`;
   vi.stubGlobal('fetch', async () => ({ ok: true, status: 200, json: async () => ({ created_at: db.created }) }));
 });
@@ -105,6 +105,11 @@ describe('assignGroup / POST price-group with free', () => {
     expect(await assignGroup(db.user, 'o@example.com', 'free', 'test')).toBe('free');
     expect(await isFree(db.user)).toBe(true);
   });
+  it('an App Store subscriber / iOS-linked account is stored base, not free', async () => {
+    db.appStore = 'active';
+    expect((await post({ group: 'free' })).body).toEqual({ ok: true, group: 'base' });
+    expect(db.groups[0]).toMatchObject({ price_group: 'base' });
+  });
   it('limits NEW free assignments per IP, but never an already stored group', async () => {
     let last: any;
     for (let i = 0; i < 11; i++) { db.user = `ip-${n}-${i}`; db.groups = []; last = await post({ group: 'free' }, '9.9.9.9'); }
@@ -144,6 +149,17 @@ describe('free entitlement', () => {
     db.groups = [{ price_group: 'base' }];
     expect(await entitlementOrFree(db.user, null, 'test')).toBeNull();
     expect(writes()).toHaveLength(0);
+  });
+  it('free floor: a free account on a website-tier paid row is lifted to bookings; paid id/status stay; higher tiers and non-free are untouched', async () => {
+    const real: any = { stripe_subscription_id: 'sub_1', tier: 'website', status: 'active' };
+    db.groups = [{ price_group: 'free' }];
+    expect(await entitlementOrFree(db.user, real, 'test')).toMatchObject({ stripe_subscription_id: 'sub_1', status: 'active', tier: 'bookings' });
+    expect(await entitlementOrFree(db.user, { ...real, tier: 'store' }, 'test')).toMatchObject({ tier: 'store' });
+    db.groups = [{ price_group: 'base' }];
+    expect(await entitlementOrFree(db.user, real, 'test')).toBe(real);
+    db.groups = [{ price_group: 'free' }];
+    db.ents = [real];
+    expect(await liveEntitlementOf(db.user, 'test')).toMatchObject({ stripe_subscription_id: 'sub_1', tier: 'bookings' });
   });
   it('liveEntitlementOf returns the free entitlement when no paid row exists', async () => {
     db.groups = [{ price_group: 'free' }];
@@ -255,6 +271,25 @@ describe('GET /api/web-app/me for a free account', () => {
     const b = (await call(me, { method: 'GET' })).body;
     expect(b).toMatchObject({ entitled: true, tier: 'store', plan: 'paid', subscriptionId: 'sub_1' });
   });
+  it('free floor: website-tier paid row on a free account reports bookings (still paid, same subscription); base keeps website', async () => {
+    db.ents = [{ stripe_subscription_id: 'sub_1', tier: 'website', billing_interval: 'month', status: 'active', created_at: '2026-11-13T00:00:00Z' }];
+    db.groups = [{ price_group: 'free' }];
+    expect((await call(me, { method: 'GET' })).body).toMatchObject({ plan: 'paid', tier: 'bookings', subscriptionId: 'sub_1' });
+    db.groups = [{ price_group: 'base' }];
+    expect((await call(me, { method: 'GET' })).body).toMatchObject({ tier: 'website' });
+  });
+  it('phone gate: a free account without a phone always gets needsPhone:true (env flag off); phone saved -> false; contacts unreadable -> false', async () => {
+    db.groups = [{ price_group: 'free' }];
+    expect((await call(me, { method: 'GET' })).body).toMatchObject({ needsPhone: true, phoneGate: true });
+    db.phone = '+15551234567';
+    expect((await call(me, { method: 'GET' })).body).toMatchObject({ needsPhone: false });
+    db.phone = null; db.contactsOk = false;
+    expect((await call(me, { method: 'GET' })).body).toMatchObject({ needsPhone: false, phoneGate: false });
+  });
+  it('phone gate: a non-free account with the env flag off is still never asked', async () => {
+    db.ents = [{ stripe_subscription_id: 'sub_1', tier: 'store', billing_interval: 'month', status: 'active', created_at: '2026-11-13T00:00:00Z' }];
+    expect((await call(me, { method: 'GET' })).body).toMatchObject({ needsPhone: false });
+  });
   it('base with no row stays not entitled, plan null', async () => {
     const b = (await call(me, { method: 'GET' })).body;
     expect(b).toMatchObject({ priceGroup: 'base', entitled: false, plan: null, tier: null });
@@ -301,5 +336,17 @@ describe('migration 036', () => {
     expect(sql).toMatch(/check \(price_group in \('base', 'g10', 'g20', 'free'\)\)/);
     expect(sql).toMatch(/stop_reason in \([^)]*'late','free'\)/);
     expect(sql).not.toMatch(/drop table|delete from/i);
+  });
+});
+
+describe('POST /api/web-app/portal for a free account', () => {
+  it('no Stripe customer: 404 no_subscription with plan free; base account gets no plan field', async () => {
+    const portal = (await import('../../api/web-app/portal.js')).default;
+    db.groups = [{ price_group: 'free' }];
+    const r = await call(portal, { method: 'POST' });
+    expect(r.code).toBe(404); expect(r.body).toEqual({ error: 'no_subscription', plan: 'free' });
+    db.groups = [{ price_group: 'base' }];
+    const b = await call(portal, { method: 'POST' });
+    expect(b.code).toBe(404); expect(b.body).toEqual({ error: 'no_subscription' });
   });
 });

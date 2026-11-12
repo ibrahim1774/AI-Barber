@@ -26,7 +26,7 @@ import { normEmail, supabaseSiteOwners, type SiteOwnerRow, type SiteOwnerStore }
 import { isEntitledStatus, keyMode, type EntitlementRow, type Interval, type Tier } from './stripeCore.js';
 import { callerFrom, sbRest, stripeCall } from './webAppServer.js';
 import { entitlementOrFree, isFreeSubscriptionId } from './priceGroup.js';
-import { savedPhoneOf } from './contactPhoneLive.js';
+import { savedPhoneState } from './contactPhoneLive.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
@@ -391,7 +391,8 @@ export function liveWebPublishDeps(): WebPublishDeps {
     userOf: callerFrom,
     entitlementOf: (uid) => liveEntitlementOf(uid, environment),
     appStoreState: (uid) => appStoreStateOf(uid, environment),
-    phoneOnFile: async (uid) => !!(await savedPhoneOf(uid)),
+    // Contacts unreadable (migration 032 missing): skip the check, otherwise free publish would 403 forever.
+    phoneOnFile: async (uid) => { const s = await savedPhoneState(uid); return !!s.phone || !s.contactsOk; },
     sites,
     owners,
     isTaken: async (s) => (await iosTaken(s)) || !!(await owners.get(s)) || !!(await sites.get(s)),

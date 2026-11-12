@@ -19,7 +19,12 @@ export default async function handler(req: any, res: any) {
     // The customer behind the paid plan first (an old canceled subscription must not pick the customer), else the newest.
     const row = rows.find((r) => isEntitledStatus(r.status)) ?? rows[0];
     const customer = row?.stripe_customer_id;
-    if (!customer) return res.status(404).json({ error: 'no_subscription' });
+    if (!customer) {
+      // A free-group account has no Stripe customer: say so distinctly (nothing to manage or cancel).
+      let free = false;
+      try { free = (await readStoredGroup(caller.id)) === 'free'; } catch { /* plain no_subscription */ }
+      return res.status(404).json(free ? { error: 'no_subscription', plan: 'free' } : { error: 'no_subscription' });
+    }
     // Price test: the group comes from the price the subscription is ACTUALLY on (like dunning) and must agree with the stored group,
     // so the portal never offers another group's prices. Fail closed ONLY when a test group (g10 / g20) is involved (the subscription's
     // price maps to one, or the stored group is one). Base-group and unrecognised-price subscribers with no stored test group keep the
