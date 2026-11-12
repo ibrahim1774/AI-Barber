@@ -42,7 +42,7 @@ describe('vercel.json /app route', () => {
   });
   it('did not remove or reorder any other rewrite or cron', () => {
     expect(cfg.rewrites.filter((r) => !/\/app/.test(r.source)).map((r) => r.source)).toEqual([
-      '/api/(.*)', '/privacy', '/privacy/', '/terms', '/terms/', '/support', '/support/', '/stripe-return', '/stripe-return/', '/book/(.*)', '/shop/(.*)', '/', '/10', '/10/', '/20', '/20/', '/((?!api/|_ab/).*)', // /10 and /20: price test
+      '/api/(.*)', '/privacy', '/privacy/', '/terms', '/terms/', '/support', '/support/', '/stripe-return', '/stripe-return/', '/book/(.*)', '/shop/(.*)', '/', '/free-site', '/free-site/', '/10', '/10/', '/20', '/20/', '/((?!api/|_ab/).*)', // /free-site, /10 and /20: free portal and price test
     ]);
   });
 });

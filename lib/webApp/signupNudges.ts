@@ -11,11 +11,12 @@ import { maskEmail, signContinueToken } from './nudgeToken.js';
 import { isEntitledStatus, WEB_APP_TAG } from './stripeCore.js';
 import { APP_ORIGIN, sbRest, stripeCall } from './webAppServer.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
+import { isFree as isFreeAccount } from './priceGroup.js';
 import { sendMail, signupNudgeEmail, type Mail } from './emails.js';
 import { isSuppressed } from './suppressions.js';
 
 type Mode = 'live' | 'test';
-export type StopReason = 'paid' | 'deleted' | 'suppressed' | 'not_web' | 'live' | 'expired' | 'done' | 'before_launch' | 'bad_address' | 'late';
+export type StopReason = 'paid' | 'deleted' | 'suppressed' | 'not_web' | 'live' | 'expired' | 'done' | 'before_launch' | 'bad_address' | 'late' | 'free';
 
 export const HOUR = 3600_000;
 export const EXPIRY_MS = 7 * 24 * HOUR;
@@ -82,6 +83,8 @@ export interface SignupNudgeDeps {
   appStoreState(userId: string): Promise<AppStoreState>;
   hasIosPurchase(userId: string): Promise<boolean>;
   hasLegacySite(userId: string): Promise<boolean>;
+  /** The stored price group is 'free' (primebarber.org/free-site): free accounts get no paywall nudges. Throws on error. */
+  isFree(userId: string): Promise<boolean>;
   /** A live (published, not removed or taken down) web site for this user. */
   isPublished(userId: string): Promise<boolean>;
   /** A web-app signal for this user: a web_app_price_groups, web_app_drafts, web_app_customers or checkout-session row. iOS-app sign-ups share the auth project and have none. Throws on error. */
@@ -204,6 +207,7 @@ export async function sweepSignupNudges(
     // Only people who came through the web app: iOS-app accounts (same auth project, no draft) have no web signal.
     if (!found && !(await deps.hasWebSignal(uid))) return stop('not_web');
     const draft: DraftInfo = found ?? { updatedAt: null, deployedUrl: null, shopName: null };
+    if (await deps.isFree(uid)) return stop('free'); // free accounts are never nudged to pay (checked before 'live': a published free site must stop as 'free')
     if (draft.deployedUrl || (await deps.isPublished(uid))) return stop('live');
     if ((await deps.appStoreState(uid)) || (await deps.hasIosPurchase(uid)) || (await deps.hasLegacySite(uid))) return stop('not_web');
     if (await deps.isEntitled(uid)) return stop('paid');
@@ -398,6 +402,7 @@ export function liveSignupNudgeDeps(mode: Mode, rest: typeof sbRest = sbRest): S
     appStoreState: (uid) => appStoreStateOf(uid, mode),
     async hasIosPurchase(uid) { return ((await rest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id&limit=1`)) ?? []).length > 0; },
     async hasLegacySite(uid) { return ((await rest(`sites?user_id=eq.${enc(uid)}&site_data->>source=is.null&select=id&limit=1`)) ?? []).length > 0; },
+    isFree: (uid) => isFreeAccount(uid),
     async isPublished(uid) { return ((await rest(`web_app_sites?user_id=eq.${enc(uid)}&environment=eq.${mode}&published_at=not.is.null&removed_at=is.null&taken_down_at=is.null&select=slug&limit=1`)) ?? []).length > 0; },
     async hasWebSignal(uid) {
       for (const q of [`web_app_price_groups?user_id=eq.${enc(uid)}`, `web_app_drafts?user_id=eq.${enc(uid)}`, `web_app_customers?user_id=eq.${enc(uid)}`, `web_app_checkout_sessions?user_id=eq.${enc(uid)}`]) {

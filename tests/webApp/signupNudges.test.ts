@@ -44,7 +44,7 @@ function make(w: Partial<World> = {}) {
     adminUser: async (uid) => { world.calls.push('admin'); const u = world.users.has(uid) ? world.users.get(uid)! : user(); if (u instanceof Error) throw u; return u; },
     draftInfo: async () => { world.calls.push('draft'); return world.flags.noDraft ? null : { updatedAt: ago(5 * HOUR), deployedUrl: null, shopName: "Jake's Cuts", ...world.draft }; },
     isEntitled: f('entitled'), stripePaid: async (e, u) => { world.calls.push('stripe'); const v = world.flags.stripePaid; if (v instanceof Error) throw v; return !!v; },
-    appStoreState: f('appStore', null), hasIosPurchase: f('ios'), hasLegacySite: f('legacy'), isPublished: f('published'),
+    appStoreState: f('appStore', null), hasIosPurchase: f('ios'), hasLegacySite: f('legacy'), isFree: f('free'), isPublished: f('published'),
     hasWebSignal: async () => { world.calls.push('signal'); const v = world.flags.webSignal; if (v instanceof Error) throw v; return v ?? true; },
     isSuppressed: async (e) => { world.calls.push('suppressed'); return !!world.flags.suppressed; },
     hasMx: async () => { world.calls.push('mx'); return world.flags.mx === undefined ? true : world.flags.mx; },
@@ -103,6 +103,10 @@ describe('eligibility matrix (one stop/skip per row)', () => {
   it('iOS purchase row', () => stopped({ flags: { ios: true } }, 'not_web'));
   it('legacy aibarber.org site', () => stopped({ flags: { legacy: true } }, 'not_web'));
   it('published site', () => stopped({ flags: { published: true } }, 'live'));
+  it('free-group account stops with reason free, even when its site is published (checked before live)', async () => {
+    await stopped({ flags: { free: true } }, 'free');
+    await stopped({ flags: { free: true, published: true } }, 'free');
+  });
   it('draft with a deployed url', () => stopped({ draft: { deployedUrl: 'https://x.app' } }, 'live'));
   it('suppressed address', () => stopped({ flags: { suppressed: true } }, 'suppressed'));
   it('before the launch gate', () => stopped({ users: new Map([['u1', user({ createdAt: '2026-10-20T00:00:00Z' })]]) }, 'before_launch'));

@@ -23,6 +23,7 @@ import { approveProposal, classifyServiceFamily, generateServiceCopy, type Gener
 import { serviceCopyAutoPublish, serviceCopyWriteMode } from './flags.js';
 import { signingSecret } from './approval.js';
 import { isEntitledStatus } from '../webApp/stripeCore.js';
+import { isFree } from '../webApp/priceGroup.js';
 import { liveModelClient, type ModelClient } from './model.js';
 import { tableCopyStore, type CopyStore } from './store.js';
 
@@ -58,7 +59,8 @@ export function liveDeps(): HandlerDeps {
     draft: readDraft,
     entitled: async (uid) => {
       const rows = await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(uid)}&environment=eq.${modeOf()}&status=in.(active,trialing,past_due)&select=status&order=created_at.desc&limit=1`);
-      return Array.isArray(rows) && rows.length > 0 && isEntitledStatus(String(rows[0]?.status));
+      if (Array.isArray(rows) && rows.length > 0 && isEntitledStatus(String(rows[0]?.status))) return true;
+      return isFree(uid); // a free-group account (no stored entitlement row) is entitled to hosting + bookings
     },
     autoPublish: () => serviceCopyAutoPublish(),
     writeMode: () => serviceCopyWriteMode(),

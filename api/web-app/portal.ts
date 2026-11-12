@@ -24,7 +24,8 @@ export default async function handler(req: any, res: any) {
     // so the portal never offers another group's prices. Fail closed ONLY when a test group (g10 / g20) is involved (the subscription's
     // price maps to one, or the stored group is one). Base-group and unrecognised-price subscribers with no stored test group keep the
     // old behaviour exactly: the base STRIPE_WEBAPP_PORTAL_CONFIG.
-    const stored = (await readStoredGroup(caller.id)) ?? 'base';
+    const storedRaw = (await readStoredGroup(caller.id)) ?? 'base';
+    const stored: PriceGroup = storedRaw === 'free' ? 'base' : storedRaw; // free behaves like base here (its paid plan is on base prices)
     let subGroup: PriceGroup | null = null;
     try {
       const sub = row.stripe_subscription_id ? await stripeCall(`subscriptions/${encodeURIComponent(row.stripe_subscription_id)}`, null, 'GET') : null;

@@ -6,14 +6,14 @@
 // Live Stripe mode only, unless WEB_APP_CAPI_TEST=1. Best effort: never throws, bounded by a timeout.
 import { buildUserData } from '../../api/_buildUserData.js';
 import { hashEmail, hashExternalId } from '../../api/_hashPii.js';
-import { PRICE_CENTS, tierForPriceId } from './stripeCore.js';
+import { PRICE_CENTS, tierForPriceId, type PriceGroup } from './stripeCore.js';
 
 export const SERVER_PURCHASE_TIMEOUT_MS = 5_000;
 export const EVENT_SOURCE_URL = 'https://www.primebarber.org/app/';
 const TIKTOK_PIXEL_ID = 'D81SNARC77UATASKVG10'; // same as api/tiktok-event.ts
 
 export interface PurchaseFacts {
-  subscriptionId: string; value: number; tier: string; interval: 'month' | 'year'; group: 'base' | 'g10' | 'g20';
+  subscriptionId: string; value: number; tier: string; interval: 'month' | 'year'; group: PriceGroup;
   contentId: string; contentName: string;
 }
 

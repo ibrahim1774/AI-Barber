@@ -40,7 +40,7 @@ export default async function handler(req: any, res: any) {
     try {
       const stored = await readStoredGroup(caller.id);
       if (stored) {
-        group = stored;
+        group = stored === 'free' ? 'base' : stored; // a free-group account upgrades at base prices (and the subscription is tagged base)
         price = priceIdFor(tier, interval, process.env, group);
         if (!price && group !== 'base') return res.status(503).json({ error: 'price_not_configured' });
       } else {
@@ -48,7 +48,7 @@ export default async function handler(req: any, res: any) {
         price = null;
         // Not stored yet: a requested test group is stored and used only when assignGroup allows it (test open, group fully configured,
         // new sign-up); otherwise 'base' (and nothing is stored when the test is closed or unconfigured).
-        if (isPriceGroup(asked) && asked !== 'base') {
+        if (isPriceGroup(asked) && asked !== 'base' && asked !== 'free') { // 'free' is never assigned from checkout
           group = await assignGroup(caller.id, caller.email, asked, 'checkout');
         }
         price = priceIdFor(tier, interval, process.env, group);

@@ -8,6 +8,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import { isEntitledStatus, keyMode, type EntitlementRow, type Interval, type Tier } from './stripeCore.js';
+import { freeEntitlementOf } from './priceGroup.js';
 
 export const webAppEntitlementsOn = (): boolean => process.env.WEB_APP_ENTITLEMENTS === '1';
 
@@ -55,7 +56,14 @@ export async function fetchWebEntitlementOf(db: SupabaseClient, userId: string):
   if (!mode) return null;
   const { data, error } = await db.from('web_app_entitlements').select('*').eq('user_id', userId).eq('environment', mode);
   if (error) throw new Error(`web_app_entitlements lookup failed: ${error.message}`);
-  const row = pickWebRow((data ?? []) as WebEntitlementRecord[], mode);
+  let row = pickWebRow((data ?? []) as WebEntitlementRecord[], mode);
+  // Free-group account (stored group 'free', no paid entitled row): the in-memory free entitlement (hosting + bookings), never stored.
+  if (!row || !isEntitledStatus(row.status)) {
+    const { data: g, error: ge } = await db.from('web_app_price_groups').select('price_group').eq('user_id', userId).maybeSingle();
+    // A missing table (migration 034 not applied) reads as no group; any other failure throws so a gate never guesses.
+    if (ge && !/does not exist|not find the table|PGRST205|42P01/i.test(`${ge.code ?? ''} ${ge.message ?? ''}`)) throw new Error(`web_app_price_groups lookup failed: ${ge.message}`);
+    if ((g as { price_group?: string } | null)?.price_group === 'free') row = { ...freeEntitlementOf(userId, mode), updated_at: new Date().toISOString() };
+  }
   if (!row) return null;
   const { data: site, error: e2 } = await db.from('web_app_sites').select('taken_down_at').eq('stripe_subscription_id', row.stripe_subscription_id).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (e2) throw new Error(`web_app_sites lookup failed: ${e2.message}`);

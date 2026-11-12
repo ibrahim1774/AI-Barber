@@ -96,13 +96,31 @@ describe('fetchWebEntitlementOf', () => {
     expect(r?.taken_down_at).toBe('2026-10-31T00:00:00Z');
   });
   it('a test row is ignored under a live key, and no key means none', async () => {
-    const db = fakeDb({ web_app_entitlements: [rec({ environment: 'test' })], web_app_sites: [] });
+    const db = fakeDb({ web_app_entitlements: [rec({ environment: 'test' })], web_app_sites: [], web_app_price_groups: [] });
     vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x');
     expect(await fetchWebEntitlementOf(db, 'u1')).toBeNull();
     vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', '');
     expect(await fetchWebEntitlementOf(db, 'u1')).toBeNull();
     vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
     expect((await fetchWebEntitlementOf(db, 'u1'))?.environment).toBe('Sandbox');
+  });
+});
+
+describe('fetchWebEntitlementOf for a free-group account', () => {
+  it('no paid row + stored group free: a synthesized, entitled bookings gate row (open gates)', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    const db = fakeDb({ web_app_entitlements: [], web_app_sites: [], web_app_price_groups: [{ user_id: 'u1', price_group: 'free' }] });
+    const r = await fetchWebEntitlementOf(db, 'u1');
+    expect(r?.original_transaction_id).toBe('web:free:u1');
+    expect(r?.product_id).toBe('com.ibrahim1774.aibarber.bookings.yearly');
+    expect(r?.taken_down_at).toBeNull();
+    expect(r?.environment).toBe('Sandbox');
+  });
+  it('group base (or none) with no paid row stays null; a canceled paid row plus free still entitles', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    expect(await fetchWebEntitlementOf(fakeDb({ web_app_entitlements: [], web_app_sites: [], web_app_price_groups: [{ user_id: 'u1', price_group: 'base' }] }), 'u1')).toBeNull();
+    const db = fakeDb({ web_app_entitlements: [rec({ environment: 'test', status: 'canceled' })], web_app_sites: [], web_app_price_groups: [{ user_id: 'u1', price_group: 'free' }] });
+    expect((await fetchWebEntitlementOf(db, 'u1'))?.taken_down_at).toBeNull();
   });
 });
 

@@ -26,7 +26,7 @@ export const SHEET_MAX_CONSECUTIVE_FAILS = 5;
 export const isInternalTest = (email: string | null | undefined) => /^ibrahim3709\+/i.test((email ?? '').trim());
 
 export interface SheetRow { user_id: string; email: string | null; signup_at: string }
-export interface SheetDetails { email: string | null; companyName: string; location: string; phone: string; bookingLink: string; priceGroup: 'base' | 'g10' | 'g20' }
+export interface SheetDetails { email: string | null; companyName: string; location: string; phone: string; bookingLink: string; priceGroup: 'base' | 'g10' | 'g20' | 'free' }
 export interface SheetPayload { companyName: string; location: string; phone: string; bookingLink: string; timestamp: string; email: string; source: string; priceGroup: string; industry: string }
 
 export interface SignupSheetDeps {
@@ -49,7 +49,7 @@ export function buildPayload(row: SheetRow, d: SheetDetails): SheetPayload {
   return {
     companyName: d.companyName, location: d.location, phone: d.phone, bookingLink: d.bookingLink,
     timestamp: new Date(row.signup_at).toISOString(), email: (d.email ?? row.email ?? '').trim(),
-    source: 'primebarber.org', priceGroup: d.priceGroup, industry: 'barber',
+    source: d.priceGroup === 'free' ? 'primebarber.org/free-site' : 'primebarber.org', priceGroup: d.priceGroup, industry: 'barber',
   };
 }
 
@@ -183,7 +183,7 @@ export function liveSignupSheetDeps(mode: Mode, rest: typeof sbRest = sbRest, fe
         location: typeof d?.address === 'string' ? d.address.trim() : '',
         phone: bestPhone([Array.isArray(contact) ? contact[0]?.phone_e164 : null, u.phone, meta.phone, meta.phone_number, siteRows.find((s) => s?.contact_phone)?.contact_phone, Array.isArray(legacy) ? legacy[0]?.phone : null, d?.phone]),
         bookingLink: siteUrl || '',
-        priceGroup: g === 'g10' || g === 'g20' ? g : 'base',
+        priceGroup: g === 'g10' || g === 'g20' || g === 'free' ? g : 'base',
       };
     },
     async post(url, payload) {

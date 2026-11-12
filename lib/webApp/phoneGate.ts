@@ -10,11 +10,14 @@ export interface NeedsPhoneInput {
   phone: string | null | undefined;
   /** web_app_entitlements rows of this user for this Stripe mode. */
   entitlementRows: Array<{ status: string }>;
+  /** The stored price group is 'free' (no entitlement row): free accounts must give a number before publishing. */
+  free?: boolean;
 }
 
-/** Only users with an entitled (active, trialing, past_due) plan, only with the flag on, only when no phone is on file. */
+/** Only users with an entitled (active, trialing, past_due) plan or a free-group account, only with the flag on, only when no phone is on file. */
 export function needsPhone(i: NeedsPhoneInput): boolean {
   if (!i.flag) return false;
   if (typeof i.phone === 'string' && i.phone.trim()) return false;
+  if (i.free) return true;
   return i.entitlementRows.some((r) => isEntitledStatus(r.status));
 }
