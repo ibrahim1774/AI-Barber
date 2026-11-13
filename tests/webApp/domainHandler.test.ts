@@ -10,9 +10,12 @@ const m = vi.hoisted(() => ({
   webDomainRenewal: vi.fn(async () => ({ status: 200, body: { autoRenew: false } })),
   webDomainPortal: vi.fn(async () => ({ status: 200, body: { url: 'https://billing.stripe.com/p' } })),
 }));
+const f = vi.hoisted(() => ({ free: false, plan: { customer: 'cus_x' } as { customer: string } | null }));
+vi.mock('../../lib/webApp/priceGroup.js', () => ({ isFree: async () => f.free }));
+vi.mock('../../lib/webApp/webAppServer.js', async (orig) => ({ ...(await orig() as object), callerFrom: async () => ({ id: 'u1', email: null }) }));
 vi.mock('../../lib/webDomains.js', () => m);
 vi.mock('../../lib/webApp/domainOneClick.js', () => ({ oneClickCard: m.oneClickCard, oneClickDomainPurchase: m.oneClickDomainPurchase }));
-vi.mock('../../lib/webApp/domainOneClickLive.js', () => ({ liveOneClickDeps: () => ({}), livePanelDeps: () => ({}), webPlanOf: async () => ({ customer: 'cus_x' }) }));
+vi.mock('../../lib/webApp/domainOneClickLive.js', () => ({ liveOneClickDeps: () => ({}), livePanelDeps: () => ({}), webPlanOf: async () => f.plan }));
 vi.mock('../../lib/ios/domainLive.js', () => ({ liveWebDomainDeps: () => ({}) }));
 vi.mock('../../lib/deployAuth.js', () => ({ authorizeSiteOwner: vi.fn(), liveDeployAuthDeps: () => ({}) }));
 vi.mock('../../lib/ios/vercelDomains.js', () => ({ liveVercelDomains: () => null, registrantContact: () => null }));
@@ -88,5 +91,18 @@ describe('api/web-app/domain', () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(m.oneClickCard).not.toHaveBeenCalled();
     expect(res.headers['Cache-Control']).toBe('no-store');
+  });
+
+  it('free-plan account without a paid plan cannot start a domain purchase; a paid one and the other actions can', async () => {
+    f.free = true; f.plan = null;
+    for (const action of ['card', 'buy', 'checkout']) {
+      const res = await call({ action, siteId: 's', domain: 'x.com' });
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ error: 'free_plan', plan: 'free' });
+    }
+    expect((await call({ action: 'status', siteId: 's' })).status).toHaveBeenCalledWith(200);
+    f.plan = { customer: 'cus_x' };
+    expect((await call({ action: 'card', siteId: 's' })).status).toHaveBeenCalledWith(200);
+    f.free = false; f.plan = { customer: 'cus_x' };
   });
 });

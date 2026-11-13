@@ -154,6 +154,11 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
       })) as RemovableSite[];
       return [...ios, ...web];
     },
+    // The account's price-group row goes with the user (best effort: a leftover row is harmless and must never fail the delete).
+    async deleteUser(userId) {
+      await base.deleteUser(userId);
+      await sbRest(`web_app_price_groups?user_id=eq.${enc(userId)}`, { method: 'DELETE' }).catch((e: any) => console.error('[web-app delete] price group row left behind:', e?.message || e));
+    },
     takeDown: (s) => (isWebSite(s) ? takeDown(s, webRemove) : base.takeDown(s)),
     purge: (s) => (isWebSite(s) ? purge(s, webRemove) : base.purge(s)),
     // The shop is closed first (customers told, money refunded); only then is the billing stopped.

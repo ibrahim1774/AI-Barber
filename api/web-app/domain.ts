@@ -18,7 +18,8 @@ import { liveWebDomainDeps } from '../../lib/ios/domainLive.js';
 import { liveVercelDomains, registrantContact } from '../../lib/ios/vercelDomains.js';
 import { supabaseDomains } from '../../lib/ios/domainsRepo.js';
 import { serviceClient } from '../../lib/bookings/repo.js';
-import { APP_ORIGIN, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { APP_ORIGIN, callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { isFree } from '../../lib/webApp/priceGroup.js';
 
 export const config = { maxDuration: 300 };
 
@@ -33,6 +34,12 @@ export default async function handler(req: any, res: any) {
     const auth = req.headers?.authorization;
     const authDeps = liveDeployAuthDeps();
     const authorize = (siteId: unknown, authorization: unknown) => authorizeSiteOwner({ siteId, authorization }, authDeps);
+    // A free-plan account (stored group 'free', no paid plan) gets no custom domain: it must upgrade first. 'purchase' (claiming a
+    // domain already paid for) and the status / portal / renewal actions are never blocked.
+    if (body.action === 'card' || body.action === 'buy' || body.action === 'checkout') {
+      const caller = await callerFrom(auth);
+      if (caller && (await isFree(caller.id)) && !(await webPlanOf(caller.id))) return res.status(403).json({ error: 'free_plan', plan: 'free' });
+    }
     let r: { status: number; body: unknown };
     switch (body.action) {
       case 'card': r = await oneClickCard(body, auth, liveOneClickDeps(authorize)); break;
