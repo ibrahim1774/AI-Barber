@@ -54,12 +54,13 @@ export async function rehostImageMap(
     const out = { ...map };
     // One job per distinct source URL (the same photo can fill several slots).
     const sources = [...new Set(Object.values(map).filter((u) => /^https?:\/\//i.test(u) && !isStockImage(u) && !isOwnUrl(u, deps.bucketName)))].slice(0, REHOST_MAX_IMAGES);
-    if (!sources.length) return map;
+    if (!sources.length) { console.info(`[rehost] ${siteId}: 0 copied, 0 reused, 0 kept`); return map; }
     const controller = new AbortController();
     const started = Date.now();
     const budget = deps.budgetMs ?? REHOST_BUDGET_MS;
     const timer = setTimeout(() => controller.abort(), budget);
     const hosted = new Map<string, string>();
+    let reused = 0;
     const left = () => budget - (Date.now() - started);
     // Rejects when the budget ends, even if the underlying work does not stop.
     const guard = <T>(p: Promise<T>): Promise<T> => new Promise<T>((res, rej) => {
@@ -72,12 +73,12 @@ export async function rehostImageMap(
       try {
         if (left() <= 0) return;
         const name = rehostFilename(src);
-        if (await guard(deps.exists(siteId, name).catch(() => false))) { hosted.set(src, deps.urlOf(siteId, name)); return; }
+        if (await guard(deps.exists(siteId, name).catch(() => false))) { hosted.set(src, deps.urlOf(siteId, name)); reused++; return; }
         const img = await guard(deps.fetchImage(src, { signal: controller.signal, timeoutMs: Math.min(IMAGE_TIMEOUT_MS, Math.max(1, left())), maxBytes: MAX_IMAGE_BYTES }));
         if (img.buffer.byteLength > MAX_IMAGE_BYTES) return;
         hosted.set(src, await guard(deps.upload(siteId, name, img.buffer, img.contentType)));
       } catch (e) {
-        console.warn(`[rehost] ${siteId}: keeping the original for one image (${(e as Error)?.message || e})`);
+        console.warn(`[rehost] ${siteId}: keeping the original for ${src} (${(e as Error)?.message || e})`);
       }
     };
     try {
@@ -87,6 +88,8 @@ export async function rehostImageMap(
       }));
     } finally { clearTimeout(timer); controller.abort(); }
     for (const [k, v] of Object.entries(out)) if (hosted.has(v)) out[k] = hosted.get(v)!;
+    // One line per publish so the platform logs show what happened (kept = fetch/upload failed, over budget or over the cap).
+    console.info(`[rehost] ${siteId}: ${hosted.size - reused} copied, ${reused} reused, ${sources.length - hosted.size} kept`);
     return out;
   } catch (e) {
     console.warn(`[rehost] ${siteId}: skipped (${(e as Error)?.message || e})`);
