@@ -62,6 +62,8 @@ function tidyName(raw: string): { title: string; duration?: string } {
   return { title: t, duration };
 }
 
+const cleanSvc = (s: Svc): Svc => (s.description ? { ...s, description: removeBooksy(s.description) || undefined } : s);
+
 function goodName(t: string): boolean {
   return t.length >= 3 && t.length <= 70 && /[A-Za-z]{3}/.test(t) && !NAME_JUNK.test(t) && !SENTENCE.test(t) && t.split(' ').length <= 9 && !/@|https?:/i.test(t);
 }
@@ -144,6 +146,117 @@ export function servicesFromLines(lines: string[]): NonNullable<ScrapedShop['ser
     if (n.title.length < line.replace(new RegExp(PRICE, 'g'), '').replace(DURATION, '').replace(/[\s.…·•|:–—()-]+/g, ' ').trim().length * 0.6) continue;
     const range = prices.length === 2 ? priceText(prices[0], prices[1]) : priceText(prices[0]);
     push(n.title, range, n.duration);
+  }
+  return out;
+}
+
+// ── Service cards (static multi-page sites): Name / description / duration / "$35.00 · 30min" ─────────────────────
+
+/** Like htmlToLines, but also breaks at inline boxes (a, span, small, s, strong, b, em), so a price-list row built from
+ *  <a><span>Name<small>desc · 30min</small></span><span><s>$42.00</s>$35.70</span></a> becomes separate lines. */
+export function htmlToCardLines(html: string): string[] {
+  return htmlToLines(html.replace(/<\/?(?:a|span|small|s|strike|del|strong|b|em|i)\b[^>]*>/gi, '\n'));
+}
+
+const DUR_SRC = String.raw`\d{1,3}\s*(?:min|mins|minutes)|\d\s*(?:h|hr|hrs|hour|hours)(?:\s*\d{1,2}\s*(?:min|mins|m))?`;
+const DUR_ONLY = new RegExp(String.raw`^\(?\s*(${DUR_SRC})\s*\)?$`, 'i');
+const DUR_LEAD_BOOKSY = new RegExp(String.raw`^(?:(.*?)\s+)?(${DUR_SRC})\s+on\s+booksy\.?$`, 'i');
+const DUR_TRAIL = new RegExp(String.raw`^(.*?)\s*[·•|]\s*(${DUR_SRC})$`, 'i');
+const CARD_PRICE = new RegExp(String.raw`^(\$\s?\d{1,4}(?:\.\d{2})?)(\+?)\s*(?:[·•|]\s*(${DUR_SRC}))?$`, 'i');
+const ROMAN_MARKER = /^[—–-]\s*[IVXLCDM]+$/;
+const LINK_TEXT = /^(?:learn more|read more|view|details|see more|more info|book(?:\s+\w+){0,3}|select|reserve|choose|schedule)\b.{0,12}$|[→›»>]$/i;
+
+export function normName(s: string): string {
+  return s.toLowerCase().replace(/[’‘`]/g, "'").replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+type Svc = NonNullable<ScrapedShop['services']>[number];
+const info = (s: Svc): number => (s.price ? 1 : 0) + (s.duration ? 1 : 0) + (s.description ? 1 : 0);
+
+/** De-duplicate by normalised name, keeping the entry with the most info (first position wins ties). */
+export function mergeServices(...lists: Svc[][]): Svc[] {
+  const byKey = new Map<string, Svc>();
+  for (const l of lists) for (const s of l) {
+    const k = normName(s.title);
+    if (!k) continue;
+    const cur = byKey.get(k);
+    if (!cur) byKey.set(k, s);
+    else if (info(s) > info(cur)) byKey.set(k, { ...s, title: cur.title });
+    else if (info(s) === info(cur) && !cur.description && s.description) byKey.set(k, { ...cur, description: s.description });
+  }
+  return [...byKey.values()];
+}
+
+function isCardName(l: string): boolean {
+  if (l.length < 3 || l.length > 80 || l.includes('$') || !/[A-Za-z]{3}/.test(l)) return false;
+  if (DUR_ONLY.test(l) || ROMAN_MARKER.test(l) || LINK_TEXT.test(l) || NAME_JUNK.test(l)) return false;
+  if (/[.!?]$/.test(l) || /\bon booksy\b/i.test(l) || DUR_TRAIL.test(l) || /@|https?:/i.test(l)) return false;
+  return true;
+}
+
+/** Cards whose price line is a lone "$35.00", "$25.00+" or "$35.00 · 30min". A second price line right after the
+ *  first (promo price) is ignored, so the regular price is the one kept. */
+export function serviceCardsFromLines(lines: string[]): Svc[] {
+  const out: Svc[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(CARD_PRICE);
+    if (!m || (i > 0 && CARD_PRICE.test(lines[i - 1]))) continue;
+    let duration = m[3] ? normalizeDuration(m[3]) : '';
+    const desc: string[] = [];
+    let name = '';
+    for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
+      const l = lines[j];
+      if (l.includes('$')) break;
+      if (ROMAN_MARKER.test(l) || LINK_TEXT.test(l)) break;
+      let d: RegExpMatchArray | null;
+      if ((d = l.match(DUR_ONLY))) { duration = duration || normalizeDuration(d[1]); continue; }
+      if ((d = l.match(DUR_LEAD_BOOKSY))) { duration = duration || normalizeDuration(d[2]); if (d[1]) desc.unshift(d[1]); continue; }
+      if ((d = l.match(DUR_TRAIL))) { duration = duration || normalizeDuration(d[2]); if (d[1]) desc.unshift(d[1]); continue; }
+      if (/[.!?]$/.test(l)) { desc.unshift(l); continue; }
+      if (isCardName(l)) { name = l; break; }
+      break;
+    }
+    if (!name) continue;
+    const description = removeBooksy(desc.join(' ')) || undefined;
+    out.push({ title: name, price: normalizePrice(m[1].replace(/\s/g, '') + m[2]), duration: duration || undefined, description });
+  }
+  return mergeServices(out);
+}
+
+/** Drop references to Booksy from imported text (the shop's Booksy account may be gone): booking-call sentences go,
+ *  "83 Booksy reviews" -> "83 reviews", "on Booksy" is cut out. */
+export function removeBooksy(text: string): string {
+  if (!/booksy/i.test(text)) return text.replace(/\s+/g, ' ').trim();
+  let t = text.replace(/\s*[—–-]\s*Booksy[’']?s?\s+promo pricing online\b/gi, '').replace(/\bBooksy[’']?s?\s+promo pricing online\b/gi, '');
+  const sentences = t.split(/(?<=[.!?])\s+/).filter((sent) => !(/booksy/i.test(sent) && /\b(book|books|booking|reserve|schedule)\b/i.test(sent)));
+  t = sentences.join(' ')
+    .replace(/\bBooksy[’']?s?\s+(?=reviews?\b)/gi, '')
+    .replace(/\s+(?:on|via|through|from|in)\s+Booksy[’']?s?\b/gi, '');
+  return t.split(/(?<=[.!?])\s+/).filter((sent) => !/booksy/i.test(sent)).join(' ').replace(/\s+([.,!?])/g, '$1').replace(/\s+/g, ' ').trim();
+}
+
+/** The first real paragraph(s) of an about page, at most `max` characters, Booksy references removed. */
+export function aboutTextFromHtml(html: string, max = 400): string {
+  const body = html
+    .replace(/<(script|style|noscript|template|head|header|nav|footer|aside|svg)\b[\s\S]*?<\/\1>/gi, ' ');
+  const paras: string[] = [];
+  for (const m of body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const t = removeBooksy(clean(m[1].replace(/<[^>]*>/g, ' ')));
+    if (t.split(' ').length < 8 || t.length < 50) continue;
+    if (/^(book|reserve|call|come|ready|see|find|follow)\b/i.test(t) && t.length < 110) continue;
+    if (/^["“”]/.test(t) || /^[—–-]/.test(t)) continue; // pull quotes
+    paras.push(t);
+  }
+  if (!paras.length) return '';
+  let out = paras[0];
+  if (out.length > max) {
+    const cut = out.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '), /[.!?]$/.test(cut) ? cut.length - 1 : -1);
+    return end > 80 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, '') + '…';
+  }
+  for (const p of paras.slice(1)) {
+    if ((out + ' ' + p).length > max) break;
+    out += ' ' + p;
   }
   return out;
 }
@@ -392,7 +505,7 @@ export function parseWebsiteHtml(html: string, pageUrl: string): ScrapedShop | n
 
   const addr = structured?.address ? null : addressFromLines(lines);
   const hours = (structured?.hours || []).some((h) => !h.closed) ? structured!.hours! : hoursFromLines(lines);
-  const textServices = servicesFromLines(lines);
+  const textServices = mergeServices(servicesFromLines(lines).map(cleanSvc), serviceCardsFromLines(htmlToCardLines(html)));
   const services = structured?.services?.length ? structured.services : textServices;
   const imgs = [...(structured?.photos || []), ...imagesFrom(html, pageUrl)].map((p) => resolveUrl(p, pageUrl)).filter(isPublicImageUrl);
   const og = resolveUrl(metaContent(html, 'og:image'), pageUrl);
@@ -402,7 +515,7 @@ export function parseWebsiteHtml(html: string, pageUrl: string): ScrapedShop | n
     area: structured?.area || addr?.area || '',
     address: structured?.address || addr?.address || '',
     phone: structured?.phone || phoneFrom(html, lines),
-    description: structured?.description || clean(metaContent(html, 'description')) || clean(metaContent(html, 'og:description')),
+    description: removeBooksy(structured?.description || clean(metaContent(html, 'description')) || clean(metaContent(html, 'og:description'))),
     hours,
     aggregateRating: structured?.aggregateRating,
     staff: structured?.staff || [],
@@ -422,12 +535,101 @@ export function parseWebsiteHtml(html: string, pageUrl: string): ScrapedShop | n
 
 // ── Entry point ────────────────────────────────────────────────────────────────────────────────────────────────
 
-// Total server time stays under 60 s: 8 s page fetch + at most this wait for the one Apify run + one Places lookup.
+// Total server time stays under 60 s: 8 s page fetch + (static sites: sub-pages in parallel, 10 s in all; JS shells: at most
+// this wait for the one Apify run, no sub-pages) + one Places lookup.
 export const APIFY_WAIT_SEC = 45;
+
+// ── Sub-pages: services / gallery / about of a static multi-page site ──────────────────────────────────────────
+
+export const SUBPAGE_BUDGET_MS = 10_000;
+export const MAX_SUBPAGES = 4;
+type SubKind = 'services' | 'gallery' | 'about';
+const KIND_WORDS: Record<SubKind, RegExp> = {
+  services: /^(?:services?|menu|pricing|prices?|price[- ]?list|rates)$/i,
+  gallery: /^(?:gallery|photos?|portfolio|our[- ]work|work)$/i,
+  about: /^(?:about|about[- ]us|our[- ]story|story)$/i,
+};
+const PAGE_EXT = /\.(?:html?|php|aspx?)$/i;
+const NOT_PAGE = /\.(?:jpe?g|png|webp|gif|svg|pdf|zip|mp4|mov|css|js)$/i;
+
+/** Up to 4 same-origin links from the entry page, one each for services, gallery, about (in that order). A link
+ *  scores 3 when its last path segment IS the word (services.html, /menu), 2 when its text is, 1 when a one-segment
+ *  path contains it; deeper paths ("services/fade.html" cards) never count. */
+export function pickSubPages(html: string, pageUrl: string): { kind: SubKind; url: string }[] {
+  let base: URL;
+  try { base = new URL(pageUrl); } catch { return []; }
+  const best: Partial<Record<SubKind, { score: number; url: string }>> = {};
+  for (const m of html.matchAll(/<a\b[^>]*\bhref=["']([^"'#]+)(?:#[^"']*)?["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    let u: URL;
+    try { u = new URL(decodeAll(m[1].trim()), base); } catch { continue; }
+    if (u.origin !== base.origin || NOT_PAGE.test(u.pathname)) continue;
+    u.hash = '';
+    const path = u.pathname.replace(/\/+$/, '');
+    if (path === base.pathname.replace(/\/+$/, '') && u.search === base.search) continue;
+    const segs = path.split('/').filter(Boolean);
+    const last = (segs[segs.length - 1] || '').replace(PAGE_EXT, '');
+    const text = clean(m[2].replace(/<[^>]*>/g, ' ')).replace(/[→›»>]+$/, '').trim();
+    for (const kind of Object.keys(KIND_WORDS) as SubKind[]) {
+      const re = KIND_WORDS[kind];
+      let score = 0;
+      if (segs.length === 1 && re.test(last)) score = 3;
+      else if (segs.length <= 1 && re.test(text.replace(/^(?:all|our|the|see|view)\s+/i, ''))) score = 2;
+      else if (segs.length === 1 && last.split(/[-_]/).some((w) => re.test(w))) score = 1;
+      if (score > (best[kind]?.score || 0)) best[kind] = { score, url: u.toString() };
+    }
+  }
+  const out: { kind: SubKind; url: string }[] = [];
+  const seen = new Set<string>();
+  for (const kind of ['services', 'gallery', 'about'] as SubKind[]) {
+    const b = best[kind];
+    if (b && !seen.has(b.url) && out.length < MAX_SUBPAGES) { seen.add(b.url); out.push({ kind, url: b.url }); }
+  }
+  return out;
+}
+
+interface SubResult { kind: SubKind; html: string; finalUrl: string }
+
+async function fetchSubPages(entryHtml: string, entryUrl: string, deps: SafeFetchDeps): Promise<SubResult[]> {
+  const picks = pickSubPages(entryHtml, entryUrl);
+  if (!picks.length) return [];
+  const timeoutMs = Math.min(deps.timeoutMs ?? SUBPAGE_BUDGET_MS, SUBPAGE_BUDGET_MS);
+  const origin = new URL(entryUrl).origin;
+  // Same guarded fetch as the entry page (host check, manual redirects re-checked, 3 MB cap); all in parallel, so the
+  // 10 s timeout is also the total budget. A failure (or a redirect off the site) just drops that page.
+  const settled = await Promise.allSettled(picks.map(async (p): Promise<SubResult> => {
+    const r = await fetchPublicHtml(p.url, { ...deps, timeoutMs });
+    if (new URL(r.finalUrl).origin !== origin) throw new Error('left the site');
+    return { kind: p.kind, html: r.html, finalUrl: r.finalUrl };
+  }));
+  return settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+}
+
+function mergeSubPages(shop: ScrapedShop, subs: SubResult[]): ScrapedShop {
+  if (!subs.length) return shop;
+  const svcLists: Svc[][] = [shop.services];
+  const photos = [...shop.photos];
+  let about = '';
+  for (const sp of subs) {
+    const lines = htmlToLines(sp.html);
+    const structured = shopFromStructuredHtml(sp.html);
+    svcLists.push((structured?.services || []).map(cleanSvc), mergeServices(servicesFromLines(lines).map(cleanSvc), serviceCardsFromLines(htmlToCardLines(sp.html))));
+    photos.push(...[...(structured?.photos || []), ...imagesFrom(sp.html, sp.finalUrl)].map((p) => resolveUrl(p, sp.finalUrl)).filter(isPublicImageUrl));
+    if (sp.kind === 'about' && !about) about = aboutTextFromHtml(sp.html);
+  }
+  const merged: ScrapedShop = { ...shop, services: mergeServices(...svcLists), photos };
+  if (about) merged.description = about;
+  // finalize rebuilds the payload without the website-only fields, so carry them over.
+  const out = finalize(merged, { services: 24, photos: 20 });
+  if (shop.email) out.email = shop.email;
+  if (shop.logo) out.logo = shop.logo;
+  if (shop.socials) out.socials = shop.socials;
+  return out;
+}
 
 export async function scrapeWebsite(rawUrl: string, opts: ScrapeOptions, deps: SafeFetchDeps = {}): Promise<ScrapedShop> {
   const { html, finalUrl } = await fetchPublicHtml(rawUrl, deps);
   let shop = parseWebsiteHtml(html, finalUrl);
+  let wasRendered = false;
 
   if (!hasShopData(shop) && opts.apifyToken && (!opts.apifyAllow || (await opts.apifyAllow(finalUrl)))) {
     // JS-rendered shell: ONE paid Apify run renders the page; the same readers parse the rendered HTML.
@@ -438,8 +640,15 @@ export async function scrapeWebsite(rawUrl: string, opts: ScrapeOptions, deps: S
       if (second) {
         second.photos = finalize({ ...second, photos: [...second.photos, ...cleanPhotoUrls(rendered?.photos).filter(isPublicImageUrl)] }, { photos: 20 }).photos;
         shop = second;
+        wasRendered = true;
       }
     }
+  }
+
+  // A static multi-page site keeps services / photos / the story on other pages: read up to 4 of them (never after a
+  // JS render: that is the paid path and its pages are rendered, not linked).
+  if (shop && hasShopData(shop) && !wasRendered) {
+    shop = mergeSubPages(shop, await fetchSubPages(html, finalUrl, deps));
   }
 
   if (!hasShopData(shop)) {

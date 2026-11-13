@@ -3,6 +3,7 @@ import { scrapeBookingUrl, scrapeWebsiteUrl, ScrapeError } from '../lib/scrapers
 import { createHash } from 'node:crypto';
 import { clientIp, supabaseRateStore, withFallback } from '../lib/bookings/rateLimit.js';
 import { serviceClient } from '../lib/bookings/repo.js';
+import { webAppCors } from '../lib/webApp/webAppServer.js';
 import { placesKey, searchPlacesForEnrichment } from '../lib/gbp/gbpPlaces.js';
 
 // Generic booking-platform scrape endpoint. Replaces api/booksy-scrape.
@@ -43,6 +44,8 @@ export async function allowApifyFallback(url: string, now = Date.now()): Promise
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS headers are set up front so they ride on every reply (success and error); no Origin header (phone app) = none added.
+  if (webAppCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const body = (req.body || {}) as { url?: string; source?: string };
