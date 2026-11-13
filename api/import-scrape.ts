@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { clientIp, supabaseRateStore, withFallback } from '../lib/bookings/rateLimit.js';
 import { serviceClient } from '../lib/bookings/repo.js';
 import { webAppCors } from '../lib/webApp/webAppServer.js';
+import { logoDataUrlOf } from '../lib/scrapers/logoDataUrl.js';
 import { placesKey, searchPlacesForEnrichment } from '../lib/gbp/gbpPlaces.js';
 
 // Generic booking-platform scrape endpoint. Replaces api/booksy-scrape.
@@ -69,6 +70,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       apifyAllow: isWebsite ? (u) => allowApifyFallback(u) : undefined,
       placeLookup: placesKey() ? (q) => searchPlacesForEnrichment(q, placesKey()) : null,
     });
+    if (isWebsite) {
+      // The old site's logo URL is never returned: the app re-uploads these bytes to our own storage (or shows the name).
+      const { logo, ...rest } = shop as typeof shop & { logo?: string };
+      const logoDataUrl = await logoDataUrlOf(logo);
+      return res.status(200).json({ ...rest, ...(logoDataUrl ? { logoDataUrl } : {}), _platform: platform });
+    }
     return res.status(200).json({ ...shop, _platform: platform });
   } catch (error: any) {
     if (error instanceof ScrapeError) {
