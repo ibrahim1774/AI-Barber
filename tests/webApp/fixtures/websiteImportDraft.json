@@ -1,0 +1,144 @@
+{
+ "bio": "A one-barber shop.",
+ "area": "Springfield, GA",
+ "hero": {
+  "heading": "Example Cuts LLC",
+  "tagline": "Book your next visit.",
+  "imageUrl": "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/16eeffd4a5e04e4f993900165232db49.jpeg"
+ },
+ "logo": {
+  "h": 473,
+  "w": 600,
+  "url": "https://storage.googleapis.com/primehub-site-assets/ios-drafts/00000000-0000-4000-8000-000000000000/logo/1794530496201-3qqh35.png"
+ },
+ "about": {
+  "heading": "About the Shop",
+  "imageUrl": "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/aecc71577ba742dbafd5f3bd3d627608.jpeg",
+  "description": [
+   "A one-barber shop. No revolving door, just taking the time to get it right."
+  ]
+ },
+ "hours": [
+  {
+   "day": "Monday",
+   "open": "16:00",
+   "close": "20:00"
+  },
+  {
+   "day": "Tuesday",
+   "open": "16:00",
+   "close": "20:00"
+  },
+  {
+   "day": "Wednesday",
+   "open": "16:00",
+   "close": "20:00"
+  },
+  {
+   "day": "Thursday",
+   "open": "16:00",
+   "close": "20:00"
+  },
+  {
+   "day": "Friday",
+   "open": "16:00",
+   "close": "20:00"
+  },
+  {
+   "day": "Saturday",
+   "open": "16:00",
+   "close": "20:00"
+  },
+  {
+   "day": "Sunday",
+   "open": "16:00",
+   "close": "20:00"
+  }
+ ],
+ "niche": "barber",
+ "pages": {
+  "order": [],
+  "hidden": []
+ },
+ "phone": "(555) 010-0100",
+ "staff": [],
+ "source": "web-app",
+ "contact": {
+  "email": "",
+  "address": "1 Main St, Springfield, GA, 31700"
+ },
+ "gallery": [
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/16eeffd4a5e04e4f993900165232db49.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/aecc71577ba742dbafd5f3bd3d627608.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/8f967cd8693945048b141737fb080a03.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/c6710da5fc0045839ec0012952819a7c.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/b8f29a1f81d64e9a8d1aae5c76eb0688.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/d26cdb4ddb0146969f60877057818943.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/0077e26d86ab48698ef83f145a2122f5.jpeg",
+  "https://d2zdpiztbgorvt.cloudfront.net/region1/us/648673/service_photos/de26fc92300e4ec087fde4f9fe5491cf.jpeg"
+ ],
+ "reviews": [],
+ "iosPrefs": {
+  "bookingChoice": "aibarber",
+  "samplePricesApplied": true
+ },
+ "services": [
+  {
+   "icon": "scissors",
+   "price": "$35",
+   "title": "Men's Haircut",
+   "category": "",
+   "duration": "30 min",
+   "imageUrl": "",
+   "subtitle": "30 min",
+   "description": ""
+  },
+  {
+   "icon": "razor",
+   "price": "$15",
+   "title": "Kid's Haircut",
+   "category": "",
+   "duration": "30 min",
+   "imageUrl": "",
+   "subtitle": "30 min",
+   "description": ""
+  },
+  {
+   "icon": "face",
+   "price": "$20",
+   "title": "Beard Line Up",
+   "category": "",
+   "duration": "20 min",
+   "imageUrl": "",
+   "subtitle": "20 min",
+   "description": ""
+  },
+  {
+   "icon": "sparkles",
+   "price": "$30",
+   "title": "Temp fade and line up",
+   "category": "",
+   "duration": "30 min",
+   "imageUrl": "",
+   "subtitle": "30 min",
+   "description": ""
+  }
+ ],
+ "shopName": "Example Cuts LLC",
+ "template": "luxe",
+ "bookingUrl": "/book",
+ "colorTheme": "#f4a100",
+ "extraPages": {
+  "on": [
+   "faq",
+   "first-visit"
+  ],
+  "seed": 992262589,
+  "serviceGuides": true
+ },
+ "importedFrom": "website",
+ "aggregateRating": {
+  "count": 83,
+  "rating": 5
+ }
+}
