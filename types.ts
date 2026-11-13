@@ -15,7 +15,7 @@ export interface ShopInputs {
   // Set only by the homepage importer AFTER a booking-link or Google
   // Business Profile import succeeds. Marks the inputs as a completed
   // generation for lead firing (lib/leadEvents.ts isLeadComplete).
-  importedFrom?: 'booking' | 'gbp';
+  importedFrom?: 'booking' | 'gbp' | 'website';
   // Services the barber ticked on the checklist (lib/stockImages.ts
   // SERVICE_CHOICES), each with an optional price. generateContent uses
   // exactly these and never invents a menu; none → no Services section.
@@ -119,7 +119,7 @@ export interface WebsiteData {
   // Where an imported site came from: its booking page or a confirmed
   // Google listing. Absent on typed sites and older sites. Prime's "no
   // stock photos" line needs booking-page photos.
-  importedFrom?: 'booking' | 'gbp';
+  importedFrom?: 'booking' | 'gbp' | 'website';
   // Business type key from lib/booksyNiche.ts ('barber', 'nails' …) so
   // meta tags and footers name the right kind of business. Absent →
   // barbershop.

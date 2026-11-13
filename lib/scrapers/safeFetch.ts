@@ -223,3 +223,81 @@ export async function fetchPublicHtml(rawUrl: string, deps: SafeFetchDeps = {}):
     clearTimeout(timer);
   }
 }
+
+export const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+export const IMAGE_TIMEOUT_MS = 8_000;
+/** SVG is deliberately absent (script-capable); HEIC is not web-displayable. */
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+
+export interface SafeImageDeps extends SafeFetchDeps {
+  /** Aborts the fetch from outside (the caller's overall time budget). */
+  signal?: AbortSignal;
+  maxBytes?: number;
+}
+
+async function readCappedBytes(resp: any, max: number): Promise<Buffer> {
+  const declared = Number(resp.headers?.get?.('content-length'));
+  if (Number.isFinite(declared) && declared > max) throw new ScrapeError('image too large', 'too_large');
+  const reader = resp.body?.getReader?.();
+  if (!reader) {
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (buf.byteLength > max) throw new ScrapeError('image too large', 'too_large');
+    return buf;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+      throw new ScrapeError('image too large', 'too_large');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * GET a public image safely (same address checks and manual, re-checked redirects as fetchPublicHtml). Accepts only
+ * image/jpeg, png, webp, gif, avif; the size cap is enforced while streaming. Throws ScrapeError.
+ */
+export async function fetchPublicImage(rawUrl: string, deps: SafeImageDeps = {}): Promise<{ buffer: Buffer; contentType: string; finalUrl: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? IMAGE_TIMEOUT_MS);
+  const onOuter = () => controller.abort();
+  if (deps.signal) { if (deps.signal.aborted) controller.abort(); else deps.signal.addEventListener('abort', onOuter, { once: true }); }
+  try {
+    let url = parseWebsiteUrl(rawUrl);
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      await assertPublicHost(url.hostname, deps.resolve);
+      let resp: any;
+      try {
+        resp = await fetch(url.toString(), { headers: { 'User-Agent': BROWSER_UA, Accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif' }, redirect: 'manual', signal: controller.signal });
+      } catch {
+        throw new ScrapeError(controller.signal.aborted ? 'image fetch timed out' : 'image fetch failed', controller.signal.aborted ? 'timeout' : 'fetch_failed');
+      }
+      if (resp.status >= 300 && resp.status < 400) {
+        const loc = resp.headers?.get?.('location');
+        if (!loc || hop === MAX_REDIRECTS) throw new ScrapeError('image redirect not followed', 'fetch_failed');
+        try { url = parseWebsiteUrl(new URL(loc, url).toString()); }
+        catch (e) { if (e instanceof ScrapeError) throw e; throw new ScrapeError('image redirect not followed', 'fetch_failed'); }
+        continue;
+      }
+      if (resp.status < 200 || resp.status >= 300) throw new ScrapeError(`image answered ${resp.status}`, 'fetch_failed');
+      const contentType = String(resp.headers?.get?.('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (!IMAGE_TYPES.has(contentType)) throw new ScrapeError('not a supported image type', 'not_html');
+      try {
+        return { buffer: await readCappedBytes(resp, deps.maxBytes ?? MAX_IMAGE_BYTES), contentType, finalUrl: url.toString() };
+      } catch (e) {
+        if (e instanceof ScrapeError) throw e;
+        throw new ScrapeError(controller.signal.aborted ? 'image fetch timed out' : 'image read failed', controller.signal.aborted ? 'timeout' : 'fetch_failed');
+      }
+    }
+    throw new ScrapeError('image redirects too many times', 'fetch_failed');
+  } finally {
+    clearTimeout(timer);
+    deps.signal?.removeEventListener('abort', onOuter);
+  }
+}

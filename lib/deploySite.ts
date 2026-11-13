@@ -75,7 +75,7 @@ export interface VercelFile {
   encoding?: 'base64' | 'utf-8';
 }
 // Inlined from src/lib/gcsUpload.ts (Vercel serverless can't resolve ../src/lib imports)
-async function uploadToGCS(siteId: string, filename: string, base64DataUrl: string) {
+export async function uploadToGCS(siteId: string, filename: string, base64DataUrl: string) {
   const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON || process.env.GCS_CREDENTIALS;
   const bucketName = process.env.GCS_BUCKET_NAME;
 

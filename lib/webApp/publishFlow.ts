@@ -12,6 +12,7 @@ import {
   adminVersionOf, casPending, versionOf, type PendingSite, type PublishOutcome, type SiteEditor, type VersionedPending,
 } from '../publishSite.js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from '../ios/slug.js';
+import { rehostImageMap, realRehostDeps, type RehostDeps } from '../rehostImages.js';
 import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { stripLapsedLinks } from '../ios/tiers.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
@@ -56,6 +57,8 @@ export interface WebPublishDeps {
   appStoreState?(userId: string): Promise<AppStoreState>;
   /** Free accounts (in-memory 'free:<uid>' entitlement) must have a saved phone before they can publish. Omitted = no check. */
   phoneOnFile?(userId: string): Promise<boolean>;
+  /** Test seam for re-hosting imported photos (lib/rehostImages.ts); defaults to the real fetch + GCS. */
+  rehost?: RehostDeps;
   sites: {
     /** The user's bound site in this environment (newest), or null. */
     byUser(userId: string, env: 'live' | 'test'): Promise<WebSiteRow | null>;
@@ -283,6 +286,12 @@ export async function runWebPublish(
       autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: caller.id,
       refs: [...(ctx.draftId ? [draftRef(ctx.draftId)] : []), siteRef(slug)], rebindToSlug: slug,
     }).siteData as WebsiteData;
+    // 5b. Imported-from-website drafts: copy foreign photos to our own storage so they outlive the old site. Best effort and
+    // time-boxed (lib/rehostImages.ts): it never throws, and any failing image keeps its original URL.
+    if (sd.importedFrom === 'website') {
+      try { imageUrlMap = await rehostImageMap(slug, sd, imageUrlMap, deps.rehost ?? await realRehostDeps()); }
+      catch (e) { console.warn(`[web-app/publish] ${slug}: re-hosting photos skipped (${(e as Error)?.message || e})`); }
+    }
     // 6. Write the copy (compare-and-set), honouring admin versions like iOS.
     const io = { readPending: deps.readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned };
     type Refusal = { status: 409; body: { error: 'site-updated'; site: WebSiteBody } | { error: 'slug-owned' } };
