@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { hashEmail, hashPhone, hashExternalId } from './_hashPii.js';
+import { webAppCors } from '../lib/webApp/webAppServer.js';
 import { priceGroupField } from '../lib/priceGroupField.js';
 
 // TikTok Events API (v1.3). Fires server-side Lead, Purchase,
@@ -41,6 +42,7 @@ interface Body {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (webAppCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const ACCESS_TOKEN = process.env.TIKTOK_ACCESS_TOKEN;
