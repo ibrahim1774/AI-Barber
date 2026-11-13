@@ -263,6 +263,18 @@ async function readCappedBytes(resp: any, max: number): Promise<Buffer> {
  * GET a public image safely (same address checks and manual, re-checked redirects as fetchPublicHtml). Accepts only
  * image/jpeg, png, webp, gif, avif; the size cap is enforced while streaming. Throws ScrapeError.
  */
+/** The image type the bytes really are (magic numbers), or null. Never trusts the declared content type. */
+export function sniffImageType(b: Uint8Array): string | null {
+  if (b.length < 12) return null;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  if (ascii(4, 8) === 'ftyp' && /^(avif|avis)$/.test(ascii(8, 12))) return 'image/avif';
+  return null;
+}
+
 export async function fetchPublicImage(rawUrl: string, deps: SafeImageDeps = {}): Promise<{ buffer: Buffer; contentType: string; finalUrl: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? IMAGE_TIMEOUT_MS);
@@ -287,9 +299,15 @@ export async function fetchPublicImage(rawUrl: string, deps: SafeImageDeps = {})
       }
       if (resp.status < 200 || resp.status >= 300) throw new ScrapeError(`image answered ${resp.status}`, 'fetch_failed');
       const contentType = String(resp.headers?.get?.('content-type') || '').split(';')[0].trim().toLowerCase();
-      if (!IMAGE_TYPES.has(contentType)) throw new ScrapeError('not a supported image type', 'not_html');
+      // Some CDNs (Booksy's cloudfront) label photos with a bare "image" or octet-stream: those are accepted only when the
+      // bytes themselves are a supported image. A declared type that is something else (html, svg, ...) is refused outright.
+      const vague = contentType === '' || contentType === 'image' || contentType === 'image/jpg' || contentType === 'application/octet-stream' || contentType === 'binary/octet-stream';
+      if (!IMAGE_TYPES.has(contentType) && !vague) throw new ScrapeError('not a supported image type', 'not_html');
       try {
-        return { buffer: await readCappedBytes(resp, deps.maxBytes ?? MAX_IMAGE_BYTES), contentType, finalUrl: url.toString() };
+        const buffer = await readCappedBytes(resp, deps.maxBytes ?? MAX_IMAGE_BYTES);
+        const sniffed = sniffImageType(buffer);
+        if (!sniffed) throw new ScrapeError('not a supported image type', 'not_html');
+        return { buffer, contentType: sniffed, finalUrl: url.toString() };
       } catch (e) {
         if (e instanceof ScrapeError) throw e;
         throw new ScrapeError(controller.signal.aborted ? 'image fetch timed out' : 'image read failed', controller.signal.aborted ? 'timeout' : 'fetch_failed');
