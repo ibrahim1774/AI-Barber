@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const PUBLIC = async () => ['93.184.216.34'];
 const CDN = 'https://d2zdpiztbgorvt.cloudfront.net';
-type Reply = { status?: number; type?: string; bytes?: number; headers?: Record<string, string> };
+type Reply = { status?: number; type?: string; bytes?: number; magic?: boolean; headers?: Record<string, string> };
 
 function stubFetch(routes: Record<string, Reply>) {
   const calls: string[] = [];
@@ -19,6 +19,7 @@ function stubFetch(routes: Record<string, Reply>) {
     if (!r) throw new Error(`unrouted fetch: ${url}`);
     const h = new Map(Object.entries({ 'content-type': r.type ?? 'image/jpeg', ...(r.headers || {}) }));
     const body = Buffer.alloc(r.bytes ?? 100, 1);
+    if (r.magic !== false) { body[0] = 0xff; body[1] = 0xd8; body[2] = 0xff; } // real JPEG magic: the fetch trusts bytes, not headers
     let sent = false;
     return {
       status: r.status ?? 200,
@@ -207,5 +208,21 @@ describe('runWebPublish', () => {
     expect(r.status).toBe(200);
     expect([...pending.values()][0].imageUrlMap.hero).toBe(src);
     expect(calls).toEqual([]);
+  });
+});
+
+describe('fetchPublicImage: the bytes decide the type', () => {
+  const publicHost = { resolve: async () => ['93.184.216.34'] };
+  it("accepts a photo a CDN labels with a bare 'image' (Booksy cloudfront) when the bytes are a JPEG", async () => {
+    const { fetchPublicImage } = await import('../../lib/scrapers/safeFetch.js');
+    stubFetch({ 'https://cdn.example.com/a.jpeg': { type: 'image' } });
+    const r = await fetchPublicImage('https://cdn.example.com/a.jpeg', publicHost as any);
+    expect(r.contentType).toBe('image/jpeg');
+  });
+  it('refuses a vague type whose bytes are not an image, and a declared non-image type', async () => {
+    const { fetchPublicImage } = await import('../../lib/scrapers/safeFetch.js');
+    stubFetch({ 'https://cdn.example.com/b': { type: 'application/octet-stream', magic: false }, 'https://cdn.example.com/c': { type: 'text/html' } });
+    await expect(fetchPublicImage('https://cdn.example.com/b', publicHost as any)).rejects.toThrow();
+    await expect(fetchPublicImage('https://cdn.example.com/c', publicHost as any)).rejects.toThrow();
   });
 });
