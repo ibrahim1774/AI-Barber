@@ -24,6 +24,7 @@ import { svcCopySanitize } from './serviceCopy/prune.js';
 import { signingSecret, siteRef } from './serviceCopy/approval.js';
 import { serviceCopyAutoPublish } from './serviceCopy/flags.js';
 import { isMultiPage, type SiteFile } from './render/pages.js';
+import { isWebCreated } from './pagesV2.js';
 import { movedMap, pagePathsOf, planPublishedPaths, redirectsApply, type PublishedPaths, type SiteRedirect } from './siteRedirects.js';
 import { defaultPathsStore, type PathsStore } from './publishedPathsStore.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
@@ -648,7 +649,13 @@ export async function publishSite(
       if (redirectsApply(csd, rendered.pages)) {
         pathsStore ??= opts.pathsStore === undefined ? defaultPathsStore() : opts.pathsStore;
         const store = pathsStore;
-        if (store) {
+        if (store && !isWebCreated(csd)) {
+          // A site that carries the search-pages mark but is not web-made (an iOS publish): its slug has no web_app_sites row, so the store is
+          // never read or written (no new failure mode, no log noise). With no record the old /faq/ is still redirected on every publish.
+          nextPaths = null;
+          const plan = planPublishedPaths(null, pagePathsOf(rendered.pages), movedMap(csd));
+          if (plan.redirects.length) redirects = plan.redirects;
+        } else if (store) {
           // The previous record decides which redirects are already live. If it cannot be told (after one retry) the publish FAILS before anything
           // is deployed: a vercel.json without them would 404 every old service URL. The owner just publishes again.
           const prev = await (prevPaths ??= readPrevPaths(store, safe, pathsTimeout));

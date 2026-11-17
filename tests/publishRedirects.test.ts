@@ -319,3 +319,43 @@ describe('sites that do not qualify are untouched (the store is never read or wr
     expect(vercelJson(arg).redirects).toBeUndefined();
   });
 });
+
+describe('a marked site that is not web-made (iOS publish with extraPages.searchPages) never touches the paths store', () => {
+  const MARKED = { source: undefined, extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, searchPages: true } };
+  it('makes no store call (read or write) and still redirects the old /faq/', async () => {
+    const { s } = fakeStore();
+    const arg = await go(['Haircut', 'Fade', 'Beard Trim'], s, MARKED);
+    expect(s.read).not.toHaveBeenCalled();
+    expect(s.write).not.toHaveBeenCalled();
+    expect(arg.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(vercelJson(arg).redirects.map((r: any) => r.source)).toEqual(['/faq', '/faq/', '/faq/index.html']);
+    // Every later publish redirects it again, still without the store.
+    expect((await go(['Haircut', 'Fade', 'Beard Trim'], s, MARKED)).redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(s.read).not.toHaveBeenCalled();
+    expect(s.write).not.toHaveBeenCalled();
+  });
+  it('a store whose read and write both fail cannot fail the publish or log a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const s = { read: vi.fn(async () => { throw Object.assign(new Error('boom'), { status: 503 }); }), write: vi.fn(async () => { throw new Error('boom'); }) } as PathsStore;
+    const arg = await go(['Haircut', 'Fade'], s, MARKED);
+    expect(s.read).not.toHaveBeenCalled();
+    expect(s.write).not.toHaveBeenCalled();
+    expect(arg.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('published paths'))).toEqual([]);
+    warn.mockRestore();
+  });
+  it('the web-made path is unchanged: same site with source web-app reads and writes the store', async () => {
+    const { s, get } = fakeStore();
+    const arg = await go(['Haircut', 'Fade'], s, { source: 'web-app' });
+    expect(s.read).toHaveBeenCalledWith('fresh-cuts');
+    expect(s.write).toHaveBeenCalledTimes(1);
+    expect(get()!.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+    expect(arg.redirects).toEqual([{ from: '/faq/', to: '/guides/' }]);
+  });
+  it('web-made with the mark set too is still tracked (the mark does not change a web site)', async () => {
+    const { s } = fakeStore();
+    await go(['Haircut', 'Fade'], s, { source: 'web-app', extraPages: { ...MARKED.extraPages } });
+    expect(s.read).toHaveBeenCalledTimes(1);
+    expect(s.write).toHaveBeenCalledTimes(1);
+  });
+});
