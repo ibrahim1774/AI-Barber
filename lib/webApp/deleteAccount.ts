@@ -195,7 +195,7 @@ async function mayGoWithoutStripe(userId: string, reason: string): Promise<strin
 }
 
 /** `keepPhone` (the native keep-content take offline only): the removal stamp leaves the saved contact phone alone, so "nothing is deleted" is fully true. */
-export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: boolean } = {}): DeleteAccountDeps {
+export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: boolean; onCancelled?: (subscriptionIds: string[]) => void } = {}): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();
   const stamp = (otid: string, body: Record<string, unknown>) =>
@@ -233,11 +233,14 @@ export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: b
     closeShop: base.closeShop
       ? async (userId) => {
           if (opts.allowNoStripe) {
-            const { withoutStripe } = await planWithStripeFallback(userId); // refuses (throws) unless Stripe answered or the fallback rules allow it
+            // A failure of the card-plan part (asking Stripe, or cancelling) is tagged `cardCancel` so the native delete route can tell the app (`cardCancelFailed`): nothing was deleted.
+            const card = <T>(p: Promise<T>): Promise<T> => p.catch((e: any) => { throw Object.assign(e instanceof Error ? e : new Error(String(e)), { cardCancel: true }); });
+            const { withoutStripe } = await card(planWithStripeFallback(userId)); // refuses (throws) unless Stripe answered or the fallback rules allow it
             await suspendWork(userId, 'deleting');
             const r = await base.closeShop!(userId);
             if (!r.ok || withoutStripe) return r;
-            await cancelThenForgetCustomers(userId);
+            const cancelled = await card(cancelThenForgetCustomers(userId)); // (not inside an optional call: its argument must always be evaluated)
+            opts.onCancelled?.(cancelled);
             return r;
           }
           await planWebCancellations(userId); // refuse BEFORE the shop is closed if a live subscription is out of this key's reach

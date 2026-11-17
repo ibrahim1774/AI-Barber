@@ -41,7 +41,8 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'PUT' && jsonBytes(req.body) > MAX_DRAFT_BYTES) return res.status(413).json({ error: 'draft_too_large', maxBytes: MAX_DRAFT_BYTES });
     const previous = await readDraft(user.id);
     // A NATIVE caller never sees a stale live address: when the account's web site is offline the draft is reported with no live address or binding, whatever the draft row still holds.
-    const offline = nativeBuild(req) ? await webSiteOffline(user.id) : false;
+    // (Skipped when the draft row has no live address and no binding: there is nothing stale to hide.)
+    const offline = nativeBuild(req) && (previous?.deployed_url || previous?.published_binding) ? await webSiteOffline(user.id) : false;
     const view = (d: any) => (offline ? { ...accountRow(d), deployed_url: null, webBinding: null } : accountRow(d));
     if (req.method === 'GET') return res.status(200).json({ draft: previous ? view(previous) : null });
     const { id, site_data, expectedRevision } = req.body ?? {};

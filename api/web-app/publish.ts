@@ -77,7 +77,7 @@ export default async function handler(req: any, res: any) {
         }
       }
       // A native publish of a site that is offline is always a republish: it is never answered from an old live record (the draft's deployed_url may be stale).
-      const republish = input?.republish === true || (native && (await webSiteOffline(caller.id)));
+      const republish = input?.republish === true || (native && !!(nativeDraft?.deployed_url || nativeDraft?.published_binding) && (await webSiteOffline(caller.id)));
       const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, republish, nativeDraft);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);

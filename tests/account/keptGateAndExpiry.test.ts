@@ -18,7 +18,7 @@ import { runAccountMaintenance, runDaily } from '../../lib/account/maintenance.j
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; r.end = () => r; return r; };
 const post = async () => { const r = res(); await handler({ method: 'POST', headers: { authorization: 'Bearer t' }, body: { kind: 'phone-draft', siteData: { a: 1 } } }, r); return r; };
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-const on = (extra: Record<string, string> = {}) => { for (const [k, v] of Object.entries({ WEB_APP_CHECKOUT: '1', WEB_APP_RELIABILITY: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'k', ...extra })) vi.stubEnv(k, v); };
+const on = (extra: Record<string, string> = {}) => { for (const [k, v] of Object.entries({ WEB_APP_CHECKOUT: '1', WEB_APP_ENTITLEMENTS: '1', WEB_APP_RELIABILITY: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'k', ...extra })) vi.stubEnv(k, v); };
 
 describe('POST /api/account/kept-copy outside the rollout', () => {
   it('403 not-account-mode for web-only, apple, mixed and neither; 503 when the mode cannot be decided; nothing stored', async () => {

@@ -22,8 +22,11 @@ export function accountDraftsCovers(uid: string, env: Record<string, string | un
 /** Pure. */
 export function siteModeFromKind(kind: AccountKind, uid: string, env: Record<string, string | undefined> = process.env): SiteMode {
   if (kind !== 'web') return 'device';
-  return accountDraftsCovers(uid, env) ? 'account' : 'web-only';
+  // `account` only when the draft engine is really usable for a native caller (draft engine, web checkout and the account routes all on); otherwise `web-only`.
+  return accountDraftsCovers(uid, env) && draftEngineUsable(env) ? 'account' : 'web-only';
 }
+/** reliabilityOn() && webAppCheckoutOn() && entitlements on, read from `env`. */
+export const draftEngineUsable = (env: Record<string, string | undefined> = process.env): boolean => env.WEB_APP_RELIABILITY === '1' && env.WEB_APP_CHECKOUT === '1' && env.WEB_APP_ENTITLEMENTS === '1';
 
 export async function siteModeOf(uid: string, deps: { kind?(uid: string): Promise<AccountKind>; env?: Record<string, string | undefined> } = {}): Promise<SiteMode> {
   const kind = deps.kind ? await deps.kind(uid) : await (async () => {
@@ -77,46 +80,8 @@ export async function oldRouteKind(uid: string): Promise<AccountKind> {
   return accountKind(uid, env);
 }
 
-export type IosDestructive = { action: 'allow' } | { action: 'forceCancel' } | { action: 'webTakeOffline'; userId: string } | { action: 'respond'; status: 409 | 503; body: { error: string } };
-/**
- * /api/ios/delete-account and /api/ios/take-offline. INVARIANT: no account is ever left without a working in-app delete, and no route deletes an account while leaving its
- * live card plan billing. Acts ONLY with ACCOUNT_PLAN_V2=1 AND X-PB-Build present (builds 55 and 1.1 and every header-less call are untouched; off: nothing is read) and a bearer.
- *  - kind web, delete: APP_DELETE_CANCELS_WEB=1 -> allow (that branch cancels the card plan). Else if the account route is unavailable (WEB_APP_ENTITLEMENTS off, so
- *    /api/web-app/* answers 404) -> forceCancel (the iOS delete cancels the card plan itself, the same code as the APP_DELETE_CANCELS_WEB branch). Else 409 use-account-delete.
- *  - kind mixed, delete: never refused (it resolves to device mode and has no other delete): allow with APP_DELETE_CANCELS_WEB=1, else forceCancel.
- *  - kind web, take offline: 409 use-account-take-offline while the account route is available; otherwise the web site is taken offline here, keeping its content.
- *  - kind mixed, take offline: the Apple route takes down only the Apple site (the device-mode site the phone shows); the web site is untouched.
- *  - apple / neither: allow. A failed kind lookup is 503 (destructive routes fail closed).
- */
-export async function iosDestructiveRoute(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, route: 'delete' | 'take-offline', deps?: { kind?(uid: string): Promise<AccountKind> }): Promise<IosDestructive> {
-  if (process.env.ACCOUNT_PLAN_V2 !== '1' || !nativeBuild(req)) return { action: 'allow' };
-  try {
-    const h = req.headers?.authorization;
-    const raw = Array.isArray(h) ? h[0] : h;
-    const t = typeof raw === 'string' ? raw.replace(/^Bearer\s+/i, '').trim() : '';
-    if (!t) return { action: 'allow' };
-    const user = await userOf(t);
-    if (!user?.id) return { action: 'allow' };
-    const kind = await (deps?.kind ?? oldRouteKind)(user.id);
-    const cancels = process.env.APP_DELETE_CANCELS_WEB === '1';
-    const accountRoute = process.env.WEB_APP_ENTITLEMENTS === '1'; // /api/web-app/* answers 404 without it
-    if (route === 'delete') {
-      if (kind === 'mixed') return cancels ? { action: 'allow' } : { action: 'forceCancel' };
-      if (kind === 'web') {
-        if (cancels) return { action: 'allow' };
-        return accountRoute ? { action: 'respond', status: 409, body: { error: 'use-account-delete' } } : { action: 'forceCancel' };
-      }
-      return { action: 'allow' };
-    }
-    if (kind !== 'web') return { action: 'allow' };
-    // A web account has no Apple transaction, so the Apple route cannot take its site down: while the account route exists it is sent there (409); while it does not,
-    // the site is taken offline right here (keep content), the same as the account route would.
-    return accountRoute ? { action: 'respond', status: 409, body: { error: 'use-account-take-offline' } } : { action: 'webTakeOffline', userId: user.id };
-  } catch (e: any) {
-    console.error('[site mode] kind lookup failed on a destructive old route (refusing):', e?.message || e);
-    return { action: 'respond', status: 503, body: { error: 'temporarily-unavailable' } };
-  }
-}
+/** The 1.2 app's single-route mode: ACCOUNT_PLAN_V2=1 AND X-PB-Build. Anything else keeps today's behaviour exactly (no new fields, no new reads). */
+export const nativeSingleRoute = (req: { headers?: Record<string, unknown> }): boolean => process.env.ACCOUNT_PLAN_V2 === '1' && !!nativeBuild(req);
 
 export type OldRouteGate = { status: 409 | 503; body: { error: string } };
 /**

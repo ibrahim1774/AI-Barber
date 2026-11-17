@@ -30,12 +30,11 @@ import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 import takeOffline from '../../api/web-app/take-offline.js';
 import iosDelete from '../../api/ios/delete-account.js';
 import iosTakeOffline from '../../api/ios/take-offline.js';
-import { iosDestructiveRoute } from '../../lib/account/siteMode.js';
 import { getPlan, type PlanDeps } from '../../lib/ios/planFlow.js';
 
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; r.end = () => r; return r; };
 const post = async (h: any, headers: any = {}, body: any = { transactionId: '1' }) => { const r = res(); await h({ method: 'POST', headers: { authorization: 'Bearer t', ...headers }, body }, r); return r; };
-beforeEach(() => { vi.stubEnv('WEB_APP_RELIABILITY', '1'); order.length = 0; vi.clearAllMocks(); Object.assign(st, { kind: 'web', kindFails: false, kindCalls: 0, deleted: 0, tookOffline: 0 }); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); });
+beforeEach(() => { vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); order.length = 0; vi.clearAllMocks(); Object.assign(st, { kind: 'web', kindFails: false, kindCalls: 0, deleted: 0, tookOffline: 0 }); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('S1: native account-mode take offline never deletes the stored copy', () => {
@@ -96,43 +95,6 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
     await real.markSiteOffline('u1');
     const patch = (sbRest as any).mock.calls.find((c: any[]) => String(c[0]).startsWith('web_app_drafts'));
     expect(patch[1].body).toEqual({ deployed_url: null, published_binding: null });
-  });
-});
-
-describe('S2: iosDestructiveRoute decisions', () => {
-  const userOf = async () => ({ id: 'u1' });
-  const hdr = { headers: { authorization: 'Bearer t', 'x-pb-build': '57' } };
-  const run = (kind: any, route: 'delete' | 'take-offline', req: any = hdr) => iosDestructiveRoute(req, userOf, route, { kind: async () => kind });
-  it('switch off, no header or no token: allow at once, nothing read', async () => {
-    const kind = vi.fn(async () => { throw new Error('no'); });
-    vi.stubEnv('ACCOUNT_PLAN_V2', '');
-    expect(await iosDestructiveRoute(hdr, userOf, 'delete', { kind: kind as any })).toEqual({ action: 'allow' });
-    vi.stubEnv('ACCOUNT_PLAN_V2', '1');
-    expect(await iosDestructiveRoute({ headers: { authorization: 'Bearer t' } }, userOf, 'delete', { kind: kind as any })).toEqual({ action: 'allow' }); // builds 55 and 1.1
-    expect(await iosDestructiveRoute({ headers: { 'x-pb-build': '57' } }, userOf, 'delete', { kind: kind as any })).toEqual({ action: 'allow' });
-    expect(kind).not.toHaveBeenCalled();
-  });
-  it('web account: 409 only while the account route exists and APP_DELETE_CANCELS_WEB is off; otherwise the iOS delete cancels the card plan itself or the switch branch does', async () => {
-    vi.stubEnv('ACCOUNT_PLAN_V2', '1');
-    vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
-    expect(await run('web', 'delete')).toEqual({ action: 'respond', status: 409, body: { error: 'use-account-delete' } });
-    expect(await run('web', 'take-offline')).toEqual({ action: 'respond', status: 409, body: { error: 'use-account-take-offline' } });
-    vi.stubEnv('APP_DELETE_CANCELS_WEB', '1');
-    expect(await run('web', 'delete')).toEqual({ action: 'allow' });
-    vi.stubEnv('APP_DELETE_CANCELS_WEB', '');
-    vi.stubEnv('WEB_APP_ENTITLEMENTS', '');
-    expect(await run('web', 'delete')).toEqual({ action: 'forceCancel' });
-    expect(await run('web', 'take-offline')).toEqual({ action: 'webTakeOffline', userId: 'u1' }); // no account route: the web site is taken offline right here
-    expect(await run('mixed', 'take-offline')).toEqual({ action: 'allow' }); // the Apple route takes down only the Apple site
-  });
-  it('mixed is never refused (it resolves to device and has no other delete): forceCancel unless APP_DELETE_CANCELS_WEB=1; apple and neither pass; a failed lookup is 503', async () => {
-    vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await run('mixed', 'delete')).toEqual({ action: 'forceCancel' });
-    expect(await run('mixed', 'take-offline')).toEqual({ action: 'allow' });
-    vi.stubEnv('APP_DELETE_CANCELS_WEB', '1');
-    expect(await run('mixed', 'delete')).toEqual({ action: 'allow' });
-    for (const k of ['apple', 'neither']) expect(await run(k, 'delete')).toEqual({ action: 'allow' });
-    expect(await iosDestructiveRoute(hdr, userOf, 'delete', { kind: async () => { throw new Error('db'); } })).toMatchObject({ action: 'respond', status: 503 });
   });
 });
 

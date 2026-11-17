@@ -38,7 +38,7 @@ const res = () => { const r: any = { code: 0, body: null }; r.status = (c: numbe
 const send = async (body: any) => { const r = res(); await handler({ method: 'POST', headers: { authorization: 'Bearer t', 'x-pb-build': '57' }, body }, r); return r; };
 const OWN = 'https://booksy.com/fade';
 beforeEach(() => {
-  vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
+  vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all'); vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
   Object.assign(st, { prepare: [], bookings: true, store: true, shop: { id: 'shop1', bookings_enabled: true, store_enabled: true }, members: [],
     draft: { draft_id: 'd1', revision: 2, site_data: { shopName: 'X', bookingUrl: '/book', staff: [{ name: 'Mike', memberId: 'm1' }] } } });
 });

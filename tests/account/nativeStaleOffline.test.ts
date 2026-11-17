@@ -33,7 +33,7 @@ const res = () => { const r: any = { code: 0, body: null }; r.status = (c: numbe
 const send = async (h: any, headers: any, method = 'GET', body?: any) => { const r = res(); await h({ method, headers: { authorization: 'Bearer t', ...headers }, body }, r); return r; };
 const HDR = { 'x-pb-build': '57' };
 beforeEach(() => {
-  for (const [k, v] of Object.entries({ WEB_APP_RELIABILITY: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', ACCOUNT_DRAFTS_IOS: 'all' })) vi.stubEnv(k, v);
+  for (const [k, v] of Object.entries({ WEB_APP_RELIABILITY: '1', WEB_APP_CHECKOUT: '1', WEB_APP_ENTITLEMENTS: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', ACCOUNT_DRAFTS_IOS: 'all' })) vi.stubEnv(k, v);
   db.prepare = []; db.calls = []; db.siteFails = false;
   db.draft = { user_id: 'u1', environment: 'test', draft_id: 'd1', revision: 2, site_data: { shopName: 'X', staff: [] }, deployed_url: 'https://old.vercel.app', published_binding: { slug: 'old' }, updated_at: 'x', suspended: false };
   db.siteRow = { removed_at: '2026-11-17T00:00:00Z', taken_down_at: '2026-11-17T00:00:00Z' };

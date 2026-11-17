@@ -44,7 +44,7 @@ beforeEach(() => {
   Object.assign(st, { callerCalls: 0, kind: 'web', kindFails: false, kindCalls: 0, prepare: [], runWeb: [], iosPublish: [], iosSite: [] });
 });
 afterEach(() => vi.unstubAllEnvs());
-const setEnv = (e: Record<string, string>) => { vi.unstubAllEnvs(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('ACCOUNT_PLAN_V2', '1'); for (const [k, v] of Object.entries(e)) vi.stubEnv(k, v); };
+const setEnv = (e: Record<string, string>) => { vi.unstubAllEnvs(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); for (const [k, v] of Object.entries(e)) vi.stubEnv(k, v); };
 
 describe('requests without X-PB-Build are unchanged in every switch state', () => {
   it('web publish (plain and drafted): identical outcomes and what reaches prepareIntent; the kind is never read', async () => {
@@ -88,14 +88,15 @@ describe('native callers on the web publish', () => {
     await call(webPublish, {}, drafted);
     expect(st.prepare[0][5]).toEqual(drafted.siteData);
   });
-  it('a native call with no draft id never reaches runWebPublish: 409 use-drafted-publish with the draft engine on, 503 with it off', async () => {
+  it('a native call with no draft id never reaches runWebPublish: 409 use-drafted-publish with the draft engine on, 403 not-account-mode with it off', async () => {
     setEnv({ WEB_APP_RELIABILITY: '1', ACCOUNT_DRAFTS_IOS: 'all' });
     const r = await call(webPublish, HDR, { siteData });
     expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'use-drafted-publish' });
     setEnv({ WEB_APP_RELIABILITY: '', ACCOUNT_DRAFTS_IOS: 'all' });
     const off = await call(webPublish, HDR, { siteData });
-    expect(off.code).toBe(503); expect(off.body).toEqual({ error: 'temporarily-unavailable' });
-    expect((await call(webPublish, HDR, drafted)).code).toBe(503);
+    // With the draft engine off the account is web-only (siteMode never says account then): 403 before anything runs.
+    expect(off.code).toBe(403); expect(off.body).toEqual({ error: 'not-account-mode' });
+    expect((await call(webPublish, HDR, drafted)).code).toBe(403);
     expect(st.runWeb).toHaveLength(0);
   });
   it('a stale revision is 409 and nothing is prepared', async () => {

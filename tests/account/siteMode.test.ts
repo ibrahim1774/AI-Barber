@@ -6,12 +6,13 @@ import type { AccountKind } from '../../lib/account/kind.js';
 const U = '11111111-1111-4111-8111-111111111111';
 const V = '22222222-2222-4222-8222-222222222222';
 const KINDS: AccountKind[] = ['web', 'apple', 'mixed', 'neither'];
+const ENGINE = { WEB_APP_RELIABILITY: '1', WEB_APP_CHECKOUT: '1', WEB_APP_ENTITLEMENTS: '1' }; // the draft engine is really usable
 const STATES: Record<string, Record<string, string>> = {
   off: {}, 'unknown value': { ACCOUNT_DRAFTS_IOS: 'yes' },
-  'allowlist (user listed)': { ACCOUNT_DRAFTS_IOS: 'allowlist', ACCOUNT_DRAFTS_IOS_USERS: ` ${V}, ${U.toUpperCase()} ` },
+  'allowlist (user listed)': { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'allowlist', ACCOUNT_DRAFTS_IOS_USERS: ` ${V}, ${U.toUpperCase()} ` },
   'allowlist (user not listed)': { ACCOUNT_DRAFTS_IOS: 'allowlist', ACCOUNT_DRAFTS_IOS_USERS: V },
   'allowlist (empty)': { ACCOUNT_DRAFTS_IOS: 'allowlist' },
-  all: { ACCOUNT_DRAFTS_IOS: 'all' },
+  all: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' },
 };
 
 describe('siteModeFromKind', () => {
@@ -22,6 +23,10 @@ describe('siteModeFromKind', () => {
       expect(siteModeFromKind(kind, U, env)).toBe(want);
     });
   }
+  it('account only when the draft engine is really usable: covered but reliability, checkout or entitlements off is web-only', () => {
+    for (const off of ['WEB_APP_RELIABILITY', 'WEB_APP_CHECKOUT', 'WEB_APP_ENTITLEMENTS']) expect(siteModeFromKind('web', U, { ...ENGINE, [off]: '', ACCOUNT_DRAFTS_IOS: 'all' }), off).toBe('web-only');
+    expect(siteModeFromKind('web', U, { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' })).toBe('account');
+  });
   it('a web account is never device, even with the switch fully off', () => { expect(siteModeFromKind('web', U, {})).toBe('web-only'); });
   it('account is unreachable for apple, mixed and neither under every state', () => {
     for (const env of Object.values(STATES)) for (const k of ['apple', 'mixed', 'neither'] as const) expect(siteModeFromKind(k, U, env)).toBe('device');
@@ -31,7 +36,7 @@ describe('siteModeFromKind', () => {
 
 describe('siteModeOf', () => {
   it('uses the kind reading and throws on a lookup failure', async () => {
-    expect(await siteModeOf(U, { kind: async () => 'web', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toBe('account');
+    expect(await siteModeOf(U, { kind: async () => 'web', env: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' } })).toBe('account');
     await expect(siteModeOf(U, { kind: async () => { throw new Error('db'); } })).rejects.toThrow('db');
   });
 });
@@ -46,6 +51,8 @@ describe('getPlan capabilities.siteMode (accountPlan)', () => {
     vi.stubEnv('ACCOUNT_DRAFTS_IOS', ''); 
     expect((await accountPlan(U, 'Production', deps('web'))).siteMode).toBe('web-only');
     vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
+    expect((await accountPlan(U, 'Production', deps('web'))).siteMode).toBe('web-only'); // covered, but the draft engine is not usable
+    for (const [k, v] of Object.entries(ENGINE)) vi.stubEnv(k, v);
     expect((await accountPlan(U, 'Production', deps('web'))).siteMode).toBe('account');
     expect((await accountPlan(U, 'Production', deps('apple'))).siteMode).toBe('device');
     vi.unstubAllEnvs();
@@ -66,9 +73,9 @@ describe('gates', () => {
     expect(await nativeModeGate({ headers: {} }, U, boom)).toBeNull();
   });
   it('nativeModeGate: native in account mode passes; web-only, device are 403 not-account-mode; a failure is 503', async () => {
-    expect(await nativeModeGate(withHdr(), U, { kind: async () => 'web', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
+    expect(await nativeModeGate(withHdr(), U, { kind: async () => 'web', env: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
     expect(await nativeModeGate(withHdr(), U, { kind: async () => 'web', env: {} })).toEqual({ status: 403, body: { error: 'not-account-mode' } });
-    expect(await nativeModeGate(withHdr(), U, { kind: async () => 'apple', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toEqual({ status: 403, body: { error: 'not-account-mode' } });
+    expect(await nativeModeGate(withHdr(), U, { kind: async () => 'apple', env: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' } })).toEqual({ status: 403, body: { error: 'not-account-mode' } });
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await nativeModeGate(withHdr(), U, boom)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
   });
@@ -80,8 +87,8 @@ describe('gates', () => {
   it('oldRouteGate: native in account or web-only mode is 409 use-account-publish; device, no token, a bad token pass through', async () => {
     const h = { 'x-pb-build': '57', authorization: 'Bearer t' };
     const userOf = async () => ({ id: U });
-    expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'web', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
-    expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'apple', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
+    expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'web', env: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' } })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+    expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'apple', env: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
     expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'web', env: {} })).toEqual({ status: 409, body: { error: 'use-account-publish' } }); // web-only too
     expect(await oldRouteGate({ headers: { 'x-pb-build': '57' } }, userOf, boom)).toBeNull();
     expect(await oldRouteGate({ headers: h }, async () => null, boom)).toBeNull();
@@ -98,7 +105,7 @@ describe('oldRouteGate is off with ACCOUNT_PLAN_V2 off', () => {
     vi.stubEnv('ACCOUNT_PLAN_V2', '');
     const userOf = vi.fn(async () => ({ id: U }));
     const kind = vi.fn(async (): Promise<AccountKind> => { throw new Error('must not be read'); });
-    expect(await oldRouteGate({ headers: { 'x-pb-build': '57', authorization: 'Bearer t' } }, userOf, { kind, env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
+    expect(await oldRouteGate({ headers: { 'x-pb-build': '57', authorization: 'Bearer t' } }, userOf, { kind, env: { ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
     expect(userOf).not.toHaveBeenCalled(); expect(kind).not.toHaveBeenCalled();
   });
   it('switch on and the Stripe key missing: an Apple-only caller is device (no 503), logged', async () => {

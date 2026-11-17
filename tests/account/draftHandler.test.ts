@@ -32,7 +32,7 @@ const STATES: Record<string, Record<string, string>> = { off: {}, allowlist: { A
 
 beforeEach(() => {
   vi.unstubAllEnvs();
-  vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
+  vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
   Object.assign(db, { calls: [], draft: existing(), kind: 'web', kindFails: false, kindCalls: 0 });
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -42,7 +42,7 @@ describe('browser requests are unchanged by ACCOUNT_DRAFTS_IOS in every state', 
     const seen: Record<string, string> = {};
     for (const [name, env] of Object.entries(STATES)) {
       vi.unstubAllEnvs();
-      for (const [k, v] of Object.entries({ WEB_APP_RELIABILITY: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', ...env })) vi.stubEnv(k, v);
+      for (const [k, v] of Object.entries({ WEB_APP_RELIABILITY: '1', WEB_APP_CHECKOUT: '1', WEB_APP_ENTITLEMENTS: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', ...env })) vi.stubEnv(k, v);
       db.calls = []; db.draft = existing();
       const g = await run('GET');
       const p = await run('PUT', {}, put());
@@ -64,7 +64,7 @@ describe('native callers', () => {
   it('web account in the allowlist or with all: GET and PUT work as for a browser', async () => {
     for (const env of [STATES.allowlist, STATES.all]) {
       vi.unstubAllEnvs();
-      for (const [k, v] of Object.entries({ WEB_APP_RELIABILITY: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', ...env })) vi.stubEnv(k, v);
+      for (const [k, v] of Object.entries({ WEB_APP_RELIABILITY: '1', WEB_APP_CHECKOUT: '1', WEB_APP_ENTITLEMENTS: '1', STRIPE_WEBAPP_SECRET_KEY: 'sk_test_x', ...env })) vi.stubEnv(k, v);
       expect((await run('GET', hdr)).code).toBe(200);
       expect((await run('PUT', hdr, put())).code).toBe(200);
     }

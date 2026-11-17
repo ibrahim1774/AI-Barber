@@ -58,7 +58,7 @@ describe('a stale draft PUT can never bring the old live address back', () => {
   const site = () => ({ shopName: 'Fresh Cuts', area: 'Brooklyn', phone: '555', hero: { heading: 'H', tagline: 'T', imageUrl: '' }, about: { heading: 'A', description: ['d'], imageUrl: '' }, services: [{ title: 'Fade', name: 'Fade', price: '$30', imageUrl: '' }], gallery: [], craftImages: [], staff: [], contact: { address: '1 Main St', email: 'a@b.co' } });
   const put = async (headers: any) => { const r = res(); await draft({ method: 'PUT', headers: { authorization: 'Bearer t', ...headers }, body: { id: 'd1', expectedRevision: 1, site_data: site() } }, r); return r; };
   beforeEach(() => {
-    vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
+    vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
     db.row = { user_id: 'u1', environment: 'test', draft_id: 'd1', revision: 1, site_data: { ...site(), source: 'web-app', shopName: 'Old' }, deployed_url: 'https://old.vercel.app', published_binding: null, updated_at: 'x', suspended: true, suspension_reason: 'offline' };
   });
   it('native (X-PB-Build): deployed_url stays null, whatever DRAFT_PUT_KEEPS_LIVE_URL says, and the answer shows null', async () => {

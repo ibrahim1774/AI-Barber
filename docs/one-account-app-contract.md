@@ -15,7 +15,7 @@ Ask `GET /api/shop/plan` (bearer). With the plan answer switched on the response
 
 | siteMode | Who | What the app does |
 |---|---|---|
-| `account` | A web account the rollout covers | Uses the draft store and the drafted publish (sections 3 and 4). The draft is the only copy that is edited. No old iOS publish, no old Restore. |
+| `account` | A web account the rollout covers, AND the draft engine is really usable on the server (`WEB_APP_RELIABILITY`, `WEB_APP_CHECKOUT` and `WEB_APP_ENTITLEMENTS` all on); otherwise the same account is `web-only` | Uses the draft store and the drafted publish (sections 3 and 4). The draft is the only copy that is edited. No old iOS publish, no old Restore. |
 | `web-only` | A web account the rollout does not cover yet, including while the switch is fully off | No editing, no autosave, no paywall, no publish. Show the "your website is managed on the web" text. Every draft, publish and kept-copy call answers 403 `not-account-mode`. |
 | `device` | Apple accounts, two-site accounts, and accounts with nothing yet | Today's behaviour exactly: the phone copy, `/api/ios/publish`, `/api/ios/site`, the Apple paywall. |
 
@@ -108,16 +108,23 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 - 503 `temporarily-unavailable`: the mode could not be read (with `ACCOUNT_PLAN_V2=1`). Try again later. A missing or unknown Stripe key never causes this for an Apple account: the server treats the caller as `device` on these old routes.
 - Otherwise the route answers as before.
 
-**Delete and take offline on the Apple routes (6a).** Rule: no account is ever left without a working in-app delete, and no route deletes an account while leaving its card plan billing. These routes act only with `ACCOUNT_PLAN_V2=1` AND `X-PB-Build` AND a bearer. Builds 55 and 1.1 and every call without the header answer exactly as before.
+**Delete and take offline: ONE route each, for every account (6a).** With `ACCOUNT_PLAN_V2=1` AND `X-PB-Build` the app calls only `POST /api/ios/delete-account` and `POST /api/ios/take-offline`. There is no route hopping and no `use-account-delete` or `use-account-take-offline` answer any more. The server picks the right action for the account and reports what it did. Without the header, or with `ACCOUNT_PLAN_V2` off, both routes answer exactly as before, with none of the new fields below.
 
-- `POST /api/ios/delete-account`, web account (kind `web`): 409 `use-account-delete` while the account route exists (`WEB_APP_ENTITLEMENTS` on) and `APP_DELETE_CANCELS_WEB` is off. Then call `POST /api/web-app/delete-account` (section 6b). With `APP_DELETE_CANCELS_WEB=1` the Apple route deletes (it cancels the card plan). If the account route does not exist yet (`WEB_APP_ENTITLEMENTS` off) the Apple route does NOT refuse: it cancels the card plan itself and then deletes, the same code as the `APP_DELETE_CANCELS_WEB` branch.
-- Two-site account (kind `mixed`): never refused. It resolves to `device` mode and has no other delete, so the Apple route deletes it and cancels any card plan first.
-- `POST /api/ios/take-offline`, web account: a web account has no Apple transaction, so this route cannot take its site down. While the account route exists it answers 409 `use-account-take-offline` (call `POST /api/web-app/take-offline`). While it does not exist (`WEB_APP_ENTITLEMENTS` off) it takes the web site offline itself, keeping the content, and answers 200 `{ ok: true }`, 404 `no-site` or 409 `publish-in-progress`.
-- `POST /api/ios/take-offline`, two-site account (kind `mixed`): takes down ONLY the Apple site, the device-mode site the phone shows. The web site is untouched and stays live. Say so plainly in the app ("your iPhone website"); do not promise that everything is offline.
-- The app's route order: pick the first route from the mode (`account` and `web-only` use `/api/web-app/*` first; `device` and `unknown` use `/api/ios/*` first). On a web route 404 `not_found` or 403 `not-account-mode`, try the iOS route once. On an iOS 409 `use-account-delete` or `use-account-take-offline`, use the web route once. One hop each way, never a loop. For take offline specifically: after a web route 404 `not_found`, POST `/api/ios/take-offline` straight away with the bearer and `X-PB-Build` and NO transaction (do not call `/api/ios/site` first; a web account has no Apple transaction). In device mode (and when the stored mode is `unknown`) call `/api/ios/site` with the transaction first and then `/api/ios/take-offline` with it. `/api/ios/site` answers a web account 409 `use-account-publish` (with `ACCOUNT_PLAN_V2` on and the header), and `/api/ios/take-offline` answers 409 `use-account-take-offline`: on either, use the web route once. If a stored mode was stale and the first attempt fails (a 400 or a failure with nothing taken down), re-read the mode with `GET /api/shop/plan` once and run the flow again; a failed first attempt never takes anything down or deletes anything. A failed delete (500 `delete-failed`, `retryable: true`) is not a reason to try the other route: show "Try again later".
-- 503 `temporarily-unavailable` if the account could not be read (destructive routes fail closed).
-- A delete that has to cancel a card plan (a two-site account, or a web account while the account route does not exist) fails closed when Stripe is down and the account has Stripe history: 500 `delete-failed` with `retryable: true`, nothing deleted. Show a plain "Try again later" and let the barber tap again. With no Stripe history the delete goes ahead. A missing Stripe key never blocks an Apple-only account.
-- With every switch off these routes answer exactly as today, including for a web account (the new app must not rely on the 409 unless `ACCOUNT_PLAN_V2` is on).
+`POST /api/ios/delete-account` (bearer, no body). Deletes the account whatever its kind. Any live card plan (web, two-site, or an Apple account that also has one) is cancelled first, whatever `APP_DELETE_CANCELS_WEB` and `WEB_APP_ENTITLEMENTS` say. All the account's sites go down and are purged (web sites, and Apple sites tied to its purchases).
+- 200 `{ deleted: true, ..., outcome: { cardPlanCanceled: boolean, appleSubscriptionActive: boolean } }`. If `appleSubscriptionActive` is true tell the user to cancel the Apple subscription in iPhone Settings, then Subscriptions; deleting the account does not cancel it. (Production purchases count; a Sandbox purchase counts only on a Sandbox server.)
+- 500 `{ error: 'delete-failed', retryable: true, cardCancelFailed: true }`: the card plan could not be cancelled (Stripe down). Nothing was deleted. Say "We could not cancel your card plan. Try again later." `cardCancelFailed` is the ONLY signal for the card case: other failures also say `retryable: true`.
+- 500 `delete-failed` without `cardCancelFailed`: some other step failed, nothing is half-deleted; "Try again later". 401 as today. 409 `move-in-progress` as today. 503 `temporarily-unavailable`: a read before the delete failed, nothing was done.
+
+`POST /api/ios/take-offline` (bearer; body `{ transactionId?: string, expect?: 'keep' | 'purge' }`). `transactionId` is the Apple transaction the phone has, if any. Send `expect` always: `keep` means the user was told nothing is deleted, `purge` means the user confirmed content will be deleted.
+- Web account (kind `web`): the web site(s) go offline, the saved copy, photos and phone number are kept, the live address is forgotten (draft engine on or off). The transaction is ignored; no transaction is needed.
+- Apple or no-site account with a valid transaction: today's behaviour for the Apple site: content is purged unless the server keeps it (`SAFE_TAKE_OFFLINE=1`).
+- Two-site account (kind `mixed`): with a transaction, the Apple site as above; without one, the web site, kept.
+- If you sent `expect: 'keep'` but this call would purge: 409 `{ error: 'confirm-purge' }`, nothing done. Ask the user to confirm, then call again with `expect: 'purge'`. `expect: 'purge'` when content will be kept simply proceeds. No `expect`: treated as `purge` for an Apple site (today), proceeds for the web site.
+- 200 `{ ..., outcome: { site: 'web' | 'apple', contentKept: boolean, otherSiteLive: boolean } }`. Say what happened from `outcome`: "Nothing is deleted" only when `contentKept` is true. If `otherSiteLive` is true say the account's other website is still live (a two-site account takes down only the site you asked for).
+- 404 `no-site` (nothing to take down), 409 `publish-in-progress` (nothing touched; wait for the publish to settle, try again), 400 `bad-request` for an invalid `expect` or, for an Apple account, a missing transaction, 503 `temporarily-unavailable` (a read failed, nothing done), 500 `remove-failed`.
+- After a web take offline the same address is reused by the next normal publish; a custom domain that was detached must be reconnected by the barber.
+
+`POST /api/ios/site` still answers a web account 409 `use-account-publish` (publish and sync only). Do not call it before take offline when the mode is web.
 
 `POST /api/ios/publish` can answer **409 `account-has-site`** with `{ slug, reason }`:
 
@@ -127,13 +134,9 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 - The body also carries `planLive` for `web-account` and `mixed` (false = the account's web plan has ended; absent on address-conflict answers and `other-apple-id`, treat as true) and `accountEmail`: the signed-in caller's OWN email (never anyone else's), when it can be read. Use it to say which account already has the plan. It is only present for Production purchases. Show the same two texts as for `blockedPurchase` in section 7 (one for `web-account` and `mixed`, one for `other-apple-id`).
 - In all cases the new subscription was not used and nothing changed on the website. Builds that only know `account-has-site` keep working: they read `slug`, and anything but `reason: "shop"` counts as "site".
 
-## 6b. Take offline and delete account for native callers
+## 6b. The web routes for the same two actions
 
-Send `X-PB-Build` on both.
-
-- `POST /api/web-app/take-offline`: any web account may use it from the app: `account` mode and `web-only` mode. A `device` caller gets 403 `not-account-mode`. A lookup failure is 503 `temporarily-unavailable`. 404 `no-site` when there is nothing to take offline; 500 `remove-failed` otherwise. **From the 1.2 app (with `X-PB-Build`) this route NEVER deletes the stored copy or photos, whatever `SAFE_TAKE_OFFLINE` is set to** (it needs no switch). The site goes offline, a custom domain is detached, the old live address is forgotten on the draft (and, if that write ever fails, a draft read or publish from the app treats a site that is offline as having no live address) (the saved draft no longer reports it, and a draft save from the app never writes a live address back), and the saved copy and the draft stay. It works with the draft engine on or off: it forgets the draft's live address itself either way (no draft row means nothing to forget), so there is no 503 for a missing draft engine. The app may say "Nothing is deleted" for this action, only for a call that carried `X-PB-Build` on this route. Publishing again uses the normal account publish and reuses the same address (slug). A custom domain that was detached must be reconnected by the barber; it does not come back by itself. The web's own take offline and old builds are unchanged.
-- `POST /api/web-app/take-offline` from the app also answers **409 `publish-in-progress`** when a publish is running for the account: nothing was touched, so wait for the publish to settle (poll the publish status) and try again. A browser still gets its old answer. The keep-content take offline also keeps the saved contact phone number, so "Nothing is deleted" is fully true.
-- `POST /api/web-app/delete-account`: any web account (`account` or `web-only` mode) deletes through this route; delete is always allowed for a web account (it cancels the card plan, purges, deletes). A `device` caller gets 403 `not-account-mode` and keeps using `/api/ios/delete-account`. A lookup failure is 503 `temporarily-unavailable`. The delete itself answers as the web route always did.
+`POST /api/web-app/take-offline` and `POST /api/web-app/delete-account` still accept a native caller with a web account (a `device` caller gets 403 `not-account-mode`), but the app no longer uses them: use the single routes in 6a. The web's own take offline and delete are unchanged.
 
 ## 6c. Get paid (Stripe onboarding) return page
 
@@ -146,8 +149,8 @@ Send `X-PB-Build` on both.
 | `/api/ios/publish`, `/api/ios/site` (409 `use-account-publish`) | `ACCOUNT_PLAN_V2=1` | Off: identical to a header-less call, no reads. The only gate on a route that device mode uses. |
 | `/api/web-app/draft`, `/api/web-app/publish` (403 `not-account-mode`, 409 `use-drafted-publish`) | Header present (routes need `WEB_APP_CHECKOUT`, `WEB_APP_RELIABILITY`) | The app calls these only in `account` mode, so a device-mode app never reaches them. |
 | `/api/account/kept-copy` (403 `not-account-mode`) | Header-independent: always requires account mode | Account mode only. |
-| `/api/web-app/take-offline` (403 `not-account-mode` for `device`) | Header present | Any web account (account or web-only); device mode keeps `/api/ios/take-offline`. |
-| `/api/web-app/delete-account` (403 `not-account-mode` for `device`) | Header present | Web accounts only; device mode keeps `/api/ios/delete-account`. |
+| `/api/ios/delete-account`, `/api/ios/take-offline` (single routes, new fields) | `ACCOUNT_PLAN_V2=1` and `X-PB-Build` | Otherwise exactly today's answers. |
+| `/api/web-app/take-offline`, `/api/web-app/delete-account` (403 `not-account-mode` for `device`) | Header present | Left working; the app does not use them. |
 
 A 1.2 app in device mode, with every switch off, gets exactly today's answers from every route it uses.
 
@@ -171,11 +174,11 @@ All default to off. With every switch off the server behaves exactly as before.
 
 1. Migrations 038, 039, 040 and 041 applied (nobody applies them without the owner's go).
 2. Backfill (`scripts/one-account-backfill.ts`, dry run first, then `--apply --yes-production`) and the re-count script.
-3. `WEB_APP_ENTITLEMENTS`, `WEB_APP_CHECKOUT` and `WEB_APP_RELIABILITY` on (the account routes, the draft, publish and kept-copy endpoints need them). **These must be on BEFORE `ACCOUNT_PLAN_V2`**, so that the app is never told a web account's mode while the account routes do not exist. The server stays safe if the order is wrong (a web account's Apple delete cancels its card plan itself and its Apple take offline takes the web site down), but do not rely on that.
-4. `ACCOUNT_PLAN_V2=1`: the plan answer gains `kind`, `site`, `capabilities.siteMode`, and the Apple-route gates (6a) switch on.
+3. `WEB_APP_ENTITLEMENTS`, `WEB_APP_CHECKOUT` and `WEB_APP_RELIABILITY` on (the account routes, the draft, publish and kept-copy endpoints need them). **These must be on BEFORE `ACCOUNT_PLAN_V2`**, so that the app is never told a web account's mode while the account routes do not exist. If the order is wrong the server stays safe: the plan answer says `web-only` (never `account`) until they are on, and delete and take offline do not depend on them (6a).
+4. `ACCOUNT_PLAN_V2=1`: the plan answer gains `kind`, `site`, `capabilities.siteMode`, and the single delete and take-offline routes (6a) switch on, with `/api/ios/publish` and `/api/ios/site` refusing web accounts (409 `use-account-publish`).
 5. `ONE_SITE_GUARD=alert` for about a week, then `1`. Alert records and alerts only; `1` refuses.
 6. `ACCOUNT_DRAFTS_IOS=allowlist` with `ACCOUNT_DRAFTS_IOS_USERS`, then `all`. Must be deployed before any 1.2 phone exists. Until it covers an account that account is `web-only`.
 7. `DRAFT_PUT_KEEPS_LIVE_URL=1`: a save no longer writes an old live address back. Turn it on before account mode goes wide.
 8. `GATE_ANY_SOURCE=1`: Move and checkout follow the account kind.
-9. The native take offline always keeps the stored copy (no switch); it needs only the route (`WEB_APP_ENTITLEMENTS`), not the draft engine (section 6b).
+9. Delete and take offline from the app (6a) work in ANY switch order: each is one route that does the right thing for the account, so there is no window where an account has no working delete. They need only `ACCOUNT_PLAN_V2=1` (and the header) for the new fields.
 10. `AUTH_OUTAGE_503=1`: sign-in outages answer 503 instead of 401 (section 2b). Turn it on together with the 1.2 app, which handles the 503 correctly; older builds treat a 503 as a plain failure.
