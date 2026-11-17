@@ -1,6 +1,7 @@
 -- 037: do not apply until the owner says so.
 -- Emails for iOS customers (welcome, "your website isn't live yet", payment problem / subscription ended).
--- Additive only: two NEW tables, nothing existing is touched. Service role only (RLS on, no policies, anon/authenticated revoked), like 031.
+-- Additive only: two NEW tables, nothing existing is touched. Both user_id columns reference auth.users with
+-- on delete cascade, so deleting an account leaves no row behind. Service role only (RLS on, no policies, anon/authenticated revoked), like 031.
 -- Code behaves as "switch off" (nothing sent, nothing written) while these tables are missing.
 --   ios_account_emails : one row per iOS account, written when /api/ios/signup creates the account (only for a Production
 --                        purchase and only while IOS_EMAIL_WELCOME or IOS_EMAIL_NOT_LIVE is "1"). Welcome ledger + the
@@ -36,7 +37,7 @@ create table if not exists public.ios_billing_emails (
   original_transaction_id  text not null,
   kind                     text not null check (kind in ('renewal_failed','expired')),
   period_key               text not null,   -- the transaction's expiresDate in ms (the billing period that failed / ended), or 'na'
-  user_id                  uuid,
+  user_id                  uuid references auth.users(id) on delete cascade,
   claimed_at               timestamptz not null default now(),
   sent_at                  timestamptz,
   resend_id                text,
