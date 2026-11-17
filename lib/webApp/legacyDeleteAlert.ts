@@ -21,18 +21,31 @@ export const liveLegacyDeleteDeps = (): LegacyDeleteDeps => ({
   alert: alertOwner,
 });
 
-export async function alertIfLegacyCustomer(userId: string, deps: LegacyDeleteDeps = liveLegacyDeleteDeps()): Promise<boolean> {
+const LEGACY_ALERT_TIMEOUT_MS = 4000;
+
+/** The whole lookup + alert is capped at 4 s so it can never hold a delete. */
+export async function alertIfLegacyCustomer(userId: string, deps: LegacyDeleteDeps = liveLegacyDeleteDeps(), timeoutMs = LEGACY_ALERT_TIMEOUT_MS): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      lookupAndAlert(userId, deps),
+      new Promise<boolean>((resolve) => { timer = setTimeout(() => { console.error('[ios/delete-account] legacy alert timed out (ignored)'); resolve(false); }, timeoutMs); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function lookupAndAlert(userId: string, deps: LegacyDeleteDeps): Promise<boolean> {
   try {
     const owners = (await deps.ownerRows(userId)).filter((r) => !String(r.checkout_session_id ?? '').startsWith('webapp:'));
     const sites = await deps.legacySites(userId);
     if (!owners.length && !sites.length) return false;
     const email = await deps.email(userId).catch(() => null);
-    await deps.alert('Legacy customer deleted their account', [
+    await deps.alert('Legacy customer is deleting their account', [
       `user: ${userId}`,
       `email: ${email ?? '(unknown)'}`,
       `old site slugs (site_owners): ${owners.map((o) => o.slug).join(', ') || '(none)'}`,
       `old sites rows (company names): ${sites.map((s) => s.company_name ?? '(unnamed)').join(', ') || '(none)'}`,
-      'Their old Stripe plan was NOT cancelled and their old sites rows go with the account. Cancel the plan by hand.',
+      'This delete does not cancel their old Stripe plan, and their old sites rows go with the account if the delete completes. Cancel the plan by hand.',
     ]);
     return true;
   } catch (e: any) {

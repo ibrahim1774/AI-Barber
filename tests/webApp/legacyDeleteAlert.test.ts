@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ tables: {} as Record<string, any[]>, reads: [] as string[], alert: vi.fn(async (..._a: any[]) => {}) }));
+const h = vi.hoisted(() => ({ status: 200, resume: vi.fn(async (..._a: any[]) => {}), tables: {} as Record<string, any[]>, reads: [] as string[], alert: vi.fn(async (..._a: any[]) => {}) }));
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   sbRest: vi.fn(async (p: string) => { h.reads.push(p); return h.tables[p.split('?')[0]] ?? []; }),
   stripeCall: vi.fn(async () => ({ data: [] })),
 }));
 vi.mock('../../lib/webApp/emails.js', () => ({ alertOwner: h.alert }));
 vi.mock('../../lib/webApp/userExists.js', () => ({ emailOfUser: vi.fn(async () => 'a@example.com') }));
-vi.mock('../../lib/webApp/reliability.js', () => ({ suspendWork: vi.fn(async () => {}), markSiteOffline: vi.fn(async () => {}), reliabilityOn: () => false, enc: encodeURIComponent, draftPath: () => '' }));
+vi.mock('../../lib/webApp/reliability.js', () => ({ suspendWork: vi.fn(async () => {}), resumeAfterFailedDelete: h.resume, markSiteOffline: vi.fn(async () => {}), reliabilityOn: () => false, enc: encodeURIComponent, draftPath: () => '' }));
 vi.mock('../../lib/ios/removeSiteLive.js', () => ({ liveRemoveDeps: vi.fn(() => ({})) }));
 vi.mock('../../lib/ios/deleteAccount.js', () => ({
   liveDeleteDeps: vi.fn(() => ({
@@ -16,16 +16,17 @@ vi.mock('../../lib/ios/deleteAccount.js', () => ({
   })),
   deleteAccount: vi.fn(async (_a: any, deps: any) => {
     const r = await deps.closeShop('u1');
-    return { status: r.ok ? 200 : 500, body: { deleted: true } };
+    return { status: h.status, body: { deleted: true } };
   }),
 }));
 
+import { alertIfLegacyCustomer } from '../../lib/webApp/legacyDeleteAlert.js';
 import handler from '../../api/ios/delete-account.js';
 
 const res = () => { const r: any = {}; r.setHeader = () => r; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.end = () => r; return r; };
 const run = async () => { const r = res(); await handler({ method: 'POST', headers: { authorization: 'Bearer t' } } as any, r); return r; };
 
-beforeEach(() => { h.tables = {}; h.reads = []; h.alert.mockClear(); vi.stubEnv('APP_DELETE_CANCELS_WEB', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); });
+beforeEach(() => { h.tables = {}; h.reads = []; h.status = 200; h.resume.mockClear(); h.alert.mockClear(); vi.stubEnv('APP_DELETE_CANCELS_WEB', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('legacy customer delete alert (APP_DELETE_CANCELS_WEB)', () => {
@@ -35,10 +36,10 @@ describe('legacy customer delete alert (APP_DELETE_CANCELS_WEB)', () => {
     expect(r.code).toBe(200);
     expect(h.alert).toHaveBeenCalledTimes(1);
     const [subject, lines] = h.alert.mock.calls[0] as any;
-    expect(subject).toBe('Legacy customer deleted their account');
+    expect(subject).toBe('Legacy customer is deleting their account');
     expect(lines.join('\n')).toMatch(/u1|a@example.com/);
     expect(lines.join('\n')).toMatch(/old-cuts/);
-    expect(lines.join('\n')).toMatch(/NOT cancelled/);
+    expect(lines.join('\n')).toMatch(/does not cancel/);
   });
   it('null checkout_session_id counts as legacy', async () => {
     h.tables = { site_owners: [{ slug: 'x', checkout_session_id: null }] };
@@ -71,5 +72,26 @@ describe('legacy customer delete alert (APP_DELETE_CANCELS_WEB)', () => {
     expect(r.code).toBe(200);
     expect(h.reads.filter((p) => /^(site_owners|sites)\?/.test(p))).toEqual([]);
     expect(h.alert).not.toHaveBeenCalled();
+  });
+  it('switch on: a failed delete resumes the suspended draft', async () => {
+    h.status = 500;
+    const r = await run();
+    expect(r.code).toBe(500);
+    expect(h.resume).toHaveBeenCalledWith('u1');
+  });
+  it('switch on: a successful delete does not resume', async () => {
+    await run();
+    expect(h.resume).not.toHaveBeenCalled();
+  });
+  it('switch off: no resume call', async () => {
+    vi.stubEnv('APP_DELETE_CANCELS_WEB', '');
+    h.status = 500;
+    await run();
+    expect(h.resume).not.toHaveBeenCalled();
+  });
+  it('a hung lookup is cut at the timeout and never blocks (returns false)', async () => {
+    const never = new Promise<any>(() => {});
+    const ok = await alertIfLegacyCustomer('u1', { ownerRows: () => never, legacySites: async () => [], email: async () => null, alert: async () => {} }, 30);
+    expect(ok).toBe(false);
   });
 });

@@ -9,9 +9,10 @@ export async function storedSessionId(uid: string, mode: 'live' | 'test'): Promi
   try { const id = (await sbRest(`${path(uid, mode)}&select=stripe_session_id&limit=1`))?.[0]?.stripe_session_id; return typeof id === 'string' ? id : null; }
   catch (e: any) { console.error('[web-app checkout-sessions] read failed:', e?.message || e); return null; }
 }
-export async function rememberSession(uid: string, mode: 'live' | 'test', sessionId: string): Promise<void> {
-  try { await sbRest('web_app_checkout_sessions?on_conflict=user_id,environment', { method: 'POST', body: { user_id: uid, environment: mode, stripe_session_id: sessionId, created_at: new Date().toISOString() }, prefer: 'resolution=merge-duplicates,return=minimal' }); }
-  catch (e: any) { console.error('[web-app checkout-sessions] write failed:', e?.message || e); }
+/** Best effort as always; resolves false when the write failed (only APP_DELETE_CANCELS_WEB checkout looks at that). */
+export async function rememberSession(uid: string, mode: 'live' | 'test', sessionId: string): Promise<boolean> {
+  try { await sbRest('web_app_checkout_sessions?on_conflict=user_id,environment', { method: 'POST', body: { user_id: uid, environment: mode, stripe_session_id: sessionId, created_at: new Date().toISOString() }, prefer: 'resolution=merge-duplicates,return=minimal' }); return true; }
+  catch (e: any) { console.error('[web-app checkout-sessions] write failed:', e?.message || e); return false; }
 }
 export async function forgetSession(uid: string, mode: 'live' | 'test'): Promise<void> {
   try { await sbRest(path(uid, mode), { method: 'DELETE' }); }

@@ -14,6 +14,7 @@ import { WEB_APP_TAG, isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { forgetSession, storedSessionId } from './checkoutSessions.js';
 import { emailOfUser } from './userExists.js';
+import { alertOwner } from './emails.js';
 
 const WEB = 'web:';
 const enc = encodeURIComponent;
@@ -141,10 +142,50 @@ export async function hasStripeHistory(userId: string): Promise<boolean> {
   return false;
 }
 
-/** Behind APP_DELETE_CANCELS_WEB: an account with no Stripe history never calls Stripe on delete. */
-const skipStripeWithoutHistory = () => process.env.APP_DELETE_CANCELS_WEB === '1';
+const STRIPE_PLAN_TIMEOUT_MS = 8000;
+/** Thrown for a failure of Stripe itself (down, slow, bad key, key missing). Anything else (a database read) stays a hard failure. */
+class StripeDown extends Error { constructor(public reason: string) { super(reason); } }
+const readRows = async (path: string) => { const r = await sbRest(path); return Array.isArray(r) && r.length > 0; };
 
-export function liveWebDeleteDeps(): DeleteAccountDeps {
+/**
+ * iOS in-app delete only (`allowNoStripe`, passed by api/ios/delete-account.ts when APP_DELETE_CANCELS_WEB=1).
+ * Stripe is ALWAYS asked first (8 s). If it answers, today's behaviour. If the key is missing or Stripe is down/slow, the delete may
+ * go on WITHOUT Stripe only when the account has no Stripe history (entitlements, customers, sessions) AND (it holds an ios_purchases row
+ * OR has no web sign-up: no price-group row, no draft row). The owner is alerted whenever that happens. Everything else, and any read
+ * error, fails closed.
+ */
+async function planWithStripeFallback(userId: string): Promise<{ withoutStripe: string | null }> {
+  if (!keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY)) return { withoutStripe: await mayGoWithoutStripe(userId, 'Stripe key missing') };
+  let emailReadFailed = false;
+  const down = <A extends any[], T>(f: (...a: A) => Promise<T>) => async (...a: A): Promise<T> => { try { return await f(...a); } catch (e: any) { throw new StripeDown(`Stripe call failed: ${e?.message || e}`); } };
+  const list = down(async (c: string): Promise<any[]> => (await stripeCall(`subscriptions?customer=${enc(c)}&status=all&limit=20`, null, 'GET'))?.data ?? []);
+  const discover: typeof sessionsOfUser = (uid) => sessionsOfUser(uid, async (id) => { try { return await emailOfUser(id); } catch (e) { emailReadFailed = true; throw e; } });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      planWebCancellations(userId, list, async (uid) => { try { return await discover(uid); } catch (e: any) { throw emailReadFailed ? e : new StripeDown(`Stripe call failed: ${e?.message || e}`); } }),
+      new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new StripeDown('Stripe timed out')), STRIPE_PLAN_TIMEOUT_MS); }),
+    ]);
+    return { withoutStripe: null };
+  } catch (e: any) {
+    if (!(e instanceof StripeDown)) throw e;
+    return { withoutStripe: await mayGoWithoutStripe(userId, e.reason) };
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function mayGoWithoutStripe(userId: string, reason: string): Promise<string> {
+  const enc1 = enc(userId);
+  if (await hasStripeHistory(userId)) throw new Error(`delete refused: ${reason} and the account has Stripe history`);
+  const apple = await readRows(`ios_purchases?user_id=eq.${enc1}&select=original_transaction_id&limit=1`);
+  if (!apple) {
+    const webSignup = (await readRows(`web_app_price_groups?user_id=eq.${enc1}&select=user_id&limit=1`)) || (await readRows(`web_app_drafts?user_id=eq.${enc1}&select=user_id&limit=1`));
+    if (webSignup) throw new Error(`delete refused: ${reason} and the account has a web sign-up and no Apple purchase`);
+  }
+  await alertOwner('Account deleted without asking Stripe', [`user: ${userId}`, `reason: ${reason}`, apple ? 'The account holds an Apple purchase.' : 'The account has no web sign-up.', 'No Stripe history was found locally. Check Stripe for this customer if in doubt.']).catch((e: any) => console.error('[ios/delete-account] no-Stripe alert failed:', e?.message || e));
+  return reason;
+}
+
+export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean } = {}): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();
   const stamp = (otid: string, body: Record<string, unknown>) =>
@@ -180,9 +221,13 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
     // The shop is closed first (customers told, money refunded); only then is the billing stopped.
     closeShop: base.closeShop
       ? async (userId) => {
-          if (skipStripeWithoutHistory() && !(await hasStripeHistory(userId))) {
+          if (opts.allowNoStripe) {
+            const { withoutStripe } = await planWithStripeFallback(userId); // refuses (throws) unless Stripe answered or the fallback rules allow it
             await suspendWork(userId, 'deleting');
-            return base.closeShop!(userId);
+            const r = await base.closeShop!(userId);
+            if (!r.ok || withoutStripe) return r;
+            await cancelThenForgetCustomers(userId);
+            return r;
           }
           await planWebCancellations(userId); // refuse BEFORE the shop is closed if a live subscription is out of this key's reach
           await suspendWork(userId, 'deleting');
