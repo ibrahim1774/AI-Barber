@@ -33,6 +33,10 @@ import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
+import { searchPagesOn } from '../pagesV2.js';
+import { seoProblem, seoSanitize } from '../render/seoText.js';
+import { guideCopySanitize } from '../render/guidePages.js';
+import { svcCopySanitize } from '../serviceCopy/prune.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
@@ -190,8 +194,17 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return badRequest;
   if (!validInput(input)) return badRequest;
   // The web-origin marker is set by the web app only; a hand-made iOS request cannot turn the web-only page rules on.
-  const sd = { ...input.siteData } as WebsiteData;
+  let sd = { ...input.siteData } as WebsiteData;
   delete (sd as { source?: unknown }).source;
+  // A site that opted into the web page rules (extraPages.searchPages, lib/pagesV2.ts searchPagesOn) gets the same cleaning of the text
+  // those rules read as a web draft save and a web publish (validateWebSnapshot): invalid seo.* and guides.* text is dropped (never a reason
+  // to refuse), and service text is kept only when it is not model-written (svcCopySanitize with no signing secret or refs keeps no model
+  // text: the iOS path never turns the service-text writer on). A site without the mark is not touched.
+  if (searchPagesOn(sd)) {
+    const seoStop = seoProblem(sd);
+    if (seoStop) return badRequest;
+    sd = svcCopySanitize(guideCopySanitize(seoSanitize(sd).siteData).siteData, { autoPublish: false, secret: null }).siteData as WebsiteData;
+  }
   if (hasDataUrl(sd)) return badRequest;
   // Build the pending payload up front: any shape problem surfaces here as a
   // 400, never after a slug has been bound.

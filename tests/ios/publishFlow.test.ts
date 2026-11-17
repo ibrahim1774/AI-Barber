@@ -1075,3 +1075,76 @@ describe('runIosPublish: the shop logo', () => {
     expect('logo' in (p.imageUrlMap || {})).toBe(false);
   });
 });
+
+// extraPages.searchPages (lib/pagesV2.ts searchPagesOn): the iOS route strips `source` but keeps the mark, and a marked site gets the
+// same cleaning of the text the web page rules read as a web draft save / web publish (seoSanitize, guideCopySanitize, svcCopySanitize).
+describe('runIosPublish: marked sites (extraPages.searchPages)', () => {
+  const ownerEntry = { v: 1, aiGenerated: false, intro: 'We do braids all week.', sections: [] };
+  const modelEntry = { v: 1, aiGenerated: true, intro: 'Braids are a classic.', sections: [], approval: 'owner', approvalSig: 'a'.repeat(64), approvalScope: 'b'.repeat(32), approvalRef: 's:fresh-cuts', approvalAt: 1 };
+  const withPages = (extra: Record<string, unknown> = {}, over: Record<string, unknown> = {}) => site({
+    services: [{ title: 'Fade', name: 'Fade', price: '$30' } as any, { title: 'Braids', name: 'Braids', price: '$60' } as any],
+    extraPages: { on: ['faq'], serviceGuides: true, seed: 3, ...extra } as any, ...over,
+  });
+  const run = async (sd: WebsiteData) => { const f = fakes(); const r = await runIosPublish(input({ siteData: sd }), f.deps); return { r, stored: f.pending.get('fresh-cuts')?.siteData as any, f }; };
+
+  it('keeps the mark, strips source, and the stored copy renders with the web rules', async () => {
+    const { r, stored } = await run({ ...withPages({ searchPages: true }), source: 'web-app' } as any);
+    expect(r.status).toBe(200);
+    expect(stored.source).toBeUndefined();
+    expect(stored.extraPages.searchPages).toBe(true);
+  });
+  it('a hand-made request with source web-app and NO mark gets no web rules and no cleaning', async () => {
+    const copy = { 'seo.home.title': 'x'.repeat(200), 'guides.hub.intro': '<b>bad</b>' };
+    const { r, stored } = await run({ ...withPages(), source: 'web-app', copy } as any);
+    expect(r.status).toBe(200);
+    expect(stored.source).toBeUndefined();
+    expect(stored.extraPages.searchPages).toBeUndefined();
+    expect(stored.copy).toEqual(copy); // untouched: the unmarked path is exactly as before
+  });
+  it('an unmarked site keeps svcCopy exactly as sent (including text the marked path would drop)', async () => {
+    const { stored } = await run(withPages({ svcCopy: { braids: modelEntry } }));
+    expect(stored.extraPages.svcCopy).toEqual({ braids: modelEntry });
+  });
+  it('marked: an invalid seo.* title is dropped and the valid text kept; the publish still succeeds', async () => {
+    const copy = { 'seo.home.title': 'x'.repeat(200), 'seo.about.title': 'About Fresh Cuts barbershop', 'about.heading': 'Hi' };
+    const { r, stored } = await run(withPages({ searchPages: true }, { copy }));
+    expect(r.status).toBe(200);
+    expect(stored.copy['seo.home.title']).toBeUndefined();
+    expect(stored.copy['seo.about.title']).toBe('About Fresh Cuts barbershop');
+    expect(stored.copy['about.heading']).toBe('Hi');
+  });
+  it('marked: an invalid guides.* text and an unknown guides key are dropped', async () => {
+    const copy = { 'guides.nonsense.intro': 'hello', 'seo.about.description': 'Walk-ins welcome.' };
+    const { stored } = await run(withPages({ searchPages: true }, { copy }));
+    expect(stored.copy['guides.nonsense.intro']).toBeUndefined();
+    expect(stored.copy['seo.about.description']).toBe('Walk-ins welcome.');
+  });
+  it('marked: model-written service text never survives the iOS path; the owner\'s own text does', async () => {
+    const { r, stored } = await run(withPages({ searchPages: true, svcCopy: { braids: modelEntry, fade: ownerEntry } }));
+    expect(r.status).toBe(200);
+    expect(stored.extraPages.svcCopy).toEqual({ fade: ownerEntry });
+  });
+  it('marked: a model entry with a forged owner approval is dropped too', async () => {
+    const forged = { ...modelEntry, approval: 'owner' };
+    const { stored } = await run(withPages({ searchPages: true, svcCopy: { braids: forged } }));
+    expect(stored.extraPages.svcCopy).toBeUndefined();
+  });
+  it('marked: a copy that is not an object is a 400 before anything is written (like a web publish)', async () => {
+    const f = fakes();
+    const r = await runIosPublish(input({ siteData: withPages({ searchPages: true }, { copy: ['x'] }) }), f.deps);
+    expect(r.status).toBe(400);
+    expect(f.deps.writePending).not.toHaveBeenCalled();
+    expect(f.deps.verify).not.toHaveBeenCalled();
+  });
+  it('unmarked: the same odd copy is not refused (no new refusal for existing sites)', async () => {
+    const f = fakes();
+    const r = await runIosPublish(input({ siteData: withPages({}, { copy: ['x'] }) }), f.deps);
+    expect(r.status).toBe(200); // today's behaviour, pinned: only a marked site meets the web publish's stricter check
+  });
+  it('marked: the cleaning never mutates the caller\'s object', async () => {
+    const sd = withPages({ searchPages: true }, { copy: { 'seo.home.title': 'x'.repeat(200) } });
+    const before = JSON.stringify(sd);
+    await run(sd);
+    expect(JSON.stringify(sd)).toBe(before);
+  });
+});

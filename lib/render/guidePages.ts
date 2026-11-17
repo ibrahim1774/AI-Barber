@@ -11,9 +11,13 @@
 //           Hours, Location, Contact, FAQ, First visit, Hair care, Beard care ...) plus /book when it is in the nav plus /shop only when it is the
 //           site's own proxied shop. A page the owner hid does not count; a thin (noindex) service page does.
 //   need  = PAGE_FLOOR - real. need <= 0: no guides at all.
-//   added = min(GUIDE_ADDED_CAP, need). The hub COUNTS INSIDE the cap: hub + guides <= 12, so a site gets at most 11 guides.
+//   added = min(GUIDE_ADDED_CAP, need). The hub COUNTS INSIDE the cap: hub + guides <= GUIDE_ADDED_CAP.
 //   guides = max(1, added - 1): a hub with no guide is pointless, so need = 1 gives hub + 1 guide (22 pages, the one case that overshoots).
-//   So the minimum real pages for 21 is 21 - 12 = 9. Below 9 real pages the site ends below 21 (hub + 11 guides): it is NEVER padded further.
+//   THE CAP (2026-11-16, "every site reaches 20+ pages"): it used to be 12, which left a shop with 0 to 2 services at 16 to 18 pages. A site that
+//   passes the gate has at least 2 real pages (Home plus one more: hasFilePages), so the most that can ever be needed is PAGE_FLOOR - 2 = 19 added
+//   pages (hub + 18 guides). The cap is exactly that, and the library holds 20 general guides (18 + a margin of 2), so every case reaches 21 and a
+//   site is never padded past it. A site that needed 12 or fewer added pages gets exactly the pages it always got (new ids are appended, never inserted).
+//   Not covered: a multi-page site with NOTHING but Home (no service, hours, phone, e-mail, address or booking link) has no file page, fails the gate and stays at 1.
 // The plan is computed from `real` only (guides are not counted in it), so there is no feedback loop and the same data always gives the same plan.
 //
 // THE GATE (decided and documented): web-created (source 'web-app') AND pages v2 (an `extraPages` object) AND multi-page AND the barber niche.
@@ -41,11 +45,14 @@ import { nicheOf } from './honest.js';
 import { buildPageSet, hasFilePages, isMultiPage, plainText, type PageContext, type PageSet } from './pages.js';
 import { checkPlainLine, type SeoFieldProblem, type SeoReason } from './seoText.js';
 import { spliceable } from './spliceable.js';
-import { hasPagesV2, isWebCreated } from '../pagesV2.js';
+import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 
 export const PAGE_FLOOR = 21;
-/** The hub and the guides together never add more than this many pages. */
-export const GUIDE_ADDED_CAP = 12;
+/** The hub and the guides together never add more than this many pages (see THE CAP above). */
+export const GUIDE_ADDED_CAP = PAGE_FLOOR - 2;
+/** The selection rules before 2026-11-16: the first 17 library ids and a cap of 12 (hub + 11 guides). Used only to tell what an owner was offered back then. */
+const LEGACY_GUIDE_IDS: readonly GuidePageId[] = GUIDE_PAGE_IDS.slice(0, 17);
+const LEGACY_ADDED_CAP = 12;
 
 const own = (o: unknown, k: string): boolean => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -84,7 +91,7 @@ export function guideSettings(d: Pick<WebsiteData, 'extraPages'>): GuideSettings
 
 /** Does this site get guide pages at all? Web-created, pages v2, multi-page, barber niche, and not switched off. */
 export function guidesApply(d: WebsiteData, set: PageSet): boolean {
-  return hasFilePages(set) && hasPagesV2(d) && isWebCreated(d) && nicheOf(d).key === 'barber' && !guideSettings(d).off;
+  return hasFilePages(set) && hasPagesV2(d) && searchPagesOn(d) && nicheOf(d).key === 'barber' && !guideSettings(d).off;
 }
 
 // ── Eligibility and the plan ────────────────────────────────────────────────────────────────────
@@ -100,6 +107,12 @@ function serviceGuideIds(d: Pick<WebsiteData, 'services'>): Set<string> {
   return out;
 }
 
+/** Does any service name mention a beard or a shave (beard, shave, shaving, razor, goatee, moustache / mustache)? Names only, case-insensitive. */
+const BEARD_SERVICE = /beard|shav(?:e|ing)|razor|goatee|mou?stache|mustache/i;
+export function hasBeardService(d: Pick<WebsiteData, 'services'>): boolean {
+  return (Array.isArray(d.services) ? d.services : []).some((s) => BEARD_SERVICE.test(plainText(s?.title)));
+}
+
 /** Is this guide offered to this site? A general guide always; a conditional one only when the closed vocabulary finds a matching service. */
 export function guideEligible(d: Pick<WebsiteData, 'services'>, id: GuidePageId, seen: Set<string> = serviceGuideIds(d), set?: PageSet): boolean {
   // A real page on the same topic is never repeated by a guide: first visit -> prepare-your-visit, hair care -> hair-care-basics, beard care -> beard-care-basics.
@@ -109,6 +122,7 @@ export function guideEligible(d: Pick<WebsiteData, 'services'>, id: GuidePageId,
   if (!when) return true;
   if (when === 'fade-or-taper') return seen.has('fade') || seen.has('taper');
   if (when === 'kids-cut') return seen.has('kids-cut');
+  if (when === 'beard-service') return hasBeardService(d);
   return seen.has('shave');
 }
 
@@ -139,7 +153,16 @@ export function planGuides(d: WebsiteData, set: PageSet): GuidePlan | null {
   // A stored selection is an ORDER, not a whitelist: ids it does not list (a partial list, or guides added to the library later) follow it in library
   // order, so a site never ends under the floor because of a short list. Removing a guide is `guidesHidden`, which stays hidden either way.
   const order = st.sel ? [...st.sel, ...GUIDE_PAGE_IDS.filter((id) => !st.sel!.includes(id))] : GUIDE_PAGE_IDS;
-  const slots = order.filter((id) => guideEligible(d, id, seen, set)).slice(0, want);
+  // The owner chose the beard guide by name in the saved selection: keep it even without a beard service.
+  const offered = (id: GuidePageId): boolean => guideEligible(d, id, seen, set) || (GUIDE_LIBRARY[id].when === 'beard-service' && !!st.sel?.includes(id));
+  // HIDDEN STAYS HIDDEN (2026-11-17): an owner who hid every guide the old selection offered (first 17 ids, cap 12) switched the guides off in effect.
+  // The guides added later were never hidden, so they must not come back: nothing is added for that site.
+  if (st.hidden.size) {
+    const oldWant = Math.max(1, Math.min(LEGACY_ADDED_CAP, need) - 1);
+    const legacy = order.filter((id) => LEGACY_GUIDE_IDS.includes(id) && offered(id)).slice(0, oldWant);
+    if (legacy.length && legacy.every((id) => st.hidden.has(id))) return null;
+  }
+  const slots = order.filter(offered).slice(0, want);
   const shown = slots.filter((id) => !st.hidden.has(id));
   if (!shown.length) return null;
   return { real, added, slots, shown };
@@ -154,8 +177,8 @@ export const GUIDE_TITLE_MAX = 60;
 export const GUIDE_TEXT_MAX = 600;
 export const GUIDE_LINE_MAX = 300;
 /** The most `guides.*` keys a site may carry and the most characters they may hold in total. */
-export const MAX_GUIDE_KEYS = 80;
-export const GUIDE_COPY_TOTAL_MAX = 24000;
+export const MAX_GUIDE_KEYS = 100;
+export const GUIDE_COPY_TOTAL_MAX = 30000;
 const GUIDE_KEY_MAX = 60;
 
 type KeyKind = 'title' | 'block' | 'line';
