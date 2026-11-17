@@ -70,8 +70,8 @@ export async function isWebShop(shop: { owner_id: string; ios_otid?: string | nu
   return isWebShopToday(shop, hasWebPlan);
 }
 
-/** The account has a live plan from any source (lib/account/plan.ts). */
-const liveAnyPlan: WebPlanLookup = async (ownerId) => (await (await import('../account/plan.js')).accountPlan(ownerId)).active;
+/** The account has a live plan from any source: the lean check (lib/account/plan.ts hasLivePlan), never the full plan answer. */
+const liveAnyPlan: WebPlanLookup = async (ownerId) => (await import('../account/plan.js')).hasLivePlan(ownerId);
 
 /** Today's rule, unchanged. Also what webReturnBaseOf uses: the Stripe return page does not follow GATE_ANY_SOURCE. */
 export async function isWebShopToday(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup): Promise<boolean> {
@@ -91,6 +91,11 @@ export async function isWebShopToday(shop: { owner_id: string; ios_otid?: string
   }
 }
 
+const liveKindOf = async (userId: string): Promise<string> => {
+  const { defaultKindEnv } = await import('../account/plan.js');
+  return (await import('../account/kind.js')).accountKind(userId, defaultKindEnv());
+};
+
 /**
  * The origin a Stripe Connect onboarding should return to: the web app for a web shop (isWebShop),
  * null (the iOS stripe-return page) for everyone else. Fails closed to null on any lookup error.
@@ -100,8 +105,14 @@ export async function webReturnBaseOf(
   userId: string,
   shopOtidOf: (userId: string) => Promise<string | null>,
   hasWebPlan: WebPlanLookup,
+  kindOf?: (userId: string) => Promise<string>,
 ): Promise<string | null> {
   try {
+    // GATE_ANY_SOURCE (default off): follow the account kind. A web account returns to the web page even with a stray lapsed Apple link.
+    if (process.env.GATE_ANY_SOURCE === '1') {
+      const kind = await (kindOf ?? liveKindOf)(userId);
+      return kind === 'web' ? APP_ORIGIN() : null;
+    }
     if (!webAppEntitlementsOn()) return null;
     const ios_otid = await shopOtidOf(userId);
     return (await isWebShopToday({ owner_id: userId, ios_otid }, hasWebPlan)) ? APP_ORIGIN() : null;

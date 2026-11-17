@@ -87,8 +87,12 @@ export async function gateRow<R>(
     const ios = await repo.purchase(shop.ios_otid);
     // GATE_ANY_SOURCE (default off): a linked purchase that is not live no longer hides a live web plan (Stripe, or Free). Off: the line above only.
     if (process.env.GATE_ANY_SOURCE === '1' && !purchaseLive(ios as never) && webAppEntitlementsOn() && repo.webEntitlementOf) {
-      const web = await repo.webEntitlementOf(shop.owner_id);
-      if (web && purchaseLive(web as never)) return web;
+      try {
+        const web = await repo.webEntitlementOf(shop.owner_id);
+        if (web && purchaseLive(web as never)) return web;
+      } catch (e: any) {
+        console.error('[gateRow] web plan lookup failed, keeping the linked purchase (gate stays as it was):', e?.message || e);
+      }
     }
     return ios;
   }
