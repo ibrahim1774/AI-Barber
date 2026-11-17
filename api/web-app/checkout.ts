@@ -31,7 +31,14 @@ export default async function handler(req: any, res: any) {
     try { appStore = await appStoreStateOf(caller.id, mode); }
     catch (e: any) { console.error('[web-app checkout] app store lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
     if (appStore === 'active') return res.status(409).json({ error: 'ios_subscription_active' });
-    if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
+    if (process.env.GATE_ANY_SOURCE === '1') {
+      // GATE_ANY_SOURCE: a stray lapsed shop link no longer locks the web. Refuse only an Apple or mixed account (rule R1), shop link or not.
+      try {
+        const { accountKind } = await import('../../lib/account/kind.js');
+        const kind = await accountKind(caller.id, mode === 'live' ? 'Production' : 'Sandbox');
+        if (kind === 'apple' || kind === 'mixed') return res.status(409).json({ error: 'ios_subscription_active' });
+      } catch (e: any) { console.error('[web-app checkout] account kind lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
+    } else if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
 
     // Price test group: the stored group wins; else a valid requested test group (new sign-ups only; stored now); else base.
     // A stored g10 / g20 user whose price is not configured fails closed: never silently charge a different price.
