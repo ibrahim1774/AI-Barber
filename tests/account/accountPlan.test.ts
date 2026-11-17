@@ -1,3 +1,4 @@
+import { siteModeFromKind } from '../../lib/account/siteMode.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { accountKind, readKind, stripeModeOf, kindEnvOf, type ApplePurchaseFact, type EntitlementFact, type WebSiteFact } from '../../lib/account/kind.js';
 import { accountPlan, planFromFacts, type PlanDeps, type PlanFacts } from '../../lib/account/plan.js';
@@ -69,7 +70,7 @@ describe('account kind and plan, every mix', () => {
       expect(p).toMatchObject(want.extra ?? {});
       // The live path gives the same answer, and the kind function agrees.
       const d = deps(mix);
-      expect(await accountPlan(UID, 'Production', d)).toEqual(p);
+      expect(await accountPlan(UID, 'Production', d)).toEqual({ ...p, siteMode: siteModeFromKind(p.kind, UID) }); // only siteMode differs: it follows the kind and ACCOUNT_DRAFTS_IOS
       expect(await accountKind(UID, 'Production', d)).toBe(want.kind);
       expect(readKind(facts(mix)).kind).toBe(want.kind);
     });
@@ -89,7 +90,7 @@ describe('account kind and plan, every mix', () => {
     expect(d.webSites).toHaveBeenLastCalledWith(UID, 'live');
     expect([stripeModeOf('Production'), stripeModeOf('Sandbox'), kindEnvOf('live'), kindEnvOf('test')]).toEqual(['live', 'test', 'Production', 'Sandbox']);
   });
-  it('siteMode is always device in this wave', () => {
+  it('the pure planFromFacts leaves siteMode at device (accountPlan sets it, see siteMode.test.ts)', () => {
     for (const [m] of TABLE) expect(planFromFacts(facts(m)).siteMode).toBe('device');
   });
 });
