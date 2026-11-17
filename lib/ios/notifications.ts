@@ -2,6 +2,8 @@ import { signedDataVerifierFor, toDecodedTransaction, type AppleDecode, type Ios
 import { supabasePurchases, type PurchasesRepo, type PurchaseRow } from './purchases.js';
 import { grants, isDomainProduct } from './tiers.js';
 import { liveDomainNotificationSink } from './domainLive.js';
+import { liveIosEmailDeps, onSubscriptionNotice, type SubscriptionNotice } from './emailFlows.js';
+import { waitUntil } from '@vercel/functions';
 
 /** One App Store notification about the custom-domain subscription (lib/ios/domainFlow.ts). */
 export interface DomainNotification {
@@ -37,6 +39,11 @@ export interface NotificationDeps {
   domain?: DomainNotificationSink;
   bundleId: string;
   now?: () => number;
+  /**
+   * Optional, fire-and-forget: told about every recorded site-purchase notification (payment problem / subscription ended
+   * email, lib/ios/emailFlows.ts). Never awaited here; a throw or rejection is logged and the answer to Apple is unchanged.
+   */
+  subscriptionNotice?(n: SubscriptionNotice): void | Promise<void>;
 }
 
 export interface NotificationResult {
@@ -141,6 +148,13 @@ export async function handleAppleNotification(signedPayload: string, deps: Notif
     return { status: 500, body: { error: 'temporarily-unavailable' } }; // Apple retries
   }
   await markDowngradedLinks(before, tx.productId, deps, now);
+  if (deps.subscriptionNotice && !upgradedAway) {
+    try {
+      Promise.resolve(deps.subscriptionNotice({
+        otid: tx.originalTransactionId, type: n.notificationType, ...(n.subtype ? { subtype: n.subtype } : {}), environment, expiresAt: tx.expiresDate ?? null,
+      })).catch((e: any) => console.error('[ios/apple-notification] subscription notice hook failed:', e?.message || e));
+    } catch (e: any) { console.error('[ios/apple-notification] subscription notice hook threw:', e?.message || e); }
+  }
   return { status: 200, body: { ok: true } };
 }
 
@@ -172,6 +186,11 @@ export function liveNotificationDeps(): NotificationDeps {
     bundleId,
     repo: supabasePurchases(),
     domain: liveDomainNotificationSink(),
+    // Payment problem / ended email (IOS_EMAIL_BILLING). Runs under waitUntil so the answer to Apple is not delayed; onSubscriptionNotice never throws.
+    subscriptionNotice: (n) => {
+      const p = onSubscriptionNotice(liveIosEmailDeps(), n).catch((e: any) => console.error('[ios/apple-notification] email step failed:', e?.message || e));
+      try { waitUntil(p); } catch { /* not on Vercel: it just runs */ }
+    },
     decodeTransaction: async (env, signed) =>
       toDecodedTransaction(await signedDataVerifierFor(env).verifyAndDecodeTransaction(signed)),
     async decodeNotification(p) {
