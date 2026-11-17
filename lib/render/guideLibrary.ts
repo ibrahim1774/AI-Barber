@@ -507,13 +507,13 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
     allow: [],
     blocks: [
       intro([
-        ['A haircut for an event is a choice about timing and style.', 'Think about both before you make a plan.'],
+        ['Plan the cut ahead of the event so the shape can settle.', 'Ask your barber what timing suits your style.'],
         ['Before a big event, decide what you want your hair to do.', 'Pick a style you already know you like.'],
         ['If you have an event coming up, start with a photo of the look you want.', 'Show it to your barber as early as you can.'],
       ]),
       points('Planning ideas', [
         ['Ask your barber when to get the cut so the shape has settled.', 'Choose a style you have worn before.', 'Think about how you want the hair styled at the event.', 'Mention any hat, veil or headwear you plan to wear.'],
-        ['If the event is a big one, avoid a style you have not tried before.', 'If you want a tidy neckline, ask your barber how to time it.', 'If you plan to wear a collar or a hat, mention that.', 'When you describe the occasion, say how formal it is.'],
+        ['If the event is a big one, avoid a style you have not tried before.', 'If you want a neat neckline, ask when to have it done.', 'If you plan to wear a collar or a hat, mention that.', 'When you describe the occasion, say how formal it is.'],
         ['Think about the photos taken at the event.', 'Ask for a cut that suits your hair from the front, the sides and the back.', 'Ask your barber how the cut looks as it settles.', 'Bring a photo of the style you want.'],
       ]),
       tip([
@@ -530,13 +530,13 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
     allow: [],
     blocks: [
       intro([
-        ['A curl is a strand of hair that bends into a loop or a spiral.', 'Tell your barber how your hair behaves when it dries.'],
+        ['Tell your barber how your curls look once they are dry, because they bounce up.', 'Ask for a little extra length on the first cut.'],
         ['If your hair is wavy or curly, mention it at the start of the visit.', 'Describe how the hair looks when it is dry and when it is wet.'],
         ['Before the cut starts, show your barber how your hair sits when you style it.', 'Say if you want to keep the curls or loosen them.'],
       ]),
       points('Things to mention', [
-        ['Say whether you want the cut done on wet hair or on dry hair.', 'Tell your barber that curly hair springs up once it dries.', 'Ask how much length to keep.', 'Show a photo of a cut on hair like yours.'],
-        ['If you want volume, say where you want it.', 'If you want the curls to lie flat, say so.', 'If your hair tangles, mention it.', 'Ask your barber how to shape the sides and the back to match the rest of the hair.'],
+        ['Say whether you want the cut done on wet hair or on dry hair.', 'Ask for a little extra length, because curls bounce up once they dry.', 'Ask how much length to keep.', 'Show a photo of a cut on hair like yours.'],
+        ['If you want volume, say where you want it.', 'If you want the curls to lie flat, say so.', 'If your hair tangles, mention it.', 'Ask how the sides and the back are blended into the rest of the hair.'],
         ['Bring a photo of the curl shape you like.', 'Describe how the hair behaves in damp weather.', 'Ask for a cut that follows the direction the curls fall.', 'Confirm the plan before the cutting starts.'],
       ]),
       tip([
@@ -559,7 +559,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       ]),
       points('Things to say', [
         ['Say that you want to keep the length and only tidy the ends.', 'Show with your fingers how much to take off.', 'Ask whether layers would suit your hair.', 'Mention if you want the shape to hold when the hair is tied back.'],
-        ['If you want the ends even, say so.', 'If you want movement, ask about layers.', 'If you wear a part, show where it sits.', 'When the cutting starts, check the length with your barber.'],
+        ['If you want the ends even, say so.', 'If you want movement, ask about layers.', 'If you wear a part, show where it sits.', 'Before the cutting starts, agree on how much comes off the ends.'],
         ['Bring a photo of the length and shape you like.', 'Tell your barber how you style your hair when you are at home.', 'Ask what shape suits your hair type.', 'Confirm the amount to be taken off before the cutting starts.'],
       ]),
       tip([
@@ -576,19 +576,19 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
     allow: [],
     blocks: [
       intro([
-        ['A long break is a chance to choose a new shape.', 'Think about what you want to keep.'],
+        ['Tell your barber at the start that your hair is overdue.', 'Say whether you want the old shape back or something new.'],
         ['If your hair has not been cut for a while, tell your barber at the start.', 'Say what you want to change first.'],
-        ['Before the cut, take a look at how your hair sits now.', 'Decide what you like and what you do not.'],
+        ['Before the cut, notice where your hair has lost its shape.', 'Decide which parts you want to keep.'],
       ]),
       points('Things to think about', [
-        ['Describe how your hair was cut before.', 'Show a photo of the style you want to reach.', 'Ask whether to get there in one visit or in steps.', 'Mention any style you wore before that you liked.'],
+        ['Describe the cut you had before, even if you hardly remember it.', 'Show a photo of the style you want to reach.', 'Ask whether to get there in one visit or in steps.', 'Mention any style you wore before that you liked.'],
         ['If the hair has become hard to manage, say so.', 'If you want to keep some of the length, show how much.', 'If you are unsure, ask for a plan in stages.', 'When you decide, confirm the plan before the cutting starts.'],
-        ['Bring a photo of the length you have now and one of the length you want.', 'Ask what shape suits the hair you have.', 'Ask how the sides and the back should be handled.', 'Say if you want to keep the style you have.'],
+        ['Bring a photo of the length you have now and one of the length you want.', 'Ask what shape suits the hair you have.', 'Ask how the sides and the back should be handled.', 'Say which part of the length you want to keep.'],
       ]),
       tip([
         ['Remember that a big change can be made in steps.', 'Ask your barber what to do first.'],
         ['Take a photo before and after the cut.', 'Keep both photos to show at your next visit.'],
-        ['If you are unsure, start with a small change.', 'Think about the idea again at your next visit.'],
+        ['If you are unsure, start with a small change.', 'Ask for more off at the next visit if you want to go further.'],
       ]),
     ],
   },
@@ -601,7 +601,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       intro([
         ['An active routine is something to mention, because it affects how a cut sits.', 'Tell your barber what you do and how you wear your hair.'],
         ['If you play sports or exercise, think about how your hair behaves under a helmet or a cap.', 'Mention it at the start of the visit.'],
-        ['Before the cut, think about what your hair has to do.', 'Say how you move, run or work.'],
+        ['Before the cut, think about what gets in the way of your hair.', 'Say if it falls in your eyes or gets in the way at work.'],
       ]),
       points('Things to mention', [
         ['Say if you wear a helmet, a cap or a headband.', 'Ask for a cut that stays out of your eyes.', 'Ask how the cut behaves when it gets damp from sweat.', 'Mention if you want the sides kept short for easy handling.'],
