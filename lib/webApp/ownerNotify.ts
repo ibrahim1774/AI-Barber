@@ -56,7 +56,25 @@ export type WebPlanLookup = (ownerId: string) => Promise<boolean>;
  * web_app_entitlements row in that mode. Fails closed: no lookup given, or a lookup error => false.
  * An iOS-linked shop is decided before any lookup, so it never touches the database.
  */
-export async function isWebShop(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup): Promise<boolean> {
+export async function isWebShop(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup, anyLivePlan?: WebPlanLookup): Promise<boolean> {
+  // GATE_ANY_SOURCE (default off): the shop's owner emails follow the account's plan, whichever source pays it (Apple, Stripe or Free).
+  // One boolean, so one email per event even for an account holding both a live Apple purchase and a card plan. Fails closed.
+  if (process.env.GATE_ANY_SOURCE === '1') {
+    try {
+      return (await (anyLivePlan ?? liveAnyPlan)(shop.owner_id)) === true;
+    } catch (e: any) {
+      console.error('[web-app owner notify] account plan lookup failed, no owner email:', e?.message || e);
+      return false;
+    }
+  }
+  return isWebShopToday(shop, hasWebPlan);
+}
+
+/** The account has a live plan from any source (lib/account/plan.ts). */
+const liveAnyPlan: WebPlanLookup = async (ownerId) => (await (await import('../account/plan.js')).accountPlan(ownerId)).active;
+
+/** Today's rule, unchanged. Also what webReturnBaseOf uses: the Stripe return page does not follow GATE_ANY_SOURCE. */
+export async function isWebShopToday(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup): Promise<boolean> {
   if (shop.ios_otid) return false;
   // Every drop below is for a shop with no iOS link, i.e. one that would be a web shop if the gate passed. They used to be silent,
   // so a missing owner email left no trace at all (e2e 2026-11-02, "New booking" mail never arrived, no log line). Say why.
@@ -86,7 +104,7 @@ export async function webReturnBaseOf(
   try {
     if (!webAppEntitlementsOn()) return null;
     const ios_otid = await shopOtidOf(userId);
-    return (await isWebShop({ owner_id: userId, ios_otid }, hasWebPlan)) ? APP_ORIGIN() : null;
+    return (await isWebShopToday({ owner_id: userId, ios_otid }, hasWebPlan)) ? APP_ORIGIN() : null;
   } catch (e: any) {
     console.error('[web-app owner notify] return-base lookup failed, using the iOS return page:', e?.message || e);
     return null;
@@ -218,9 +236,10 @@ export async function maybeEmailOwner(
   event: OwnerEvent,
   send: (ownerId: string, e: OwnerEvent) => Promise<unknown>,
   hasWebPlan: WebPlanLookup | undefined,
+  anyLivePlan?: WebPlanLookup,
 ): Promise<void> {
   try {
-    if (!(await isWebShop(shop, hasWebPlan))) return;
+    if (!(await isWebShop(shop, hasWebPlan, anyLivePlan))) return;
     const outcome = await send(shop.owner_id, event);
     console.info('[web-app owner notify] handed off', { kind: event.kind, outcome: typeof outcome === 'string' ? outcome : 'n/a' });
   } catch (e: any) {
