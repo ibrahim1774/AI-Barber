@@ -32,6 +32,7 @@ import { gateRow } from '../webApp/entitlementGate.js';
 import { otherAccountBody, type BindingOwner } from '../ios/ownership.js';
 import { chooseShopSlug, vercelLabel } from './slug.js';
 import type { RateLimiter } from './rateLimit.js';
+import type { TieCheck } from '../account/mayTake.js';
 import type { AppointmentRow, MemberRow, NewAppointment, NewService, PaymentStatus, ShopRow } from './repo.js';
 
 export interface VerifiedPurchase {
@@ -57,6 +58,8 @@ export interface OwnerDeps extends FlowDeps {
   bindingOwner?(row: { original_transaction_id: string; site_slug: string | null }): Promise<BindingOwner>;
   /** Masked-hint lookup for a 409 (account id -> email). Absent: hint null. */
   emailOf?(userId: string): Promise<string | null>;
+  /** ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the shop link or the account link is written. Absent or off: today's behaviour. */
+  tie?: TieCheck;
 }
 
 type Body = unknown;
@@ -233,6 +236,13 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     await repo.insertServices(input.services.map((s, i) => ({ ...s, shop_id: shop!.id, sort: i })));
   }
 
+  // ONE_SITE_GUARD: a purchase the account may not take is tied to nothing (no shop link, no account link). The shop itself is still set up.
+  // An already-linked purchase is always allowed, so a setup re-POST of the account's own purchase is unchanged.
+  if (otid && deps.tie) {
+    const t = await deps.tie(user.id, otid, 'shop/setup');
+    if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
+    if (t.action === 'refuse') otid = null;
+  }
   if (otid) {
     const before = shop.ios_otid;
     if (before !== otid) {

@@ -11,6 +11,7 @@ import { stampedSiteUrl } from './siteUrlFor.js';
 import { supabasePurchases } from './purchases.js';
 import { finishPendingMoves, liveMoveIntents } from './moveIntent.js';
 import type { TransferDeps } from './transfer.js';
+import { liveTie } from '../account/mayTake.js';
 
 export const TRANSFER_LIMIT = 10; // moves (and probes) per account per window
 
@@ -80,6 +81,7 @@ export function liveTransferDeps(): TransferDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    tie: liveTie,
     siteUrlFor: stampedSiteUrl,
     allow: (callerId) => transferLimiter.allow(callerId, 'write'),
     now: () => Date.now(),

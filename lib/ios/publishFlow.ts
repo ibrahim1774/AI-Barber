@@ -25,6 +25,7 @@ import {
   type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
+import { liveTie, type TieCheck } from '../account/mayTake.js';
 import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
@@ -123,6 +124,11 @@ export interface PublishDeps {
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
   /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
   finishMove?(userId: string): Promise<unknown>;
+  /**
+   * ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the purchase is tied to the account.
+   * Absent, or the guard off: today's behaviour, nothing read.
+   */
+  tie?: TieCheck;
   /**
    * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
    * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
@@ -332,6 +338,13 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
           return { status: 409, body: { error: 'account-has-site', slug: mine.site_slug as string } };
         }
       }
+      // ONE_SITE_GUARD: a web or mixed account, or an account whose address sits on another purchase, never takes this purchase. Asked after
+      // every refusal above (today's answers win) and before the write; a republish by an already-linked purchase never gets here.
+      if (deps.tie) {
+        const t = await deps.tie(caller, otid, 'ios/publish');
+        if (t.action === 'unavailable') return unavailable;
+        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug } };
+      }
       let linked = false;
       try {
         linked = await deps.repo.setUserIfUnlinked(otid, caller);
@@ -537,7 +550,7 @@ async function anonymousSiteLookup(
  */
 export async function runIosSiteLookup(
   transactionId: string,
-  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'> & Partial<Pick<PublishDeps, 'userOf' | 'emailOf' | 'bindingOwner'>>,
+  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'> & Partial<Pick<PublishDeps, 'userOf' | 'emailOf' | 'bindingOwner' | 'tie'>>,
   ctx: IosPublishContext = {},
 ): Promise<IosSiteLookupResult> {
   const token = bearer(ctx.authorization);
@@ -582,6 +595,12 @@ export async function runIosSiteLookup(
       const owner = await deps.bindingOwner(row);
       if (owner && owner !== caller) {
         return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null, row) };
+      }
+      // ONE_SITE_GUARD: Restore never ties a purchase the account may not take: 404 no-site (as if nothing is bound), 503 when it cannot be decided.
+      if (deps.tie) {
+        const t = await deps.tie(caller, row.original_transaction_id, 'ios/site');
+        if (t.action === 'unavailable') return unavailable;
+        if (t.action === 'refuse') return { status: 404, body: { error: 'no-site' } };
       }
       if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {
         row = (await deps.repo.get(row.original_transaction_id)) ?? row; // lost the race: re-decide below
@@ -629,6 +648,7 @@ export function liveDeps(): PublishDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    tie: liveTie,
     clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
     now: () => Date.now(),
   };

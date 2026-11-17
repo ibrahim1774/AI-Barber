@@ -15,6 +15,7 @@ import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } fr
 import { tierOf, type Tier } from './tiers.js';
 import { webAppEntitlementsOn } from '../webApp/entitlementGate.js';
 import type { AccountPlan } from '../account/plan.js';
+import { liveTie, type TieCheck } from '../account/mayTake.js';
 
 export interface PlanView {
   /** The shop has a purchase linked (ab_shops.ios_otid). */
@@ -66,6 +67,8 @@ export interface PlanDeps {
   accountPlan?(userId: string): Promise<AccountPlan>;
   /** Per-user write limit on POST (each call costs App Store Server API requests). Absent = none. */
   limiter?: Pick<RateLimiter, 'allow'>;
+  /** ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the shop link or the account link is written. Absent or off: today's behaviour. */
+  tie?: TieCheck;
 }
 
 type Auth = string | string[] | undefined;
@@ -242,6 +245,15 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
     return { status: 200, body: planView(shop, current, now(), user.id) };
   }
+  // ONE_SITE_GUARD: asked before the shop link or the account link is written. Not allowed (or undecidable): nothing is tied and the
+  // account's current plan comes back, exactly as for a purchase that is not live. An already-linked purchase is always allowed.
+  if (deps.tie && (shop.ios_otid !== otid || !row.user_id)) {
+    const t = await deps.tie(user.id, otid, 'shop/plan');
+    if (t.action !== 'allow') {
+      const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
+      return { status: 200, body: planView(shop, current, now(), user.id) };
+    }
+  }
   // The shop link first: when another shop already holds this purchase ('taken') nothing is linked.
   const before = shop.ios_otid;
   if (before !== otid) {
@@ -287,8 +299,11 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
         return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
       }
     }
+    // ONE_SITE_GUARD: not allowed (or undecidable): nothing is linked, the answer is the one a purchase that is not theirs gets.
+    const t = deps.tie ? await deps.tie(userId, row.original_transaction_id, 'shop/plan (no shop)') : null;
     try {
-      if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };
+      if (t && t.action !== 'allow') { /* tie nothing */ }
+      else if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };
       else {
         const again = await deps.purchase(row.original_transaction_id);
         if (again?.user_id && again.user_id !== userId) {
@@ -330,5 +345,6 @@ export function livePlanDeps(): PlanDeps {
     memberProfileLive: () => shops.memberProfileLive(),
     limiter: userLimiter,
     accountPlan: async (uid) => (await import('../account/plan.js')).accountPlan(uid),
+    tie: liveTie,
   };
 }

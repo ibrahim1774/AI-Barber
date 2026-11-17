@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cleanupUnpublished, guardMode, markPublishedOnce, moveAddress, releaseUnpublished, takeAddress, tryTake } from '../../lib/account/sites.js';
-import { planBackfill, runBackfill, type BackfillDeps, type BackfillRow } from '../../lib/account/backfill.js';
+import { planBackfill, runBackfill, type BackfillDeps, type BackfillRow, type WebSiteSource } from '../../lib/account/backfill.js';
 import { fakeSites } from './fakes/sites.js';
 
 const U1 = '11111111-1111-4111-8111-111111111111';
@@ -131,9 +131,9 @@ describe('tryTake policy', () => {
 });
 
 describe('backfill', () => {
-  const web = [
-    { user_id: U1, slug: 'web-one', environment: 'live' as const, published_at: '2026-01-01' },
-    { user_id: U2, slug: 'never', environment: 'live' as const, published_at: null },
+  const web: WebSiteSource[] = [
+    { user_id: U1, slug: 'web-one', environment: 'live', published_at: '2026-01-01' },
+    { user_id: U2, slug: 'never', environment: 'live', published_at: null },
   ];
   const apple = [{ user_id: '33333333-3333-4333-8333-333333333333', site_slug: 'apple-one', environment: 'Production', published_at: '2026-01-02' }];
   const fakeDb = (webRows = web, appleRows = apple) => {
