@@ -353,7 +353,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         const t = await deps.tie(caller, otid, 'ios/publish');
         if (t.action === 'unavailable') return unavailable;
         // 409 account-has-site is what builds handle. `reason` says why; the slug is the account's own address, '' when it has none (never an invented site).
-        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: t.reason, ...(await ownEmail(deps, caller)) } };
+        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: t.reason, ...(await ownEmail(deps, caller, tx.environment)) } };
       }
       let linked = false;
       try {
@@ -437,7 +437,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
             if (!took.existing && mode === 'enforce') { console.warn(`[ios/publish] ${otid}: ${candidate} is held by another account's address row; choosing again`); continue; }
             // The account holds another address (a web site, or one on a different purchase). Recorded and alerted (never emailed: the purchase is already the account's).
             if (took.existing) await reportBlocked({ otid, uid: caller, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', slug: took.existing.slug, environment: tx.environment, email: false, where: 'ios/publish address' });
-            if (mode === 'enforce' && took.existing) return { status: 409, body: { error: 'account-has-site', slug: took.existing.slug, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', ...(await ownEmail(deps, caller)) } };
+            if (mode === 'enforce' && took.existing) return { status: 409, body: { error: 'account-has-site', slug: took.existing.slug, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', ...(await ownEmail(deps, caller, tx.environment)) } };
           }
         }
         if (await deps.repo.bindSlug(otid, candidate)) {
@@ -579,7 +579,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
 }
 
 /** The authenticated caller's own email for a refusal body (empty object when unknown; never throws). Only ever the caller's own account. */
-async function ownEmail(deps: Pick<PublishDeps, 'emailOf'>, caller: string): Promise<{ accountEmail?: string }> {
+async function ownEmail(deps: Pick<PublishDeps, 'emailOf'>, caller: string, environment: string): Promise<{ accountEmail?: string }> {
+  if (environment !== 'Production') return {}; // Sandbox purchases never carry the account email (same rule as the letter)
   try { const e = await deps.emailOf?.(caller); return e ? { accountEmail: e } : {}; } catch { return {}; }
 }
 

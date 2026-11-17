@@ -47,6 +47,16 @@ describe('reportBlocked', () => {
     await reportBlocked(info({ otid: '2000000999' }), f.deps);
     expect(f.sent).toHaveLength(2);
   });
+  it('the owner alert names the account email and whether a site address exists', async () => {
+    const f = fakeDeps();
+    await reportBlocked(info({ slug: 'cuts' }), f.deps);
+    const lines = f.alerts[0].lines.join('\n');
+    expect(lines).toContain('account email: barber@gmail.com');
+    expect(lines).toContain('site address: yes');
+    const g = fakeDeps();
+    await reportBlocked(info({ slug: null, otid: 'other' }), g.deps);
+    expect(g.alerts[0].lines.join('\n')).toContain('site address: none yet');
+  });
   it('ALERT mode (email:false) alerts and records but never sends an email', async () => {
     const f = fakeDeps();
     await reportBlocked(info({ email: false }), f.deps);

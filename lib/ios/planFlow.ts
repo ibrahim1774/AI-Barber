@@ -168,8 +168,9 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
  * A refused tie on the plan check, for the app (ONE_SITE_GUARD=1 only; absent otherwise, so old builds and switch-off answers are unchanged):
  * `blockedPurchase: { reason, accountEmail? }`. accountEmail is the signed-in caller's OWN email, never anyone else's.
  */
-function blockedPurchaseOf(t: { reason: string }, email: string | null | undefined): { blockedPurchase?: { reason: string; accountEmail?: string } } {
-  if (process.env.ONE_SITE_GUARD !== '1') return {};
+function blockedPurchaseOf(t: { reason: string }, email: string | null | undefined, environment: string): { blockedPurchase?: { reason: string; accountEmail?: string } } {
+  // Production purchases only (the same rule as the letter): a Sandbox purchase (App Review, TestFlight) never carries the signal or the account email.
+  if (process.env.ONE_SITE_GUARD !== '1' || environment !== 'Production') return {};
   return { blockedPurchase: { reason: t.reason, ...(email ? { accountEmail: email } : {}) } };
 }
 
@@ -265,7 +266,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
     if (t.action !== 'allow') {
       const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
-      return { status: 200, body: { ...planView(shop, current, now(), user.id), ...blockedPurchaseOf(t, user.email) } };
+      return { status: 200, body: { ...planView(shop, current, now(), user.id), ...blockedPurchaseOf(t, user.email, tx.environment) } };
     }
   }
   // The shop link first: when another shop already holds this purchase ('taken') nothing is linked.
@@ -317,7 +318,7 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
     // ONE_SITE_GUARD: not allowed (or undecidable): nothing is linked, the answer is the one a purchase that is not theirs gets.
     const t = deps.tie ? await deps.tie(userId, row.original_transaction_id, 'shop/plan (no shop)') : null;
     if (t?.action === 'unavailable') return err(503, 'temporarily-unavailable');
-    if (t && t.action === 'refuse') blocked = blockedPurchaseOf(t, email);
+    if (t && t.action === 'refuse') blocked = blockedPurchaseOf(t, email, tx.environment);
     try {
       if (t && t.action !== 'allow') { /* tie nothing */ }
       else if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };

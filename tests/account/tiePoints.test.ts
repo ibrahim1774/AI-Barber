@@ -342,5 +342,24 @@ describe('what the app is told about a refused tie (accountEmail, blockedPurchas
     const r: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, planDeps(true, tieOf({ action: 'allow' })));
     expect('blockedPurchase' in r.body).toBe(false);
   });
+
+  it('a SANDBOX purchase never carries accountEmail (409) or blockedPurchase (plan check)', async () => {
+    const SBX: VerifiedTx = { ...TX, environment: 'Sandbox' };
+    const emailOf = vi.fn(async () => 'me@example.com');
+    const p = iosPublish([{ ...base, environment: 'Sandbox' }], tieOf(refuse('web-account', '')));
+    p.deps.verify = vi.fn(async () => SBX);
+    const r: any = await pub({ ...p.deps, emailOf });
+    expect(r.status).toBe(409);
+    expect('accountEmail' in r.body).toBe(false);
+    expect(emailOf).not.toHaveBeenCalled();
+    vi.stubEnv('ONE_SITE_GUARD', '1');
+    for (const hasShop of [true, false]) {
+      const d = planDeps(hasShop, tieOf(refuse('web-account', 'x')));
+      d.verify = vi.fn(async () => SBX);
+      const pr: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, d);
+      expect(pr.status).toBe(200);
+      expect('blockedPurchase' in pr.body).toBe(false);
+    }
+  });
 });
 

@@ -81,9 +81,13 @@ export async function reportBlocked(info: BlockedInfo, deps: BlockedDeps = liveB
     // Alert, once per pair.
     const aStamp = new Date(deps.now()).toISOString();
     if (await deps.claim('alerted_at', info.otid, info.uid, aStamp)) {
+      // The owner needs to know WHO: the account's email (best effort) and whether it already has a site address.
+      let acctEmail = '(unknown)';
+      try { acctEmail = (await deps.adminUser(info.uid))?.email?.trim() || '(unknown)'; } catch { /* alert without it */ }
       try {
         await deps.alert(info.email ? 'Prime Barber: Apple purchase not tied to a web account' : 'Prime Barber: one-site guard would refuse an Apple purchase (alert mode)', [
           `reason: ${info.reason}`, `where: ${info.where}`, `purchase: ${info.otid}`, `user: ${info.uid}`, `environment: ${info.environment ?? '(unknown)'}`,
+          `account email: ${acctEmail}`, `site address: ${info.slug ? 'yes' : 'none yet'}`,
           `account address: ${info.slug ?? '(none)'}`, `enforcing: ${info.email ? 'yes, the purchase was not tied' : 'no (alert mode), the purchase was tied as before'}`,
         ]);
       } catch (e: any) {
