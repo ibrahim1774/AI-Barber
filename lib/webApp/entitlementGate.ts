@@ -9,6 +9,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import { isEntitledStatus, keyMode, type EntitlementRow, type Interval, type Tier } from './stripeCore.js';
 import { freeEntitlementOf } from './priceGroup.js';
+import { purchaseLive } from '../ios/lapse.js';
 
 export const webAppEntitlementsOn = (): boolean => process.env.WEB_APP_ENTITLEMENTS === '1';
 
@@ -82,7 +83,15 @@ export async function gateRow<R>(
   repo: { purchase(otid: string): Promise<R | null>; webEntitlementOf?(userId: string): Promise<R | null> },
   shop: { ios_otid: string | null; owner_id: string },
 ): Promise<R | null> {
-  if (shop.ios_otid) return repo.purchase(shop.ios_otid);
+  if (shop.ios_otid) {
+    const ios = await repo.purchase(shop.ios_otid);
+    // GATE_ANY_SOURCE (default off): a linked purchase that is not live no longer hides a live web plan (Stripe, or Free). Off: the line above only.
+    if (process.env.GATE_ANY_SOURCE === '1' && !purchaseLive(ios as never) && webAppEntitlementsOn() && repo.webEntitlementOf) {
+      const web = await repo.webEntitlementOf(shop.owner_id);
+      if (web && purchaseLive(web as never)) return web;
+    }
+    return ios;
+  }
   if (!webAppEntitlementsOn() || !repo.webEntitlementOf) return null;
   return repo.webEntitlementOf(shop.owner_id);
 }
