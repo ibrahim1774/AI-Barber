@@ -143,10 +143,21 @@ export async function tryRelease(uid: string, env: KindEnv, slug: string, mode: 
   try { await releaseUnpublished(uid, env, { slug }, deps); } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] release failed:', e?.status ?? e?.message ?? e); }
 }
 
-/** Best effort, never throws, no-op with the guard off. */
-export async function tryMarkPublishedOnce(uid: string, env: KindEnv, slug: string, mode: GuardMode = guardMode(), deps?: SitesDeps): Promise<void> {
+/**
+ * Best effort, never throws, no-op with the guard off. With `ensure` (web): the live site must have its row, so the row is taken first when
+ * a concurrent request released it (a refusal there is ignored; the row of a live site is never removed by a cleaner).
+ */
+export async function tryMarkPublishedOnce(uid: string, env: KindEnv, slug: string, mode: GuardMode = guardMode(), deps?: SitesDeps, ensure?: Holder): Promise<void> {
   if (mode === 'off') return;
-  try { await markPublishedOnce(uid, env, slug, deps); } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] markPublishedOnce failed:', e?.status ?? e?.message ?? e); }
+  try {
+    await markPublishedOnce(uid, env, slug, deps);
+    // Mark first, then make sure the row exists: once published_once is true no release can remove it, and a row that a concurrent request
+    // released before the mark is taken again here and marked.
+    if (ensure) {
+      const again = await takeAddress(uid, env, slug, ensure, deps);
+      if (again.status === 'ok' && again.created) await markPublishedOnce(uid, env, slug, deps);
+    }
+  } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] markPublishedOnce failed:', e?.status ?? e?.message ?? e); }
 }
 
 export const envOfMode = (mode: StripeMode): KindEnv => kindEnvOf(mode);

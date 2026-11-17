@@ -26,6 +26,8 @@ import {
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { liveTie, type TieCheck } from '../account/mayTake.js';
+import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, type GuardMode, type SitesDeps } from '../account/sites.js';
+import { reportBlocked } from '../account/blocked.js';
 import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
@@ -129,6 +131,10 @@ export interface PublishDeps {
    * Absent, or the guard off: today's behaviour, nothing read.
    */
   tie?: TieCheck;
+  /** ONE_SITE_GUARD (tests): the mode. Absent: read from the environment. */
+  guardMode?: () => GuardMode;
+  /** ONE_SITE_GUARD (tests): the address table. Absent: the live one. */
+  sites?: SitesDeps;
   /**
    * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
    * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
@@ -366,6 +372,9 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     let slug: string;
     let force: boolean;
     const wasBound = !!row.site_slug;
+    // ONE_SITE_GUARD (off = nothing below runs and nothing new is read or written). Only a first bind by a signed-in caller takes the
+    // account's address row; a bound slug is permanent, so a republish never touches the table (apart from stamping the first publish).
+    const mode = deps.guardMode ? deps.guardMode() : guardMode();
     if (row.site_slug) {
       // Bound slug is permanent, whatever the shop is now called.
       slug = row.site_slug;
@@ -384,10 +393,28 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
         }
+        // The account's one address, taken BEFORE the slug is bound to the purchase.
+        let created = false;
+        if (caller && mode !== 'off') {
+          const took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
+          if (took.kind === 'unavailable') return unavailable;
+          if (took.kind === 'ok') created = took.created;
+          if (took.kind === 'refused') {
+            // A concurrent request for THIS purchase took the row and bound its slug first: publish onto that slug.
+            const raced = took.existing?.holder === 'apple' ? await deps.repo.get(otid) : null;
+            if (raced?.site_slug && raced.site_slug === took.existing?.slug) { bound = raced.site_slug; break; }
+            if (!took.existing) { console.warn(`[ios/publish] ${otid}: ${candidate} is held by another account's address row; choosing again`); continue; }
+            // The account holds another address (a web site, or one on a different purchase). Recorded and alerted (never emailed: the purchase is already the account's).
+            await reportBlocked({ otid, uid: caller, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', slug: took.existing.slug, environment: tx.environment, email: false, where: 'ios/publish address' });
+            if (mode === 'enforce') return { status: 409, body: { error: 'account-has-site', slug: took.existing.slug } };
+          }
+        }
         if (await deps.repo.bindSlug(otid, candidate)) {
           bound = candidate;
           break;
         }
+        // Lost the bind: give back the row this request created (the retry takes its own).
+        if (created && caller) await tryRelease(caller, tx.environment, candidate, mode, deps.sites);
         // A concurrent request for THIS purchase bound first: publish onto its slug.
         const again = await deps.repo.get(otid);
         if (again?.site_slug) bound = again.site_slug;
@@ -462,6 +489,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     const only = caller ? { userId: caller, slug } : undefined;
     await deps.repo.markPublished(otid, only).catch((e) =>
       console.error(`[ios/publish] ${slug}: live but markPublished failed:`, e?.message || e));
+    // ONE_SITE_GUARD: the first publish went live, so the address row now counts as published (never throws; no-op with the guard off).
+    if (caller && !republished) await tryMarkPublishedOnce(caller, tx.environment, slug, mode, deps.sites);
 
     // A bound slug was just force-redeployed with real content, so it no longer
     // shows the offline page (the resubscribe path). Cleared on every bound

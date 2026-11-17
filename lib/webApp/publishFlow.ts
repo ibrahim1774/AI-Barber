@@ -30,6 +30,9 @@ import { entitlementOrFree, isFreeSubscriptionId } from './priceGroup.js';
 import { savedPhoneState } from './contactPhoneLive.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
+import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, type GuardMode, type SitesDeps } from '../account/sites.js';
+import { kindEnvOf } from '../account/kind.js';
+import { reportBlocked } from '../account/blocked.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
 
@@ -58,6 +61,10 @@ export interface WebPublishDeps {
   appStoreState?(userId: string): Promise<AppStoreState>;
   /** Free accounts (in-memory 'free:<uid>' entitlement) must have a saved phone before they can publish. Omitted = no check. */
   phoneOnFile?(userId: string): Promise<boolean>;
+  /** ONE_SITE_GUARD (tests): the mode. Absent: read from the environment. */
+  guardMode?: () => GuardMode;
+  /** ONE_SITE_GUARD (tests): the address table. Absent: the live one. */
+  siteAddresses?: SitesDeps;
   /** Test seam for re-hosting imported photos (lib/rehostImages.ts); defaults to the real fetch + GCS. */
   rehost?: RehostDeps;
   sites: {
@@ -227,6 +234,9 @@ export async function runWebPublish(
     const existing = await deps.sites.byUser(caller.id, deps.environment);
     const wasBound = !!existing;
     const republished = !!existing?.published_at;
+    // ONE_SITE_GUARD (off = nothing below runs and nothing new is read or written). A fresh bind takes the account's one address row first.
+    const mode = deps.guardMode ? deps.guardMode() : guardMode();
+    const addrEnv = kindEnvOf(deps.environment);
     let slug: string;
     let freshBind = false;
     if (existing) {
@@ -241,6 +251,22 @@ export async function runWebPublish(
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
         }
+        // The account's one address, taken BEFORE the web binding is inserted.
+        let took: Awaited<ReturnType<typeof tryTake>> = { kind: 'skip' };
+        if (mode !== 'off') {
+          took = await tryTake(caller.id, addrEnv, candidate, 'web', mode, deps.siteAddresses);
+          if (took.kind === 'unavailable') return unavailable;
+          if (took.kind === 'refused') {
+            // This account already holds a WEB address (a simultaneous first publish took the row first): that one is the address; no second.
+            if (took.existing?.holder === 'web') candidate = took.existing.slug;
+            else if (!took.existing) { console.warn(`[web-app/publish] ${candidate} is held by another account's address row; choosing again`); continue; }
+            else {
+              // The account holds an Apple address (or no address of this kind): never a second site. Recorded and alerted once; refused only when enforcing.
+              await reportBlocked({ otid: 'web-publish', uid: caller.id, reason: 'mixed', slug: took.existing.slug, environment: null, email: false, where: 'web-app/publish address' });
+              if (mode === 'enforce') return { status: 409, body: { error: 'slug-owned' } };
+            }
+          }
+        }
         let inserted = false;
         try {
           inserted = await deps.sites.insertIfAbsent({ slug: candidate, stripe_subscription_id: ent.stripe_subscription_id, user_id: caller.id, environment: deps.environment });
@@ -248,14 +274,22 @@ export async function runWebPublish(
           // A concurrent first publish by this same user bound a slug first (one live slug per user and mode,
           // migration 022): use theirs rather than creating a second site on one plan.
           const mine = await deps.sites.byUser(caller.id, deps.environment);
-          if (mine) { bound = mine.slug; break; }
+          if (mine) {
+            if (took.kind === 'ok' && took.created && mine.slug !== candidate) await tryRelease(caller.id, addrEnv, candidate, mode, deps.siteAddresses);
+            bound = mine.slug;
+            break;
+          }
+          if (took.kind === 'ok' && took.created) await tryRelease(caller.id, addrEnv, candidate, mode, deps.siteAddresses);
           throw e;
         }
         const row = await deps.sites.get(candidate);
         // Fresh only when THIS request inserted the row. A row of the same user that was already there (a simultaneous
         // publish) is shared, never released or treated as a brand-new slug.
         if (row && row.user_id === caller.id) { bound = candidate; freshBind = inserted; }
-        else console.warn(`[web-app/publish] ${candidate} was bound by another account meanwhile${attempt === 0 ? '; choosing again' : ''}`);
+        else {
+          if (took.kind === 'ok' && took.created) await tryRelease(caller.id, addrEnv, candidate, mode, deps.siteAddresses);
+          console.warn(`[web-app/publish] ${candidate} was bound by another account meanwhile${attempt === 0 ? '; choosing again' : ''}`);
+        }
       }
       if (!bound) return { status: 503, body: { error: 'slug-bind-failed' } };
       slug = bound;
@@ -272,12 +306,12 @@ export async function runWebPublish(
       await deps.owners.insertIfAbsent(row);
       const again = await deps.owners.get(slug);
       if (!again || again.user_id !== caller.id) {
-        if (freshBind) await deps.sites.releaseUnpublished(slug).catch(() => {});
+        if (freshBind) { await deps.sites.releaseUnpublished(slug).catch(() => {}); await tryRelease(caller.id, addrEnv, slug, mode, deps.siteAddresses); }
         return { status: 409, body: { error: 'slug-owned' } };
       }
     } else if (owner.user_id !== caller.id || (owner.checkout_session_id && !owner.checkout_session_id.startsWith('webapp:'))) {
       console.warn(`[web-app/publish] ${slug}: site_owners row belongs to another account or an older checkout; refused`);
-      if (freshBind) await deps.sites.releaseUnpublished(slug).catch(() => {});
+      if (freshBind) { await deps.sites.releaseUnpublished(slug).catch(() => {}); await tryRelease(caller.id, addrEnv, slug, mode, deps.siteAddresses); }
       return { status: 409, body: { error: 'slug-owned' } };
     }
     if (freshBind && deps.rememberSlug && !isFreeSubscriptionId(ent.stripe_subscription_id)) await deps.rememberSlug(ent.stripe_subscription_id, slug).catch(() => {});
@@ -323,7 +357,7 @@ export async function runWebPublish(
       return { write: next, result: null };
     }, PUBLISH_CAS_ATTEMPTS);
     if (cas.result) {
-      if (freshBind && (cas.result.body as { error?: string }).error === 'slug-owned') await deps.sites.releaseUnpublished(slug).catch(() => {});
+      if (freshBind && (cas.result.body as { error?: string }).error === 'slug-owned') { await deps.sites.releaseUnpublished(slug).catch(() => {}); await tryRelease(caller.id, addrEnv, slug, mode, deps.siteAddresses); }
       return cas.result;
     }
     if (!cas.written) {
@@ -338,6 +372,8 @@ export async function runWebPublish(
       console.error(`[web-app/publish] ${slug}: publish failed (${outcome.reason}) ${outcome.error || ''}`);
       return { status: 502, body: { error: 'publish-failed', reason: outcome.reason } };
     }
+    // ONE_SITE_GUARD: the first publish went live: the address row counts as published (never throws; no-op with the guard off).
+    if (!republished) await tryMarkPublishedOnce(caller.id, addrEnv, slug, mode, deps.siteAddresses, 'web');
     // 8. Stamp (best effort; the lapse job's restore pass reconciles).
     let stamped = true;
     await deps.sites.markPublished(slug, ent.stripe_subscription_id).catch((e) => {
