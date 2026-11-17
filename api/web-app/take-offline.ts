@@ -24,6 +24,8 @@ export default async function handler(req: any, res: any) {
     return n ? res.status(200).json({ ok: true }) : res.status(404).json({ error: 'no-site' });
   } catch (e: any) {
     if (authOutage(res, e)) return;
+    // A publish is running: suspendWork refused before touching anything. The app is told so (409); the browser's answer is unchanged (500 remove-failed).
+    if (nativeBuild(req) && e?.message === 'publish-in-progress') return res.status(409).json({ error: 'publish-in-progress' });
     console.error('[web-app/take-offline] failed:', e?.message || e);
     return res.status(500).json({ error: 'remove-failed' });
   }

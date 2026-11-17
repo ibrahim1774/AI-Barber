@@ -126,7 +126,7 @@ export async function cancelThenForgetCustomers(userId: string, cancel?: Paramet
  */
 export async function removeWebSitesOf(userId: string, opts: { keepContent?: boolean } = {}): Promise<number> {
   await suspendWork(userId);
-  const deps = liveWebDeleteDeps();
+  const deps = liveWebDeleteDeps({ keepPhone: !!opts.keepContent });
   const sites = (await deps.listSites(userId)).filter(isWebSite);
   for (const s of sites) await deps.takeDown(s);
   if (opts.keepContent || safeTakeOfflineOn()) { const rm = liveRemoveDeps(); for (const s of sites) await purgeOffline(s, rm); } // keeps the stored copy
@@ -190,7 +190,8 @@ async function mayGoWithoutStripe(userId: string, reason: string): Promise<strin
   return reason;
 }
 
-export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean } = {}): DeleteAccountDeps {
+/** `keepPhone` (the native keep-content take offline only): the removal stamp leaves the saved contact phone alone, so "nothing is deleted" is fully true. */
+export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: boolean } = {}): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();
   const stamp = (otid: string, body: Record<string, unknown>) =>
@@ -199,7 +200,8 @@ export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean } = {}): Delet
     ...remove,
     markRemoved: (otid, at) => stamp(otid, { removed_at: new Date(at).toISOString(), taken_down_at: new Date(at).toISOString() })
       // Drop the stored mobile number too. Separate and best effort: the columns come with migration 032, and a missing column must never break account deletion.
-      .then(() => stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {})),
+      // (Not for keepPhone: the keep-content take offline keeps the number.)
+      .then(() => (opts.keepPhone ? undefined : stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {}))),
     markTakenDown: (otid, at) => stamp(otid, { taken_down_at: new Date(at).toISOString() }),
   };
   return {

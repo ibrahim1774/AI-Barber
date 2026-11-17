@@ -60,6 +60,15 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
     expect((await post(takeOffline)).code).toBe(200);
     expect(order).toContain('content:fresh-cuts');
   });
+  it('keep-content keeps the saved contact phone number; the other take offline still drops it', async () => {
+    const { sbRest } = await import('../../lib/webApp/webAppServer.js');
+    const phonePatches = () => (sbRest as any).mock.calls.filter((c: any[]) => c[1]?.method === 'PATCH' && 'contact_phone' in (c[1]?.body ?? {}));
+    await removeWebSitesOf('u1', { keepContent: true });
+    expect(phonePatches()).toHaveLength(0);
+    await removeWebSitesOf('u1');
+    expect(phonePatches()).toHaveLength(1);
+    expect(phonePatches()[0][1].body).toMatchObject({ contact_phone: null, contact_phone_at: null });
+  });
   it('markSiteOffline clears deployed_url and the binding, so a later draft PUT can never return the old live address (independent of DRAFT_PUT_KEEPS_LIVE_URL)', async () => {
     const real = await vi.importActual<typeof import('../../lib/webApp/reliability.js')>('../../lib/webApp/reliability.js');
     const { sbRest } = await import('../../lib/webApp/webAppServer.js');
