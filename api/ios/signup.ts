@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import { waitUntil } from '@vercel/functions';
+import { liveIosEmailDeps, onAccountCreated } from '../../lib/ios/emailFlows.js';
 import { clientIp, makeRateLimiter, supabaseRateStore, SIGNUP_EMAIL_LIMIT, SIGNUP_IP_LIMIT } from '../../lib/bookings/rateLimit.js';
 import { serviceClient } from '../../lib/bookings/repo.js';
 import { lazyDefaultVerifier } from '../../lib/ios/appleVerify.js';
@@ -22,6 +24,11 @@ export function liveSignupDeps(): SignupDeps {
   const verify = lazyDefaultVerifier();
   return {
     verify,
+    // Welcome email (IOS_EMAIL_WELCOME / IOS_EMAIL_NOT_LIVE state). Runs after the response under waitUntil; onAccountCreated never throws and returns at once while both switches are off.
+    accountCreated: (info) => {
+      const p = onAccountCreated(liveIosEmailDeps(), info).catch((e: any) => console.error('[ios/signup] email step failed:', e?.message || e));
+      try { waitUntil(p); } catch { /* not on Vercel: it just runs */ }
+    },
     getPurchase: (otid) => repo.get(otid),
     now: Date.now,
     allowForPurchase: (otid) =>
@@ -36,8 +43,8 @@ export function liveSignupDeps(): SignupDeps {
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
       const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-      const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: metadata });
-      if (!error) return { exists: false };
+      const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: metadata });
+      if (!error) return { exists: false, userId: data?.user?.id };
       const code = (error as any).code;
       const status = (error as any).status;
       if (code === 'email_exists' || code === 'user_already_exists' || /already (been )?registered|already exists/i.test(error.message || '')) {
