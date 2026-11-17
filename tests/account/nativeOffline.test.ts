@@ -32,13 +32,13 @@ describe('/api/web-app/take-offline', () => {
   });
 });
 
-describe('keep-content take offline needs the draft engine', () => {
-  it('a native call with WEB_APP_RELIABILITY off is refused plainly (503) before anything is done; a browser is unchanged', async () => {
-    vi.stubEnv('WEB_APP_RELIABILITY', ''); vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
-    const r = await call(takeOffline, HDR);
-    expect([r.code, r.body]).toEqual([503, { error: 'temporarily-unavailable' }]);
-    expect(st.removed).toBe(0);
+describe('keep-content take offline without the draft engine', () => {
+  it('works (no 503): a native caller is served in both modes; the browser is unchanged', async () => {
+    vi.stubEnv('WEB_APP_RELIABILITY', '');
+    vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all'); expect((await call(takeOffline, HDR)).code).toBe(200);
+    vi.stubEnv('ACCOUNT_DRAFTS_IOS', ''); expect((await call(takeOffline, HDR)).code).toBe(200); // web-only
     expect((await call(takeOffline)).code).toBe(200);
+    expect(st.removed).toBe(3);
   });
 });
 

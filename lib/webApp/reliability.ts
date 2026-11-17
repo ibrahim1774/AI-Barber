@@ -108,6 +108,10 @@ export async function markSiteOffline(uid: string) {
   await sbRest(draftPath(uid), { method: 'PATCH', body: { deployed_url: null, published_binding: null } });
   await sbRest(`web_app_publish_intents?user_id=eq.${enc(uid)}&environment=eq.${modeOf()}&status=eq.live`, { method: 'PATCH', body: { status: 'superseded', attempts: 0, result: null } });
 }
+/** Forget the draft's live address and binding whether or not the draft engine switch is on (the keep-content take offline; a missing draft row is a no-op). */
+export async function forgetLiveAddress(uid: string) {
+  await sbRest(draftPath(uid), { method: 'PATCH', body: { deployed_url: null, published_binding: null } });
+}
 export async function suspendWork(uid: string, reason: 'offline' | 'deleting' = 'offline') {
   if (!reliabilityOn()) return;
   const d = await readDraft(uid);

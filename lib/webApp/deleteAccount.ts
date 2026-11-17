@@ -1,4 +1,4 @@
-import { markSiteOffline, suspendWork } from './reliability.js';
+import { forgetLiveAddress, markSiteOffline, reliabilityOn, suspendWork } from './reliability.js';
 // Account deletion for web-app (Stripe) accounts. Builds on the iOS delete flow (lib/ios/deleteAccount.ts, unchanged):
 // the same ordering (close the shop -> take every site down -> purge -> delete rows and the user), with
 //   - the account's web subscriptions CANCELED right after the shop is closed (no billing for a deleted account),
@@ -132,6 +132,8 @@ export async function removeWebSitesOf(userId: string, opts: { keepContent?: boo
   if (opts.keepContent || safeTakeOfflineOn()) { const rm = liveRemoveDeps(); for (const s of sites) await purgeOffline(s, rm); } // keeps the stored copy
   else for (const s of sites) await deps.purge(s);
   await markSiteOffline(userId);
+  // The keep-content take offline forgets the draft's live address itself, whatever WEB_APP_RELIABILITY says (best effort: no draft row or table means nothing to forget).
+  if (opts.keepContent && !reliabilityOn()) await forgetLiveAddress(userId).catch(() => {});
   return sites.length;
 }
 

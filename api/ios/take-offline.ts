@@ -7,6 +7,7 @@ import { liveUserOf } from '../../lib/ios/publishFlow.js';
 import { liveDeleteAccountRows } from '../../lib/ios/removeSiteLive.js';
 import { takeSiteOffline } from '../../lib/ios/takeOffline.js';
 import { iosDestructiveRoute } from '../../lib/account/siteMode.js';
+import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 
 // POST { transactionId } (+ optional Authorization: Bearer <token>, required only when the
 // purchase is linked to an account). Removes the site bound to that App Store purchase: no
@@ -49,6 +50,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ACCOUNT_PLAN_V2 only: a web or mixed account takes its site offline through the account route (409 use-account-take-offline here). Off: nothing is read.
     const route = await iosDestructiveRoute(req as any, liveUserOf, 'take-offline');
     if (route.action === 'respond') return res.status(route.status).json(route.body);
+    if (route.action === 'webTakeOffline') {
+      // Switch-order window: the account route does not exist yet, so a web account takes its site offline here (keep content, same as /api/web-app/take-offline).
+      try {
+        const n = await removeWebSitesOf(route.userId, { keepContent: true });
+        return n ? res.status(200).json({ ok: true }) : res.status(404).json({ error: 'no-site' });
+      } catch (e: any) {
+        if (e?.message === 'publish-in-progress') return res.status(409).json({ error: 'publish-in-progress' });
+        console.error('[ios/take-offline] web site take offline failed:', e?.message || e);
+        return res.status(500).json({ error: 'remove-failed' });
+      }
+    }
     const r = await takeSiteOffline(
       body,
       { ...liveRemoveDeps(), verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf, deleteAccountRows: liveDeleteAccountRows },

@@ -171,7 +171,9 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   if (process.env.ONE_SITE_GUARD === '1' && deps.blockedPurchase) {
     try {
       const b = await deps.blockedPurchase(a.user.id, now);
-      if (b) blockedExtra = { blockedPurchase: { reason: b.reason, originalTransactionId: b.originalTransactionId, ...(a.user.email ? { accountEmail: a.user.email } : {}), ...(b.reason !== 'other-apple-id' && deps.planLive ? { planLive: await deps.planLive(a.user.id).catch(() => true) } : {}) } };
+      // The lookup ran and succeeded: an authoritative answer. The app clears its Settings row only on "checked and none"; absent on a failed lookup or with the guard off.
+      blockedExtra = { blockedPurchaseChecked: true };
+      if (b) blockedExtra = { blockedPurchaseChecked: true, blockedPurchase: { reason: b.reason, originalTransactionId: b.originalTransactionId, ...(a.user.email ? { accountEmail: a.user.email } : {}), ...(b.reason !== 'other-apple-id' && deps.planLive ? { planLive: await deps.planLive(a.user.id).catch(() => true) } : {}) } };
     } catch (e: any) { console.error('[shop/plan] blocked purchase lookup failed (left out):', e?.message || e); }
   }
   if (!deps.memberProfileLive) return { status: 200, body: v2 ? { ...view, ...v2.fields, ...blockedExtra, capabilities: { siteMode: v2.siteMode } } : { ...view, ...blockedExtra } };
@@ -184,10 +186,10 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
  * A refused tie on the plan check, for the app (ONE_SITE_GUARD=1 only; absent otherwise, so old builds and switch-off answers are unchanged):
  * `blockedPurchase: { reason, accountEmail? }`. accountEmail is the signed-in caller's OWN email, never anyone else's.
  */
-function blockedPurchaseOf(t: { reason: string; planLive?: boolean }, email: string | null | undefined, environment: string, otid?: string): { blockedPurchase?: { reason: string; accountEmail?: string; planLive?: boolean; originalTransactionId?: string } } {
+function blockedPurchaseOf(t: { reason: string; planLive?: boolean }, email: string | null | undefined, environment: string, otid?: string): { blockedPurchaseChecked?: true; blockedPurchase?: { reason: string; accountEmail?: string; planLive?: boolean; originalTransactionId?: string } } {
   // Production purchases only (the same rule as the letter): a Sandbox purchase (App Review, TestFlight) never carries the signal or the account email.
   if (process.env.ONE_SITE_GUARD !== '1' || environment !== 'Production') return {};
-  return { blockedPurchase: { reason: t.reason, ...(otid ? { originalTransactionId: otid } : {}), ...(email ? { accountEmail: email } : {}), ...(t.planLive !== undefined ? { planLive: t.planLive } : {}) } };
+  return { blockedPurchaseChecked: true, blockedPurchase: { reason: t.reason, ...(otid ? { originalTransactionId: otid } : {}), ...(email ? { accountEmail: email } : {}), ...(t.planLive !== undefined ? { planLive: t.planLive } : {}) } };
 }
 
 /** The ACCOUNT_PLAN_V2 additions to the GET body. A failed lookup adds nothing (the old answer, never a 5xx). */

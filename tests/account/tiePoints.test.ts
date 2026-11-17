@@ -330,10 +330,12 @@ describe('what the app is told about a refused tie (accountEmail, blockedPurchas
       const on: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, mk());
       expect(on.status).toBe(200);
       expect(on.body.blockedPurchase).toEqual({ reason: 'other-apple-id', originalTransactionId: OTID, accountEmail: 'me@example.com' });
+      expect(on.body.blockedPurchaseChecked).toBe(true); // the POST refusal is an authoritative answer
       for (const v of ['alert', '']) {
         vi.stubEnv('ONE_SITE_GUARD', v);
         const off: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, mk());
         expect('blockedPurchase' in off.body).toBe(false);
+        expect('blockedPurchaseChecked' in off.body).toBe(false);
       }
     });
   }

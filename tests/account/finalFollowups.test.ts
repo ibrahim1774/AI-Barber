@@ -23,7 +23,7 @@ vi.mock('../../lib/ios/appleVerify.js', () => ({ lazyDefaultVerifier: () => asyn
 vi.mock('../../lib/ios/purchases.js', () => ({ supabasePurchases: () => ({}) }));
 vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<typeof import('../../lib/bookings/rateLimit.js')>()), clientIp: () => '1', iosLimiter: { allow: async () => true } }));
 vi.mock('../../lib/ios/publishFlow.js', () => ({ liveUserOf: async () => ({ id: 'u1' }) }));
-vi.mock('../../lib/webApp/reliability.js', () => ({ suspendWork: vi.fn(async () => { order.push('suspend'); }), markSiteOffline: vi.fn(async () => { order.push('markSiteOffline'); }), resumeAfterFailedDelete: async () => {}, reliabilityOn: () => process.env.WEB_APP_RELIABILITY === '1' }));
+vi.mock('../../lib/webApp/reliability.js', () => ({ suspendWork: vi.fn(async () => { order.push('suspend'); }), markSiteOffline: vi.fn(async () => { order.push('markSiteOffline'); }), resumeAfterFailedDelete: async () => {}, forgetLiveAddress: vi.fn(async () => { order.push('forget'); }), reliabilityOn: () => process.env.WEB_APP_RELIABILITY === '1' }));
 vi.mock('../../lib/account/kind.js', async (orig) => ({ ...(await orig<typeof import('../../lib/account/kind.js')>()), accountKind: async () => { st.kindCalls++; if (st.kindFails) throw new Error('db'); return st.kind; } }));
 
 import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
@@ -59,6 +59,17 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
     order.length = 0;
     expect((await post(takeOffline)).code).toBe(200);
     expect(order).toContain('content:fresh-cuts');
+  });
+  it('keep-content forgets the draft\'s live address itself when the draft engine is off; with it on markSiteOffline does it (no second write)', async () => {
+    vi.stubEnv('WEB_APP_RELIABILITY', '');
+    await removeWebSitesOf('u1', { keepContent: true });
+    expect(order).toContain('forget');
+    order.length = 0; vi.stubEnv('WEB_APP_RELIABILITY', '1');
+    await removeWebSitesOf('u1', { keepContent: true });
+    expect(order).not.toContain('forget');
+    order.length = 0; vi.stubEnv('WEB_APP_RELIABILITY', '');
+    await removeWebSitesOf('u1'); // the web's own take offline: unchanged
+    expect(order).not.toContain('forget');
   });
   it('keep-content keeps the saved contact phone number; the other take offline still drops it', async () => {
     const { sbRest } = await import('../../lib/webApp/webAppServer.js');
@@ -102,7 +113,8 @@ describe('S2: iosDestructiveRoute decisions', () => {
     vi.stubEnv('APP_DELETE_CANCELS_WEB', '');
     vi.stubEnv('WEB_APP_ENTITLEMENTS', '');
     expect(await run('web', 'delete')).toEqual({ action: 'forceCancel' });
-    expect(await run('web', 'take-offline')).toEqual({ action: 'allow' });
+    expect(await run('web', 'take-offline')).toEqual({ action: 'webTakeOffline', userId: 'u1' }); // no account route: the web site is taken offline right here
+    expect(await run('mixed', 'take-offline')).toEqual({ action: 'allow' }); // the Apple route takes down only the Apple site
   });
   it('mixed is never refused (it resolves to device and has no other delete): forceCancel unless APP_DELETE_CANCELS_WEB=1; apple and neither pass; a failed lookup is 503', async () => {
     vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -133,6 +145,19 @@ describe('S3: GET /api/shop/plan carries blockedPurchase while the refused purch
       expect('blockedPurchase' in off.body).toBe(false);
       expect(dep).not.toHaveBeenCalled();
     }
+  });
+  it('blockedPurchaseChecked: true whenever the lookup ran and succeeded (also for "none"); absent on a failed lookup, with the guard off, and independent of ACCOUNT_PLAN_V2', async () => {
+    vi.stubEnv('ONE_SITE_GUARD', '1'); vi.stubEnv('ACCOUNT_PLAN_V2', '');
+    const none: any = await getPlan('Bearer x', base({ blockedPurchase: async () => null }));
+    expect(none.body.blockedPurchaseChecked).toBe(true); expect('blockedPurchase' in none.body).toBe(false);
+    const some: any = await getPlan('Bearer x', base({ blockedPurchase: blocked() }));
+    expect(some.body.blockedPurchaseChecked).toBe(true); expect(some.body.blockedPurchase.reason).toBe('web-account');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad: any = await getPlan('Bearer x', base({ blockedPurchase: async () => { throw new Error('db'); } }));
+    expect('blockedPurchaseChecked' in bad.body).toBe(false);
+    vi.stubEnv('ONE_SITE_GUARD', '');
+    const off: any = await getPlan('Bearer x', base({ blockedPurchase: async () => null }));
+    expect('blockedPurchaseChecked' in off.body).toBe(false);
   });
   it('none unresolved: absent; a failed lookup: absent, never a 5xx; planLive rides along for web-account when the plan answer is on', async () => {
     vi.stubEnv('ONE_SITE_GUARD', '1');
