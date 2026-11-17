@@ -1,4 +1,5 @@
 // /api/web-app/me: ACCOUNT_PLAN_V2 off is byte-identical to today (and reads nothing extra); on adds kind and source only.
+// "Today" is fixtures/me.main.ts, a verbatim copy of api/web-app/me.ts from origin/main (ffa87cdf) with imports repointed.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const db = vi.hoisted(() => ({ ent: [] as any[], sites: [] as any[], ios: [] as any[], owners: [] as any[], group: 'base', calls: [] as string[], fail: false }));
@@ -20,6 +21,7 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
 }));
 
 import me from '../../api/web-app/me.js';
+import meMain from './fixtures/me.main.js';
 
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; return r; };
 const get = async () => { const r = res(); await me({ method: 'GET', headers: { authorization: 'Bearer t' } }, r); return r; };
@@ -48,7 +50,9 @@ describe('/api/web-app/me', () => {
       expect(Object.keys(off.body)).not.toContain('kind');
       expect(Object.keys(off.body)).not.toContain('source');
       expect(db.calls.some((c) => c.startsWith('ios_purchases?') || c.startsWith('site_owners?'))).toBe(false);
-      expect(off.body).toMatchSnapshot();
+      const main: any = res(); await meMain({ method: 'GET', headers: { authorization: 'Bearer t' } }, main);
+      expect(JSON.stringify(off.body)).toBe(JSON.stringify(main.body));
+      expect(off.code).toBe(main.code);
       // On: every old key keeps its value, in the same order, and only kind and source are added.
       vi.stubEnv('ACCOUNT_PLAN_V2', '1');
       const on = await get();
