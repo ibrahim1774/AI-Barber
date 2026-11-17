@@ -6,7 +6,7 @@ import { dispatchJob } from '../../lib/webApp/publishJobs.js';
 // Events without metadata.app = 'aibarber-app' are acknowledged and ignored.
 import { WEB_APP_TAG, cleanShopName, isEntitledStatus, keyMode, planDescription, rowFromSubscription, shopFromDescription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
 import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
-import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
+import { alertOwner, sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
 import { contactFor, liveSiteUrlFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
 import { expireSession, forgetSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
@@ -35,6 +35,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'bad_request' });
   }
   if (event.type === 'invoice.payment_failed') return handleFailedPayment(event, mode, res);
+  if (process.env.STRIPE_REFUND_ALERTS === '1' && (event.type === 'charge.refunded' || event.type === 'charge.dispute.created')) return handleMoneyBackAlert(event, mode, res);
   if (!SUB_EVENTS.has(event.type)) return res.status(200).json({ ignored: true });
   // Only the mode this deployment's key belongs to (a test event can never grant access in live, or the reverse).
   if ((mode === 'live') !== !!event.livemode) return res.status(200).json({ ignored: true });
@@ -207,4 +208,27 @@ async function syncDescription(sub: any, tier: any, userId: string, mode: 'live'
     if (sub.description === want) return;
     await stripeCall(`subscriptions/${encodeURIComponent(sub.id)}`, { description: want }, 'POST');
   } catch (e: any) { console.error('[web-app webhook description]', e?.message || e); }
+}
+
+/**
+ * Behind STRIPE_REFUND_ALERTS: a refund or a dispute only alerts the owner. No customer email, no cancel, no Stripe call.
+ * Always 200: a failed alert is logged and must not make Stripe retry (and eventually disable) this endpoint.
+ */
+async function handleMoneyBackAlert(event: any, mode: 'live' | 'test', res: any) {
+  if ((mode === 'live') !== !!event.livemode) return res.status(200).json({ ignored: true });
+  const o = event.data?.object ?? {};
+  const isDispute = event.type === 'charge.dispute.created';
+  const cents = isDispute ? o.amount : o.amount_refunded ?? o.amount;
+  const customer = typeof o.customer === 'string' ? o.customer : o.customer?.id;
+  const sub = o.subscription ?? o.metadata?.subscription_id ?? o.metadata?.stripe_subscription_id;
+  const lines = [
+    `customer: ${customer ?? '(none on the event)'}`,
+    `amount: ${typeof cents === 'number' ? `${(cents / 100).toFixed(2)} ${String(o.currency ?? '').toUpperCase()}`.trim() : '(unknown)'}`,
+    `subscription: ${typeof sub === 'string' ? sub : '(none on the event)'}`,
+    `${isDispute ? 'dispute' : 'charge'}: ${o.id}${isDispute && o.charge ? ` (charge ${o.charge})` : ''}${isDispute && o.reason ? `, reason ${o.reason}` : ''}`,
+    'Nothing was cancelled and the customer was not emailed.',
+  ];
+  try { await alertOwner(isDispute ? 'Prime Barber web: a payment was disputed' : 'Prime Barber web: a payment was refunded', lines); }
+  catch (e: any) { console.error('[web-app webhook refund/dispute alert]', e?.message || e); }
+  return res.status(200).json({ alerted: true });
 }
