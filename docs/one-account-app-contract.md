@@ -21,9 +21,19 @@ Ask `GET /api/shop/plan` (bearer). With the plan answer switched on the response
 
 Rules:
 
+- `siteMode: "unknown"`: the server switch is on but it could not read this account just now. The answer still has the old fields and no `kind` and no `site`. Treat it exactly like a failed plan answer: "Checking your plan. Try again." No paywall, no editor. Never read it as `device`, and never read a missing `siteMode` as `device` for an account that earlier said `account` or `web-only`. (A missing `siteMode` means the server switch is off, which is the old world.)
 - If the plan answer fails and nothing is stored for this account: show "Checking your plan. Try again." with a Try again button. No paywall, no editor, no autosave. If an earlier answer is stored, use it until a fresh one arrives.
 - `device` without a server answer is only for a signed-out phone.
 - A web account is never `device`. If the answer says `web-only` the app must not fall back to the Apple flow.
+
+## 2b. Sign-in outages answer 503, not 401 (when the switch is on)
+
+With `AUTH_OUTAGE_503=1` the web-app endpoints (draft, publish, publish-status, kept-copy, take-offline, delete-account, me, checkout, portal, price-group, contact-phone, session, upload-proxy, domain, service-copy) tell two cases apart:
+
+- The sign-in service says the token is not valid (401 or 403 from it): the endpoint answers 401 `unauthorized`. The user is signed out.
+- The sign-in service could not be asked or did not answer properly (network error, 5xx, 429): the endpoint answers 503 `temporarily-unavailable`. The user is still signed in. Show a retry, never the sign-in screen, and do not clear the stored session.
+
+With the switch off (today) both cases are 401, so the app cannot tell them apart.
 
 ## 3. Drafts (account mode only)
 
@@ -105,6 +115,17 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 - `reason: "mixed"`: the account would hold two websites. `slug` may be empty.
 - In all cases the new subscription was not used and nothing changed on the website. Builds that only know `account-has-site` keep working: they read `slug`, and anything but `reason: "shop"` counts as "site".
 
+## 6b. Take offline and delete account for native callers
+
+Send `X-PB-Build` on both.
+
+- `POST /api/web-app/take-offline`: only `account` mode may use it. `web-only` and `device` callers get 403 `not-account-mode`. A lookup failure is 503 `temporarily-unavailable`. 404 `no-site` when there is nothing to take offline; 500 `remove-failed` otherwise.
+- `POST /api/web-app/delete-account`: a web account (`account` or `web-only`) deletes through this route. A `device` caller gets 403 `not-account-mode` and keeps using `/api/ios/delete-account`. A lookup failure is 503 `temporarily-unavailable`. The delete itself answers as the web route always did.
+
+## 6c. Get paid (Stripe onboarding) return page
+
+`POST /api/shop/stripe/onboard` takes an optional JSON body `{ "client": "ios" | "web" }`. `ios` returns to the iOS return page, `web` to the web app. Leave it out and today's rule applies unchanged. Any other value (including a URL) is 400 `bad-request`. The app should always send its own value. Other answers are as before: 200 `{ url }`, 401, 404 `no-shop`, 409 `stripe-account-unavailable`, 502 `stripe-error`.
+
 ## 7. Plan check and shop setup
 
 - `POST /api/shop/plan` `{ transactionId }`: 200 with the current plan when the purchase may not be tied to this account (nothing is linked; the answer is the plan as it was). 503 `temporarily-unavailable` when the server could not decide: show a retry, never "no plan".
@@ -123,3 +144,4 @@ All default to off. With every switch off the server behaves exactly as before.
 6. `ACCOUNT_DRAFTS_IOS=allowlist` with `ACCOUNT_DRAFTS_IOS_USERS`, then `all`. Must be deployed before any 1.2 phone exists. Until it covers an account that account is `web-only`.
 7. `DRAFT_PUT_KEEPS_LIVE_URL=1`: a save no longer writes an old live address back. Turn it on before account mode goes wide.
 8. `GATE_ANY_SOURCE=1`: Move and checkout follow the account kind.
+9. `AUTH_OUTAGE_503=1`: sign-in outages answer 503 instead of 401 (section 2b). Turn it on together with the 1.2 app, which handles the 503 correctly; older builds treat a 503 as a plain failure.
