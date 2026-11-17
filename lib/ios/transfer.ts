@@ -45,6 +45,8 @@ export interface TransferDeps {
   shopSummary?(otid: string): Promise<{ hasShop: boolean }>;
   /** The caller's own shop, if any (ab_shops has one row per owner). */
   shopOf?(userId: string): Promise<{ id: string; ios_otid: string | null } | null>;
+  /** GATE_ANY_SOURCE only: an account's kind reading (lib/account/kind.ts). Absent: no kind refusal. Throws -> fail closed (503). */
+  kindOf?(userId: string): Promise<{ kind: 'web' | 'apple' | 'mixed' | 'neither'; holdsWebAddress: boolean; holdsAppleAddress: boolean }>;
   /** Move intents (ab_events): recorded BEFORE the CAS; a retry finishes a move only when one exists. */
   intents: MoveIntents;
   /**
@@ -69,6 +71,7 @@ export type TransferResult =
   | { status: 409; body: { error: 'account-has-site'; slug: string; reason: 'site' | 'shop' } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 409; body: { error: 'move-in-progress' } }
+  | { status: 409; body: { error: 'move-blocked-web-account'; message: string } }
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null; ownerHint: string | null; hasLiveSite: boolean } }
   | { status: 402; body: { error: 'subscription-inactive'; reason?: 'revoked' } }
   | { status: 400; body: { error: 'proof-required' } }
@@ -182,6 +185,15 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     return true;
   };
 
+  // GATE_ANY_SOURCE: a web or mixed account never gives or receives a purchase (a web account's site is not a purchase's business).
+  // `moving` also refuses a receiver that holds any address; a plain first link refuses only the kind. Off: never called.
+  const webBlock = async (account: string, moving: boolean): Promise<boolean> => {
+    if (process.env.GATE_ANY_SOURCE !== '1' || !deps.kindOf) return false;
+    const r = await deps.kindOf(account);
+    return r.kind === 'web' || r.kind === 'mixed' || (moving && account === caller && (r.holdsWebAddress || r.holdsAppleAddress));
+  };
+  const blocked: TransferResult = { status: 409, body: { error: 'move-blocked-web-account', message: 'This subscription cannot be moved to or from an account that has a website made on the web. Contact support and we will sort it out.' } };
+
   try {
     if (inactive) {
       const cur = await repo.get(otid);
@@ -226,6 +238,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
           return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row) };
         }
       }
+      if (await webBlock(caller, false)) return blocked;
       const has = await mine();
       if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
       if (await repo.setUserIfUnlinked(otid, caller)) {
@@ -257,6 +270,8 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     if (want.length !== got.length || !timingSafeEqual(want, got)) {
       return { status: 409, body: { error: 'purchase-changed' } };
     }
+
+    if ((await webBlock(caller, true)) || (await webBlock(ownerId, false))) return blocked;
 
     // a. One business per account: a caller with a live site under another purchase, or a shop of their own, is refused.
     const has = await mine();
