@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { deployRenderedSite } from '../deploySite.js';
 import { findShopForSite } from '../siteSubpages.js';
+import { isMissingSiteColumn } from '../siteColumns.js';
 import { bucket, readPendingSite, slugify } from '../publishSite.js';
 import { offlineHtml } from './offlinePage.js';
 import { supabasePurchases } from './purchases.js';
@@ -116,6 +117,16 @@ export function liveRemoveDeps(): RemoveSiteDeps {
     },
     async releaseDomains(slug) {
       await releaseDomainsForRemoval(slug, { repo: supabaseDomains(), vercel: liveVercelDomains(), now: () => Date.now() });
+    },
+    async clearSiteBase(slug) {
+      const shop = await findShopForSite(slug);
+      if (!shop) return;
+      const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) throw new Error('missing Supabase configuration');
+      const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+      const { error } = await admin.from('ab_shops').update({ site_base_url: null }).eq('id', shop.id);
+      if (error && !isMissingSiteColumn(error)) throw new Error(`ab_shops update failed: ${error.message}`);
     },
     async deleteContent(slug) {
       const b = bucket();

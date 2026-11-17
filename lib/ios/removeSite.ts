@@ -30,6 +30,8 @@ export interface RemoveSiteDeps {
   releaseDomains(slug: string): Promise<void>;
   /** Delete the stored copy, its history and its photos (idempotent). */
   deleteContent(slug: string): Promise<void>;
+  /** Take-offline only (SAFE_TAKE_OFFLINE): forget the shop's stored public address (ab_shops.site_base_url). Idempotent. */
+  clearSiteBase?(slug: string): Promise<void>;
   now(): number;
 }
 
@@ -46,6 +48,19 @@ export async function purge(site: RemovableSite, deps: Pick<RemoveSiteDeps, 'rel
   if (!site.site_slug) return;
   await deps.releaseDomains(site.site_slug);
   await deps.deleteContent(site.site_slug);
+}
+
+/** SAFE_TAKE_OFFLINE=1: "take my website offline" keeps the stored copy and photos (default off). */
+export const safeTakeOfflineOn = (): boolean => process.env.SAFE_TAKE_OFFLINE === '1';
+
+/**
+ * Take-offline variant of `purge` (SAFE_TAKE_OFFLINE): detaches the custom domain, then forgets the shop's
+ * stored address, and deletes NOTHING from storage. Account delete keeps the full `purge`.
+ */
+export async function purgeOffline(site: RemovableSite, deps: Pick<RemoveSiteDeps, 'releaseDomains' | 'clearSiteBase'>): Promise<void> {
+  if (!site.site_slug) return;
+  await deps.releaseDomains(site.site_slug);
+  if (deps.clearSiteBase) await deps.clearSiteBase(site.site_slug);
 }
 
 export async function removeSite(site: RemovableSite, deps: RemoveSiteDeps): Promise<void> {

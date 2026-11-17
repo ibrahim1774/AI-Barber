@@ -12,6 +12,7 @@ import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 import { alertOwner, iosOverlapEmail, sendMail } from './emails.js';
 import { contactFor } from './dunning.js';
 import { stampedSiteUrl } from '../ios/siteUrlFor.js';
+import { purchaseLive } from '../ios/lapse.js';
 
 export interface WebSweepDeps {
   /** Published, not removed, not taken down, in this environment; least recently checked first. */
@@ -187,6 +188,12 @@ export interface IosOverlapDeps {
   mailCustomer(row: OverlapRow): Promise<boolean>;
   /** Best effort. `note` says what happened to the customer email. */
   mailOwner(row: OverlapRow, state: AppStoreState, note: string): Promise<void>;
+  /** STRIPE_REFUND_ALERTS only: does the account hold an Apple address (ios_purchases.user_id = account, site_slug not null)? */
+  holdsAppleAddress?(userId: string): Promise<boolean>;
+  /** STRIPE_REFUND_ALERTS only: how many live Apple purchases are tied to the account. */
+  liveApplePurchases?(userId: string): Promise<number>;
+  /** STRIPE_REFUND_ALERTS only: operator alert for the two cases above. */
+  alert?(subject: string, lines: string[]): Promise<void>;
 }
 export interface IosOverlapSummary { checked: number; notified: string[]; lookupFailed: number; mailFailed: string[]; noEmail: string[]; ownerOnly: string[] }
 
@@ -204,6 +211,31 @@ export async function sweepIosOverlap(deps: IosOverlapDeps, limit = 50): Promise
     // Stamp FIRST: a row with no user_id must not stay at the head of the queue forever.
     await deps.stampChecked(row.stripe_subscription_id).catch(() => {});
     if (!row.user_id) continue;
+    if (process.env.STRIPE_REFUND_ALERTS === '1' && deps.holdsAppleAddress && deps.alert) {
+      // R1: the Apple address decides the account's kind. An Apple holder with a live card plan is an alert to the owner, never a
+      // customer email. The claim (ios_overlap_notified_at) makes it once per subscription row.
+      let holder = false; let live = 0;
+      try {
+        holder = await deps.holdsAppleAddress(row.user_id);
+        if (deps.liveApplePurchases) live = await deps.liveApplePurchases(row.user_id);
+      } catch (e: any) { console.warn('[web-app ios-overlap] apple lookup failed; skipping:', e?.message || e); out.lookupFailed++; continue; }
+      if (holder || live >= 2) {
+        if (!(await deps.claim(row.stripe_subscription_id).catch(() => false))) continue;
+        const lines = [`user: ${row.user_id}`, `web subscription: ${row.stripe_subscription_id} (${row.tier})`, `live Apple purchases: ${live}`];
+        // One alert for both reasons: a failure releases the claim and the next run sends it again, never half of it twice.
+        try {
+          await deps.alert(holder ? 'Prime Barber web: an Apple account also pays a card plan' : 'Prime Barber web: one account has two live Apple purchases',
+            [...lines, ...(holder && live >= 2 ? ['This account also has two live Apple purchases.'] : []), ...(holder ? ['The customer was NOT emailed and nothing was cancelled. Settle it by hand.'] : ['Nothing was changed. Settle it by hand.'])]);
+        } catch (e: any) {
+          console.error('[web-app ios-overlap] apple alert failed; releasing the claim:', e?.message || e);
+          await deps.release(row.stripe_subscription_id).catch(() => {});
+          out.mailFailed.push(row.stripe_subscription_id);
+          continue;
+        }
+        out.ownerOnly.push(row.stripe_subscription_id);
+        continue;
+      }
+    }
     let state: AppStoreState;
     try { state = await deps.appStoreState(row.user_id); }
     catch (e: any) { console.warn('[web-app ios-overlap] lookup failed; skipping:', e?.message || e); out.lookupFailed++; continue; }
@@ -244,6 +276,13 @@ export function liveIosOverlapDeps(mode: 'live' | 'test'): IosOverlapDeps {
       await sendMail(email, iosOverlapEmail({ email, firstName, siteUrl: row.site_slug ? await stampedSiteUrl(row.site_slug) : null, tier: row.tier }));
       return true;
     },
+    // live mode counts Production rows only, test mode Sandbox only (a Sandbox row must never suppress a live customer's email).
+    async holdsAppleAddress(uid) { return ((await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&site_slug=not.is.null&environment=eq.${mode === 'live' ? 'Production' : 'Sandbox'}&select=original_transaction_id&limit=1`)) ?? []).length > 0; },
+    async liveApplePurchases(uid) {
+      const rows: any[] = (await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,site_slug,published_at&limit=20`)) ?? [];
+      return rows.filter((p) => (mode === 'live' ? p.environment === 'Production' : p.environment === 'Production' || p.environment === 'Sandbox') && purchaseLive(p)).length;
+    },
+    alert: (subject, lines) => alertOwner(subject, lines),
     mailOwner: (row, state, note) => alertOwner('Prime Barber web: subscriber also has an App Store plan', [`user: ${row.user_id}`, `web subscription: ${row.stripe_subscription_id} (${row.tier})`, `site: ${row.site_slug ?? '(none)'}`, `App Store state: ${state}`, note]),
   };
 }

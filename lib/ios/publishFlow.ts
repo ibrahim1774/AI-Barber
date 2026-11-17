@@ -623,7 +623,7 @@ export function liveDeps(): PublishDeps {
     }),
     writePending: writePendingSite,
     // A request: at most one redeploy of a newer copy (review fix round 1, finding 9).
-    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS, ownerPublish: true }),
     readPending: readPendingSite,
     readPendingVersioned,
     userOf: liveUserOf,

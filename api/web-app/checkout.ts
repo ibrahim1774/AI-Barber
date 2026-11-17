@@ -220,7 +220,12 @@ export default async function handler(req: any, res: any) {
     // The previously stored open session is expired by id (works without an email), then this one is stored.
     const previous = await storedSessionId(caller.id, mode);
     if (previous && previous !== session.id) await expireSession(previous);
-    await rememberSession(caller.id, mode, session.id);
+    const remembered = await rememberSession(caller.id, mode, session.id);
+    // APP_DELETE_CANCELS_WEB: a session we cannot remember cannot be cancelled by an account delete, so it is never handed out.
+    if (remembered === false && process.env.APP_DELETE_CANCELS_WEB === '1') {
+      await expireSession(session.id);
+      return res.status(503).json({ error: 'checkout_unavailable' });
+    }
     // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
     try {
       if (!customer && !caller.email) throw new Error('no customer or email to look sessions up by');

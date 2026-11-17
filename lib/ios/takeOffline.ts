@@ -10,7 +10,7 @@
 // refunded subscription may still remove its own site.
 import { VerifyFailure, type VerifiedTx } from './appleVerify.js';
 import type { PurchasesRepo } from './purchases.js';
-import { removeSite, type RemoveSiteDeps } from './removeSite.js';
+import { purgeOffline, removeSite, safeTakeOfflineOn, takeDown, type RemoveSiteDeps } from './removeSite.js';
 
 export interface TakeOfflineDeps extends RemoveSiteDeps {
   verify(transactionId: string): Promise<VerifiedTx>;
@@ -80,7 +80,13 @@ export async function takeSiteOffline(body: unknown, deps: TakeOfflineDeps, ctx:
   }
 
   try {
-    await removeSite(row, deps);
+    if (safeTakeOfflineOn()) {
+      // Keeps the stored copy and photos; the owner can publish again. markRemoved/markTakenDown still run first.
+      await takeDown(row, deps);
+      await purgeOffline(row, deps);
+    } else {
+      await removeSite(row, deps);
+    }
     if (row.user_id && deps.deleteAccountRows) await deps.deleteAccountRows(row.user_id, row.site_slug);
   } catch (e: any) {
     console.error('[ios/take-offline] failed:', e?.message || e);

@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { deleteAccount, liveDeleteDeps } from '../../lib/ios/deleteAccount.js';
+import { deleteAccount, liveDeleteDeps, type DeleteAccountDeps } from '../../lib/ios/deleteAccount.js';
+import { liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
+import { resumeAfterFailedDelete } from '../../lib/webApp/reliability.js';
+import { alertIfLegacyCustomer } from '../../lib/webApp/legacyDeleteAlert.js';
 
 // POST with `Authorization: Bearer <supabase access token>`. No body is read:
 // the token alone decides which account is deleted.
@@ -10,12 +13,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const h = req.headers?.authorization;
-    const r = await deleteAccount(Array.isArray(h) ? h[0] : h, liveDeleteDeps());
-    return res.status(r.status).json(r.body);
+    const auth = Array.isArray(h) ? h[0] : h;
+    if (process.env.APP_DELETE_CANCELS_WEB !== '1') {
+      const r = await deleteAccount(auth, liveDeleteDeps());
+      return res.status(r.status).json(r.body);
+    }
+    // Switch on: like the web handler, a delete that fails after the draft was suspended resumes it.
+    let deletingUser: string | null = null;
+    try {
+      const deps = withLegacyAlert(liveWebDeleteDeps({ allowNoStripe: true }));
+      const close = deps.closeShop!;
+      deps.closeShop = async (uid) => { deletingUser = uid; return close(uid); };
+      const r = await deleteAccount(auth, deps);
+      if (r.status !== 200 && deletingUser) await resumeAfterFailedDelete(deletingUser).catch((e: any) => console.error('[ios/delete-account] resume failed:', e?.message || e));
+      return res.status(r.status).json(r.body);
+    } catch (e: any) {
+      if (deletingUser) await resumeAfterFailedDelete(deletingUser).catch(() => {});
+      throw e;
+    }
   } catch (e: any) {
     console.error('[ios/delete-account] handler error:', e?.message || e);
     return res.status(500).json({ error: 'delete-failed' });
   }
+}
+
+// Switch on only: alert (best effort) before anything is closed or deleted. closeShop runs before every deletion step.
+function withLegacyAlert(deps: DeleteAccountDeps): DeleteAccountDeps {
+  const base = deps.closeShop;
+  return { ...deps, closeShop: async (userId) => { await alertIfLegacyCustomer(userId); return base ? base.call(deps, userId) : { ok: true, bookingsCancelled: 0, ordersCancelled: 0, needsRefund: [], notCancelled: [] }; } };
 }
 
 function setCors(res: VercelResponse) {
