@@ -28,6 +28,7 @@ import { isEntitledStatus, keyMode, type EntitlementRow, type Interval, type Tie
 import { callerFrom, sbRest, stripeCall } from './webAppServer.js';
 import { entitlementOrFree, isFreeSubscriptionId } from './priceGroup.js';
 import { savedPhoneState } from './contactPhoneLive.js';
+import { supabaseDomains } from '../ios/domainsRepo.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
@@ -70,6 +71,8 @@ export interface WebPublishDeps {
     /** Live: stamp published_at, clear taken_down_at/removed_at, point at the current subscription. */
     markPublished(slug: string, subscriptionId: string): Promise<void>;
   };
+  /** SAFE_TAKE_OFFLINE: lift the custom domain's owner-removed mark so it reconnects (same as lib/ios/publishFlow.ts). */
+  clearDomainRemoval?(slug: string): Promise<void>;
   owners: Pick<SiteOwnerStore, 'get' | 'insertIfAbsent'>;
   isTaken(slug: string): Promise<boolean>;
   writePending(slug: string, p: PendingSite, opts?: { ifGeneration?: number | null }): Promise<void>;
@@ -336,8 +339,16 @@ export async function runWebPublish(
       return { status: 502, body: { error: 'publish-failed', reason: outcome.reason } };
     }
     // 8. Stamp (best effort; the lapse job's restore pass reconciles).
-    await deps.sites.markPublished(slug, ent.stripe_subscription_id).catch((e) =>
-      console.error(`[web-app/publish] ${slug}: live but markPublished failed:`, e?.message || e));
+    let stamped = true;
+    await deps.sites.markPublished(slug, ent.stripe_subscription_id).catch((e) => {
+      stamped = false;
+      console.error(`[web-app/publish] ${slug}: live but markPublished failed:`, e?.message || e);
+    });
+    // Only once the removed mark is cleared (as on iOS); a failure is retried by the next publish.
+    if (process.env.SAFE_TAKE_OFFLINE === '1' && stamped && deps.clearDomainRemoval) {
+      await deps.clearDomainRemoval(slug).catch((e) =>
+        console.error(`[web-app/publish] ${slug}: live but clearDomainRemoval failed (the next publish retries):`, e?.message || e));
+    }
 
     return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt, seoFallbacks } };
   } catch (e) {
@@ -409,6 +420,7 @@ export function liveWebPublishDeps(): WebPublishDeps {
     publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
     readPending: readPendingSite,
     readPendingVersioned,
+    clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
     rememberSlug: async (subId, slug) => { if (isFreeSubscriptionId(subId)) return; await stripeCall(`subscriptions/${enc(subId)}`, { 'metadata[site_slug]': slug }); },
     now: () => Date.now(),
   };
