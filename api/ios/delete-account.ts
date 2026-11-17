@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { deleteAccount, liveDeleteDeps } from '../../lib/ios/deleteAccount.js';
+import { deleteAccount, liveDeleteDeps, type DeleteAccountDeps } from '../../lib/ios/deleteAccount.js';
 import { liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
+import { alertIfLegacyCustomer } from '../../lib/webApp/legacyDeleteAlert.js';
 
 // POST with `Authorization: Bearer <supabase access token>`. No body is read:
 // the token alone decides which account is deleted.
@@ -11,12 +12,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const h = req.headers?.authorization;
-    const r = await deleteAccount(Array.isArray(h) ? h[0] : h, process.env.APP_DELETE_CANCELS_WEB === '1' ? liveWebDeleteDeps() : liveDeleteDeps());
+    const r = await deleteAccount(Array.isArray(h) ? h[0] : h, process.env.APP_DELETE_CANCELS_WEB === '1' ? withLegacyAlert(liveWebDeleteDeps()) : liveDeleteDeps());
     return res.status(r.status).json(r.body);
   } catch (e: any) {
     console.error('[ios/delete-account] handler error:', e?.message || e);
     return res.status(500).json({ error: 'delete-failed' });
   }
+}
+
+// Switch on only: alert (best effort) before anything is closed or deleted. closeShop runs before every deletion step.
+function withLegacyAlert(deps: DeleteAccountDeps): DeleteAccountDeps {
+  const base = deps.closeShop;
+  return { ...deps, closeShop: async (userId) => { await alertIfLegacyCustomer(userId); return base ? base.call(deps, userId) : { ok: true, bookingsCancelled: 0, ordersCancelled: 0, needsRefund: [], notCancelled: [] }; } };
 }
 
 function setCors(res: VercelResponse) {
