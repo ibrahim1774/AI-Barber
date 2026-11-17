@@ -85,7 +85,7 @@ export const MAX_REDEPLOYS = 3;
 /** The same, on request paths (review fix round 1, finding 9). */
 export const REQUEST_MAX_REDEPLOYS = 1;
 
-export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details' | 'site-removed';
+export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details' | 'site-removed' | 'removed-check-failed';
 
 // Flat rather than a discriminated union: this repo compiles with
 // strictNullChecks off, and without it TS won't narrow on an `ok: true | false`
@@ -469,7 +469,7 @@ async function payFirstMoveAllowed(
   return true;
 }
 
-async function liveRemovedCheck(slug: string): Promise<boolean> {
+export async function liveRemovedCheck(slug: string): Promise<boolean> {
   const { sbRest } = await import('./webApp/webAppServer.js');
   const q = encodeURIComponent(slug);
   const ios = await sbRest(`ios_purchases?site_slug=eq.${q}&removed_at=not.is.null&select=original_transaction_id&limit=1`);
@@ -545,7 +545,7 @@ export async function publishSite(
     try {
       if (await (opts.removedCheck ?? liveRemovedCheck)(safe)) return { ok: false, reason: 'site-removed', siteId: safe, error: 'the owner took this site offline' };
     } catch (e: any) {
-      return { ok: false, reason: 'site-removed', siteId: safe, error: `removed-site lookup failed: ${e?.message || e}` };
+      return { ok: false, reason: 'removed-check-failed', siteId: safe, error: `removed-site lookup failed: ${e?.message || e}` };
     }
   }
 

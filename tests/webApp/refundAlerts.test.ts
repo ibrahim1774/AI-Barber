@@ -20,12 +20,12 @@ beforeEach(() => {
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_WEBHOOK_SECRET', 'whsec');
   st.alert.mockClear(); st.send.mockClear(); st.stripe.mockClear(); st.sb.mockClear();
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
-const plan = (app: string | undefined, over: any = {}) => async (path: string) => {
+const plan = (app: string | undefined, over: any = {}, chargeOver: any = {}) => async (path: string) => {
   if (path.startsWith('invoices/')) return { id: 'in_1', subscription: 'sub_9', subscription_details: app === undefined ? {} : { metadata: { app } }, ...over };
   if (path.startsWith('subscriptions/')) return { id: 'sub_9', metadata: app === undefined ? {} : { app } };
-  if (path.startsWith('charges/')) return { id: 'ch_1', customer: 'cus_1', invoice: 'in_1', amount_refunded: 0 };
+  if (path.startsWith('charges/')) return { id: 'ch_1', customer: 'cus_1', invoice: 'in_1', amount_refunded: 1999, currency: 'usd', ...chargeOver };
   throw new Error(`unexpected ${path}`);
 };
 
@@ -57,12 +57,55 @@ describe('webhook refunds and disputes', () => {
     st.stripe.mockImplementation(plan('somethingelse'));
     st.body = ev('charge.refunded', { id: 'ch_1', invoice: 'in_1', amount_refunded: 100, currency: 'usd' });
     expect((await post()).body).toEqual({ ignored: true });
-    st.body = ev('charge.refunded', { id: 'ch_2', invoice: null, amount_refunded: 100, currency: 'usd' });
+    st.stripe.mockImplementation(plan('aibarber-app', {}, { invoice: null }));
+    st.body = ev('charge.refunded', { id: 'ch_2', amount_refunded: 100, currency: 'usd' });
     expect((await post()).body).toEqual({ ignored: true });
     st.stripe.mockImplementation(plan(undefined, { subscription: null }));
     st.body = ev('charge.refunded', { id: 'ch_3', invoice: 'in_1', amount_refunded: 100, currency: 'usd' });
     expect((await post()).body).toEqual({ ignored: true });
     expect(st.alert).not.toHaveBeenCalled();
+  });
+  it('refund: the payload has NO invoice field but the fetched charge does -> alert (the event body is not trusted)', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    st.body = ev('charge.refunded', { id: 'ch_1', amount_refunded: 1999, currency: 'usd' });
+    const r = await post();
+    expect(r.body).toEqual({ alerted: true });
+    expect(st.alert).toHaveBeenCalledTimes(1);
+    expect(st.stripe.mock.calls[0][0]).toMatch(/^charges\/ch_1/);
+  });
+  it('dispute with a failing charge GET: one "could not check" alert and a truthful answer', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    st.stripe.mockRejectedValue(new Error('stripe 500'));
+    st.body = ev('charge.dispute.created', { id: 'dp_1', charge: 'ch_1', amount: 2000, currency: 'usd', reason: 'fraudulent' });
+    const r = await post();
+    expect(st.alert).toHaveBeenCalledTimes(1);
+    expect((st.alert.mock.calls[0] as any)[1].join('\n')).toMatch(/could not be asked whether this is a website plan/);
+    expect(r.body).toEqual({ alerted: true });
+  });
+  it('when the alert itself fails the answer says so (never alerted:true) but is still 200', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    st.alert.mockRejectedValueOnce(new Error('mail down'));
+    st.body = ev('charge.refunded', { id: 'ch_1', amount_refunded: 100, currency: 'usd' });
+    const r = await post();
+    expect(r.code).toBe(200); expect(r.body).toEqual({ alerted: false, error: 'alert-failed' });
+  });
+  it('a Connect event is ignored with zero Stripe calls', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    st.body = JSON.stringify({ type: 'charge.refunded', livemode: false, account: 'acct_123', data: { object: { id: 'ch_1', invoice: 'in_1' } } });
+    expect((await post()).body).toEqual({ ignored: true });
+    expect(st.stripe).not.toHaveBeenCalled(); expect(st.alert).not.toHaveBeenCalled();
+  });
+  it('a Stripe GET that never answers times out after 8 s and alerts with the "could not check" line', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    vi.useFakeTimers();
+    st.stripe.mockImplementation(() => new Promise(() => {}));
+    st.body = ev('charge.refunded', { id: 'ch_1', amount_refunded: 100, currency: 'usd' });
+    const p = post();
+    await vi.advanceTimersByTimeAsync(8100);
+    const r = await p;
+    vi.useRealTimers();
+    expect(r.body).toEqual({ alerted: true });
+    expect((st.alert.mock.calls[0] as any)[1].join('\n')).toMatch(/could not be asked/);
   });
   it('switch on: Stripe lookup failure over-alerts and says it could not check', async () => {
     vi.stubEnv('STRIPE_REFUND_ALERTS', '1');

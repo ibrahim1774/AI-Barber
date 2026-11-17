@@ -37,7 +37,17 @@ vi.mock('../lib/deploySite.js', () => ({ deployRenderedSite: (a: any) => deployR
 // A web site: no shop behind the slug (lib/siteSubpages.ts; a lookup error would fail the publish).
 vi.mock('../lib/siteSubpages.js', async (orig) => ({ ...(await orig<object>()), findShopForSite: async () => null }));
 
-import { publishSite, writePendingSite } from '../lib/publishSite.js';
+const sbDb = vi.hoisted(() => ({ ios: [] as any[], web: [] as any[], fail: false }));
+vi.mock('../lib/webApp/webAppServer.js', () => ({
+  sbRest: async (path: string) => {
+    if (sbDb.fail) throw new Error('supabase 500');
+    const t = path.split('?')[0];
+    const rows = t === 'ios_purchases' ? sbDb.ios : t === 'web_app_sites' ? sbDb.web : [];
+    return path.includes('removed_at=not.is.null') ? rows.filter((r) => r.removed_at) : rows;
+  },
+}));
+
+import { publishSite, writePendingSite, liveRemovedCheck } from '../lib/publishSite.js';
 
 const pending: any = {
   siteId: 'fresh-cuts',
@@ -62,6 +72,7 @@ beforeEach(() => {
   store.clear(); gens.clear(); deployRenderedSite.mockClear();
   process.env.GCS_BUCKET_NAME = 'b';
   process.env.GCS_CREDENTIALS = JSON.stringify({ project_id: 'p' });
+  sbDb.ios = []; sbDb.web = []; sbDb.fail = false;
   vi.stubGlobal('fetch', vi.fn(async () => new Response('nothing', { status: 404 })));
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -103,5 +114,37 @@ describe('SAFE_TAKE_OFFLINE: a removed slug with a kept copy is never redeployed
     const out = await publishSite('fresh-cuts', { removedCheck: removed, force: true });
     expect(out.ok).toBe(true);
     expect(removed).not.toHaveBeenCalled();
+  });
+});
+
+describe('the REAL liveRemovedCheck over a faked sbRest', () => {
+  it('removed ios_purchases row -> true', async () => { sbDb.ios = [{ removed_at: '2026-11-01' }]; expect(await liveRemovedCheck('fresh-cuts')).toBe(true); });
+  it('removed web_app_sites row -> true', async () => { sbDb.web = [{ removed_at: '2026-11-01' }]; expect(await liveRemovedCheck('fresh-cuts')).toBe(true); });
+  it('live rows -> false', async () => { sbDb.ios = [{ removed_at: null }]; sbDb.web = [{ removed_at: null }]; expect(await liveRemovedCheck('fresh-cuts')).toBe(false); });
+  it('no rows -> false', async () => { expect(await liveRemovedCheck('fresh-cuts')).toBe(false); });
+  it('read error -> throws, and the guard fails closed with removed-check-failed (no deploy)', async () => {
+    vi.stubEnv('SAFE_TAKE_OFFLINE', '1');
+    sbDb.fail = true;
+    await expect(liveRemovedCheck('fresh-cuts')).rejects.toThrow('supabase 500');
+    await writePendingSite('fresh-cuts', pending);
+    const out = await publishSite('fresh-cuts', { force: true });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe('removed-check-failed');
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+  it('sequence: take offline -> non-owner publish refused -> owner republish allowed and clears removed -> non-owner restore deploys', async () => {
+    vi.stubEnv('SAFE_TAKE_OFFLINE', '1');
+    await writePendingSite('fresh-cuts', pending);
+    sbDb.ios = [{ removed_at: '2026-11-01' }]; // take offline keeps the copy and stamps removed_at
+    const refused = await publishSite('fresh-cuts', { force: true });
+    expect(refused.reason).toBe('site-removed');
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+    const owner = await publishSite('fresh-cuts', { force: true, ownerPublish: true });
+    expect(owner.ok).toBe(true);
+    sbDb.ios = [{ removed_at: null }]; // the owner flow clears removed_at itself after the deploy
+    deployRenderedSite.mockClear();
+    const restore = await publishSite('fresh-cuts', { force: true });
+    expect(restore.ok).toBe(true);
+    expect(deployRenderedSite).toHaveBeenCalled();
   });
 });
