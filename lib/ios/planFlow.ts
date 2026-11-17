@@ -14,6 +14,7 @@ import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
 import { tierOf, type Tier } from './tiers.js';
 import { webAppEntitlementsOn } from '../webApp/entitlementGate.js';
+import type { AccountPlan } from '../account/plan.js';
 
 export interface PlanView {
   /** The shop has a purchase linked (ab_shops.ios_otid). */
@@ -61,6 +62,8 @@ export interface PlanDeps {
   now?(): number;
   /** Is migration 015 (member title / booking_url, ab_add_member) applied? Adds `capabilities.memberProfile` to GET when present. */
   memberProfileLive?(): Promise<boolean>;
+  /** ACCOUNT_PLAN_V2 only: the one plan answer (lib/account/plan.ts). Absent or throwing: GET answers as it does with the switch off. */
+  accountPlan?(userId: string): Promise<AccountPlan>;
   /** Per-user write limit on POST (each call costs App Store Server API requests). Absent = none. */
   limiter?: Pick<RateLimiter, 'allow'>;
 }
@@ -149,10 +152,26 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
       ? { ...planView({ ios_otid: found.original_transaction_id }, found, now, a.user.id), linked: false }
       : planView({ ios_otid: null }, null, now, a.user.id);
   }
-  if (!deps.memberProfileLive) return { status: 200, body: view };
+  // ACCOUNT_PLAN_V2 (default off): add the one-account fields. Off: this is null and nothing below differs from before.
+  const v2 = process.env.ACCOUNT_PLAN_V2 === '1' && deps.accountPlan ? await planV2Fields(a.user.id, deps.accountPlan) : null;
+  if (!deps.memberProfileLive) return { status: 200, body: v2 ? { ...view, ...v2.fields, capabilities: { siteMode: v2.siteMode } } : view };
   // A failed probe reads as "not live": the app then keeps website-only fields in site JSON.
   const memberProfile = await deps.memberProfileLive().catch(() => false);
-  return { status: 200, body: { ...view, capabilities: { memberProfile } } };
+  return { status: 200, body: { ...view, ...(v2?.fields ?? {}), capabilities: { memberProfile, ...(v2 ? { siteMode: v2.siteMode } : {}) } } };
+}
+
+/** The ACCOUNT_PLAN_V2 additions to the GET body. A failed lookup adds nothing (the old answer, never a 5xx). */
+async function planV2Fields(userId: string, read: NonNullable<PlanDeps['accountPlan']>) {
+  try {
+    const p = await read(userId);
+    return {
+      fields: { source: p.source, status: p.status, kind: p.kind, site: p.site, legacy: p.legacy, holderPurchaseEnded: p.holderPurchaseEnded },
+      siteMode: p.siteMode,
+    };
+  } catch (e: any) {
+    console.error('[shop/plan] account plan lookup failed:', e?.message || e);
+    return null;
+  }
 }
 
 /**
@@ -310,5 +329,6 @@ export function livePlanDeps(): PlanDeps {
     now: Date.now,
     memberProfileLive: () => shops.memberProfileLive(),
     limiter: userLimiter,
+    accountPlan: async (uid) => (await import('../account/plan.js')).accountPlan(uid),
   };
 }

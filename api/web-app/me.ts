@@ -48,8 +48,17 @@ export default async function handler(req: any, res: any) {
     const flag = envOn && st.contactsOk; // contacts table unreadable (migration 032 missing): fail open, no gate
     const phone = st.phone;
     const needs = needsPhone({ flag, phone, entitlementRows: rows, free: priceGroup === 'free' });
+    // ACCOUNT_PLAN_V2 (default off): add the account's kind and plan source. Off: no extra read, the answer is unchanged. Fails soft.
+    let v2: { kind: string; source: string | null } | null = null;
+    if (process.env.ACCOUNT_PLAN_V2 === '1') {
+      try {
+        const { accountPlan } = await import('../../lib/account/plan.js');
+        const { kind, source } = await accountPlan(caller.id, mode === 'live' ? 'Production' : 'Sandbox');
+        v2 = { kind, source };
+      } catch (e: any) { console.error('[web-app me] account plan lookup failed:', e?.message || e); }
+    }
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : floorTier(row?.tier, priceGroup === 'free' && !!live) ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null });
+    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : floorTier(row?.tier, priceGroup === 'free' && !!live) ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null, ...(v2 ?? {}) });
   } catch (e: any) {
     console.error('[web-app me]', e.message);
     return res.status(502).json({ error: 'lookup_failed' });

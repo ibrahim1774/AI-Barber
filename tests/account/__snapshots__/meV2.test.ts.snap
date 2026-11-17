@@ -1,0 +1,73 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`/api/web-app/me > switch off: ended plan is unchanged and reads no new table 1`] = `
+{
+  "appStore": null,
+  "cancelAtPeriodEnd": false,
+  "currentPeriodEnd": null,
+  "entitled": false,
+  "interval": "month",
+  "needsPhone": false,
+  "phone": null,
+  "phoneGate": false,
+  "plan": null,
+  "priceGroup": "base",
+  "status": "canceled",
+  "subscriptionId": "s",
+  "tier": "bookings",
+}
+`;
+
+exports[`/api/web-app/me > switch off: free group is unchanged and reads no new table 1`] = `
+{
+  "appStore": null,
+  "cancelAtPeriodEnd": false,
+  "currentPeriodEnd": null,
+  "entitled": true,
+  "interval": null,
+  "needsPhone": true,
+  "phone": null,
+  "phoneGate": true,
+  "plan": "free",
+  "priceGroup": "free",
+  "status": "active",
+  "subscriptionId": null,
+  "tier": "bookings",
+}
+`;
+
+exports[`/api/web-app/me > switch off: no plan is unchanged and reads no new table 1`] = `
+{
+  "appStore": null,
+  "cancelAtPeriodEnd": false,
+  "currentPeriodEnd": null,
+  "entitled": false,
+  "interval": null,
+  "needsPhone": false,
+  "phone": null,
+  "phoneGate": false,
+  "plan": null,
+  "priceGroup": "base",
+  "status": null,
+  "subscriptionId": null,
+  "tier": null,
+}
+`;
+
+exports[`/api/web-app/me > switch off: paid card plan is unchanged and reads no new table 1`] = `
+{
+  "appStore": null,
+  "cancelAtPeriodEnd": false,
+  "currentPeriodEnd": null,
+  "entitled": true,
+  "interval": "month",
+  "needsPhone": false,
+  "phone": null,
+  "phoneGate": false,
+  "plan": "paid",
+  "priceGroup": "base",
+  "status": "active",
+  "subscriptionId": "s",
+  "tier": "bookings",
+}
+`;

@@ -12,6 +12,7 @@
 // environment: a Sandbox purchase counts as live here (purchaseLive has no environment check), like the plan answer.
 import { purchaseLive, type GateFields } from '../ios/lapse.js';
 import { isEntitledStatus } from '../webApp/stripeCore.js';
+import { sbRest } from '../webApp/webAppServer.js';
 
 export type AccountKind = 'web' | 'apple' | 'mixed' | 'neither';
 export type KindEnv = 'Production' | 'Sandbox';
@@ -106,9 +107,9 @@ export async function accountKind(uid: string, env: KindEnv, deps: KindDeps = li
 
 const enc = encodeURIComponent;
 
-/** Live readers (service-role PostgREST). Imported lazily so the pure core loads without Supabase env. */
+/** Live readers (service-role PostgREST; sbRest reads its env only when called). */
 export function liveKindDeps(): KindDeps {
-  const rest = async (path: string): Promise<any[]> => ((await (await import('../webApp/webAppServer.js')).sbRest(path)) ?? []) as any[];
+  const rest = async (path: string): Promise<any[]> => ((await sbRest(path)) ?? []) as any[];
   return {
     webSites: (uid, mode) => rest(`web_app_sites?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=slug,published_at,removed_at,taken_down_at&limit=50`),
     applePurchases: (uid) => rest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,site_slug,published_at,removed_at,last_notification,user_id&limit=50`),
