@@ -9,6 +9,7 @@ import { serviceCopyAutoPublish } from '../../lib/serviceCopy/flags.js';
 import { draftRef, signingSecret, siteRef } from '../../lib/serviceCopy/approval.js';
 import { serviceCopyEnabled } from '../../lib/serviceCopy/handler.js';
 import { tableCopyStore } from '../../lib/serviceCopy/store.js';
+import { nativeModeGate } from '../../lib/account/siteMode.js';
 
 /** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
 export const DRAFT_WRITES_PER_MINUTE = 120;
@@ -29,6 +30,9 @@ export default async function handler(req: any, res: any) {
     const user = await callerFrom(req.headers.authorization);
     if (!user) return res.status(401).json({ error: 'unauthorized' });
     res.setHeader('Cache-Control', 'no-store');
+    // A native caller (X-PB-Build) must be in account mode. A browser (no header) is not asked anything.
+    const gate = await nativeModeGate(req, user.id);
+    if (gate) return res.status(gate.status).json(gate.body);
     if (req.method === 'PUT' && !(await writeStore.hit(`draft-put:${user.id}`, DRAFT_WRITES_PER_MINUTE, 60_000, Date.now()))) {
       res.setHeader('Retry-After', '60');
       return res.status(429).json({ error: 'rate_limited' });
@@ -64,7 +68,10 @@ export default async function handler(req: any, res: any) {
       return res.status(409).json({ error: 'draft_changed', draft: previous ? accountRow(previous) : null });
     }
     const row = { user_id: user.id, environment: modeOf(), draft_id: id, site_data: content, revision: expectedRevision + 1,
-      updated_at: new Date().toISOString(), deployed_url: previous?.deployed_url ?? null };
+      updated_at: new Date().toISOString(),
+      // DRAFT_PUT_KEEPS_LIVE_URL (default off): a save of an existing draft never writes the live address back (a publish may have changed it
+      // since `previous` was read); the row keeps what the database holds and the answer shows that. The first insert below is unchanged.
+      ...(process.env.DRAFT_PUT_KEEPS_LIVE_URL === '1' && previous ? {} : { deployed_url: previous?.deployed_url ?? null }) };
     let written: any[];
     if (previous) written = await sbRest(`${draftPath(user.id)}&revision=eq.${expectedRevision}`, { method: 'PATCH', body: row, prefer: 'return=representation' });
     else {
