@@ -236,12 +236,28 @@ export async function onSubscriptionNotice(deps: IosEmailDeps, n: SubscriptionNo
 
 // ---------- live deps ----------
 
+/** Rejects after `ms` when `p` has not settled (the late result is ignored). */
+function deadline<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const cut = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error(`${what} timed out`), { status: 'timeout' })), ms); });
+  p.catch(() => {});
+  return Promise.race([p, cut]).finally(() => clearTimeout(timer));
+}
+
 const enc = encodeURIComponent;
 const T = 'ios_account_emails';
 const ACOLS = 'user_id,original_transaction_id,signup_at,welcome_sent_at,step1_sent_at,step2_sent_at,claimed_step,claimed_at,stopped_at,stop_reason';
 const PCOLS = 'original_transaction_id,product_id,environment,site_slug,user_id,expires_at,revoked_at,published_at,taken_down_at,removed_at';
 
-export function liveIosEmailDeps(rest: typeof sbRest = sbRest, env: Record<string, string | undefined> = process.env): IosEmailDeps {
+/**
+ * `opts.requestTimeoutMs` (unset = exactly as before, no timeout added anywhere): every Supabase REST call, the admin account lookup and the
+ * Resend send are cut off after that long. Used by the cron's "not live yet" step so one hung request cannot hold the function.
+ */
+export function liveIosEmailDeps(rest0: typeof sbRest = sbRest, env: Record<string, string | undefined> = process.env, opts: { requestTimeoutMs?: number } = {}): IosEmailDeps {
+  const t = opts.requestTimeoutMs;
+  const rest: typeof sbRest = t ? (path, init = {}) => rest0(path, { timeoutMs: t, ...init }) : rest0;
+  const fetchT: typeof fetch = t ? ((input: any, init?: any) => fetch(input, { ...(init || {}), signal: AbortSignal.timeout(t) })) as typeof fetch : fetch;
+  const adminUserLive = (uid: string) => liveSignupNudgeDeps('live', rest).adminUser(uid);
   const row = (uid: string) => `${T}?user_id=eq.${enc(uid)}`;
   const bill = (k: BillingKey) => `ios_billing_emails?original_transaction_id=eq.${enc(k.otid)}&kind=eq.${k.kind}&period_key=eq.${enc(k.period)}`;
   return {
@@ -266,12 +282,12 @@ export function liveIosEmailDeps(rest: typeof sbRest = sbRest, env: Record<strin
     },
     async stop(uid, reason, nowIso) { await rest(row(uid), { method: 'PATCH', prefer: 'return=minimal', body: { stopped_at: nowIso, stop_reason: reason, claimed_step: null, claimed_at: null, updated_at: nowIso } }); },
     async stampChecked(uid, nowIso) { await rest(row(uid), { method: 'PATCH', prefer: 'return=minimal', body: { last_checked_at: nowIso } }); },
-    adminUser: (uid) => liveSignupNudgeDeps('live', rest).adminUser(uid),
+    adminUser: t ? (uid) => deadline(adminUserLive(uid), t, 'admin lookup') : adminUserLive,
     async purchase(otid) { return (await rest(`ios_purchases?original_transaction_id=eq.${enc(otid)}&select=${PCOLS}&limit=1`))?.[0] ?? null; },
     async hasPublishedSite(uid) { return ((await rest(`ios_purchases?user_id=eq.${enc(uid)}&published_at=not.is.null&removed_at=is.null&select=original_transaction_id&limit=1`)) ?? []).length > 0; },
     isSuppressed: (email) => isSuppressed(email, rest),
     async siteUrl(slug) { return (await import('./siteUrlFor.js')).stampedSiteUrl(slug); },
-    send: (to, mail, key) => sendMail(to, mail, fetch, key),
+    send: (to, mail, key) => (t ? deadline(sendMail(to, mail, fetchT, key), t * 2 + 1500, 'resend send') : sendMail(to, mail, fetchT, key)),
     async claimBilling(k, userId) {
       const got = await rest('ios_billing_emails?on_conflict=original_transaction_id,kind,period_key', {
         method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation',
