@@ -1,5 +1,6 @@
 // POST + Authorization: Bearer <supabase jwt> -> takes the caller's web-app site offline for good (the account and the
 // subscription stay). The web twin of /api/ios/take-offline. 404 unless WEB_APP_ENTITLEMENTS=1.
+import { nativeModeGate } from '../../lib/account/siteMode.js';
 import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 import { callerFrom, webAppCors, webAppEntitlementsOn, authOutage } from '../../lib/webApp/webAppServer.js';
 
@@ -12,6 +13,9 @@ export default async function handler(req: any, res: any) {
   try {
     const caller = await callerFrom(req.headers?.authorization);
     if (!caller) return res.status(401).json({ error: 'unauthorized' });
+    // A native caller (X-PB-Build) must be in account mode; a browser (no header) is asked nothing.
+    const gate = await nativeModeGate(req, caller.id);
+    if (gate) return res.status(gate.status).json(gate.body);
     const n = await removeWebSitesOf(caller.id);
     return n ? res.status(200).json({ ok: true }) : res.status(404).json({ error: 'no-site' });
   } catch (e: any) {

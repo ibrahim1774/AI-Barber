@@ -55,6 +55,20 @@ export async function nativeModeGate(req: { headers?: Record<string, unknown> },
   }
 }
 
+/**
+ * /api/web-app/delete-account: a native caller (X-PB-Build) whose mode is 'account' or 'web-only' (a web account) may delete through the web route; a
+ * 'device' caller keeps /api/ios/delete-account and is refused here (403 not-account-mode). No header: null at once, nothing read. Lookup failure: 503.
+ */
+export async function nativeDeleteGate(req: { headers?: Record<string, unknown> }, uid: string, deps?: Parameters<typeof siteModeOf>[1]): Promise<NativeGate | null> {
+  if (!nativeBuild(req)) return null;
+  try {
+    return (await siteModeOf(uid, deps)) === 'device' ? { status: 403, body: { error: 'not-account-mode' } } : null;
+  } catch (e: any) {
+    console.error('[site mode] lookup failed for a native delete (refusing):', e?.message || e);
+    return { status: 503, body: { error: 'temporarily-unavailable' } };
+  }
+}
+
 export type OldRouteGate = { status: 409 | 503; body: { error: string } };
 /**
  * /api/ios/publish and /api/ios/site (Restore): a caller WITH X-PB-Build whose mode is not 'device' (account or web-only) must use the account publish (409
