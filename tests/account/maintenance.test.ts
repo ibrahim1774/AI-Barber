@@ -54,12 +54,12 @@ describe('runDaily', () => {
 });
 
 describe('runAccountMaintenance', () => {
-  it('guard OFF: nothing runs and nothing is read (the lapse answer keeps today\'s shape)', async () => {
+  it('guard OFF: the address clean-up does not run and the address table is never read; only the kept-copy expiry runs', async () => {
     const c = fakeClaims();
-    const claim = vi.spyOn(c.deps, 'claim');
     const f = fakeSites();
-    expect(await runAccountMaintenance(T0, { mode: 'off', sites: f.deps, maintenance: c.deps })).toBeNull();
-    expect(claim).not.toHaveBeenCalled();
+    const kept = { has: async () => false, trim: async () => {}, insert: async () => {}, expire: vi.fn(async () => 0) };
+    const r = await runAccountMaintenance(T0, { mode: 'off', sites: f.deps, maintenance: c.deps, kept });
+    expect(Object.keys(r!)).toEqual(['expiredKeptCopies']);
     expect(f.calls).toEqual([]);
   });
   it('alert and 1: cleans unpublished web rows older than 24 hours, once a day, and nothing else', async () => {
@@ -69,11 +69,12 @@ describe('runAccountMaintenance', () => {
       { user_id: '22222222-2222-4222-8222-222222222222', environment: 'Production', slug: 'bound-apple', holder: 'apple', published_once: false, taken_at: old },
     ]);
     const c = fakeClaims();
-    const first = await runAccountMaintenance(T0, { mode: 'alert', sites: f.deps, maintenance: c.deps });
-    expect(first).toEqual({ unpublishedAddresses: { ran: true, result: 1 } });
+    const kept = { has: async () => false, trim: async () => {}, insert: async () => {}, expire: async () => 0 };
+    const first = await runAccountMaintenance(T0, { mode: 'alert', sites: f.deps, maintenance: c.deps, kept });
+    expect(first).toMatchObject({ unpublishedAddresses: { ran: true, result: 1 } });
     expect(f.rows.map((r) => r.slug)).toEqual(['bound-apple']);
-    const second = await runAccountMaintenance(T0 + 600_000, { mode: 'enforce', sites: f.deps, maintenance: c.deps });
-    expect(second).toEqual({ unpublishedAddresses: { ran: false, reason: 'not-due' } });
+    const second = await runAccountMaintenance(T0 + 600_000, { mode: 'enforce', sites: f.deps, maintenance: c.deps, kept });
+    expect(second).toEqual({ unpublishedAddresses: { ran: false, reason: 'not-due' }, expiredKeptCopies: { ran: false, reason: 'not-due' } });
   });
 });
 
