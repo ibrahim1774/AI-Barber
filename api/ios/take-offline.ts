@@ -5,9 +5,9 @@ import { supabasePurchases } from '../../lib/ios/purchases.js';
 import { liveRemoveDeps } from '../../lib/ios/removeSiteLive.js';
 import { liveUserOf } from '../../lib/ios/publishFlow.js';
 import { liveDeleteAccountRows } from '../../lib/ios/removeSiteLive.js';
-import { takeSiteOffline } from '../../lib/ios/takeOffline.js';
+import { resolveSiteToRemove, takeSiteOffline } from '../../lib/ios/takeOffline.js';
 import { nativeSingleRoute, oldRouteKind } from '../../lib/account/siteMode.js';
-import { applePurgesContent, expectOf, hasTransaction, otherSiteLive, takeOfflineSite } from '../../lib/account/nativeRoutes.js';
+import { applePurgesContent, expectOf, hasTransaction, memoVerify, otherSiteLive, takeOfflineSite } from '../../lib/account/nativeRoutes.js';
 import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 
 // POST { transactionId } (+ optional Authorization: Bearer <token>, required only when the
@@ -73,6 +73,9 @@ async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: 
   const h = req.headers?.authorization;
   const raw = Array.isArray(h) ? h[0] : h;
   const token = typeof raw === 'string' ? raw.replace(/^Bearer\s+/i, '').trim() : '';
+  const rdeps = { ...liveRemoveDeps(), verify: memoVerify(lazyDefaultVerifier()), repo: supabasePurchases(), userOf: liveUserOf, deleteAccountRows: liveDeleteAccountRows };
+  const ctx = { authorization: req.headers?.authorization };
+  const unavailable = () => res.status(503).json({ error: 'temporarily-unavailable' });
   let uid: string | null = null;
   let site: 'web' | 'apple' = 'apple';
   let other = false;
@@ -82,18 +85,32 @@ async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: 
       if (u?.id) {
         uid = u.id;
         site = takeOfflineSite(await oldRouteKind(u.id), hasTransaction(body));
+        // A web account that names a transaction: when it verifies and is bound to a site this caller may remove (its own, or a signed-out one), that Apple site is the target.
+        // A transaction that does not verify, has no site or belongs to someone else is ignored (the web site is taken offline). Apple being unreachable: nothing is done.
+        if (site === 'web' && hasTransaction(body)) {
+          const p = await resolveSiteToRemove(body, rdeps, ctx);
+          if (!p.result) site = 'apple';
+          else if (p.result.status === 503) return res.status(503).json(p.result.body);
+        }
       }
     } catch (e: any) {
       console.error('[ios/take-offline] kind lookup failed (nothing done):', e?.message || e);
-      return res.status(503).json({ error: 'temporarily-unavailable' });
+      return unavailable();
     }
+  }
+  // The Apple site's own preconditions (a transaction, a site bound to it, ownership) come BEFORE any question about purging: nobody is asked to confirm what would then be refused.
+  if (site === 'apple') {
+    try {
+      const p = await resolveSiteToRemove(body, rdeps, ctx);
+      if (p.result) return res.status(p.result.status).json(p.result.body);
+    } catch (e: any) { console.error('[ios/take-offline] precondition check failed (nothing done):', e?.message || e); return unavailable(); }
   }
   // Content: the web take offline always keeps it; the Apple one purges unless SAFE_TAKE_OFFLINE=1.
   const purges = site === 'apple' && applePurgesContent();
   if (exp.value === 'keep' && purges) return res.status(409).json({ error: 'confirm-purge' });
   if (uid) {
     try { other = await otherSiteLive(uid, site); }
-    catch (e: any) { console.error('[ios/take-offline] other-site lookup failed (nothing done):', e?.message || e); return res.status(503).json({ error: 'temporarily-unavailable' }); }
+    catch (e: any) { console.error('[ios/take-offline] other-site lookup failed (nothing done):', e?.message || e); return unavailable(); }
   }
   if (site === 'web') {
     try {
@@ -105,7 +122,7 @@ async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: 
       return res.status(500).json({ error: 'remove-failed' });
     }
   }
-  const r = await takeSiteOffline(body, { ...liveRemoveDeps(), verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf, deleteAccountRows: liveDeleteAccountRows }, { authorization: req.headers?.authorization });
+  const r = await takeSiteOffline(body, rdeps, ctx);
   return res.status(r.status).json(r.status === 200 ? { ...r.body, outcome: { site: 'apple', contentKept: !purges, otherSiteLive: other } } : r.body);
 }
 

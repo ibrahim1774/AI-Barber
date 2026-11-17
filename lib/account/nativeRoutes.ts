@@ -3,27 +3,30 @@
 //
 // DELETE (api/ios/delete-account.ts): never refused for the kind. Any live card plan is cancelled first (whatever APP_DELETE_CANCELS_WEB and WEB_APP_ENTITLEMENTS say), every site of the
 //   account goes down and is purged (web sites, and Apple sites tied to its purchases). A failed cancel: 500 delete-failed, retryable, cardCancelFailed, nothing deleted.
-//   200 adds outcome { cardPlanCanceled, appleSubscriptionActive }.
+//   200 adds outcome { cardPlanCanceled, appleSubscriptionActive }. Optional body { transactionId }: a signed-out purchase's site that Apple confirms goes down with the account. A publish in progress: 409.
 // TAKE OFFLINE (api/ios/take-offline.ts): body { transactionId?, expect? }. kind web, or mixed with no transaction: the web site goes offline, content and phone kept, live address forgotten.
-//   apple / neither / mixed with a transaction: today's Apple flow. expect 'keep' when the action would purge: 409 confirm-purge, nothing done.
+//   apple / neither / mixed with a transaction (or a web account whose transaction Apple confirms is bound to a site it may remove): today's Apple flow, its own checks (400/404/403) before confirm-purge. expect 'keep' when the action would purge: 409 confirm-purge, nothing done.
 //   200 adds outcome { site, contentKept, otherSiteLive }.
-import { purchaseLive } from '../ios/lapse.js';
 import { safeTakeOfflineOn } from '../ios/removeSite.js';
-import { keyMode } from '../webApp/stripeCore.js';
 import { sbRest } from '../webApp/webAppServer.js';
 import type { AccountKind } from './kind.js';
 
 const enc = encodeURIComponent;
 
 /**
- * Is a Apple subscription of this user still live at Apple (so the app must tell them to cancel it)? Production purchases always count. Sandbox purchases count only in a Sandbox
- * (test-key) deployment: the delete request carries no purchase, so the deployment's own environment stands in for "the request's purchase environment".
+ * Does the account have an Apple subscription that may still be billing (so the app reminds the owner to cancel it at Apple)? ANY linked purchase row, in ANY environment, that is not
+ * known to be refunded or expired. taken_down_at is ignored on purpose: taking a site offline does not stop Apple billing. This flag only drives a reminder, never a decision.
  * THROWS on a failed read (the caller answers 503 with nothing done).
  */
 export async function appleSubscriptionActive(uid: string, now = Date.now()): Promise<boolean> {
-  const sandboxDeployment = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY) === 'test';
   const rows: any[] = (await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at&limit=50`)) ?? [];
-  return rows.some((p) => (p.environment === 'Production' || (sandboxDeployment && p.environment === 'Sandbox')) && purchaseLive(p, now));
+  return rows.some((p) => !p.revoked_at && !(p.expires_at && Date.parse(p.expires_at) <= now));
+}
+
+/** Apple's verification of one transaction, remembered for this request (the route checks the preconditions first, then the removal checks them again). Failures are not remembered. */
+export function memoVerify<T>(verify: (id: string) => Promise<T>): (id: string) => Promise<T> {
+  const seen = new Map<string, T>();
+  return async (id) => { if (seen.has(id)) return seen.get(id)!; const v = await verify(id); seen.set(id, v); return v; };
 }
 
 /** Does the account still have a live site on the OTHER side (read BEFORE the action; THROWS on a failed read: nothing has been done yet)? */

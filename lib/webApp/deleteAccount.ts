@@ -25,6 +25,10 @@ type EntRow = { stripe_subscription_id: string; stripe_customer_id?: string | nu
 /** Stripe says the subscription does not exist any more. A retried delete counts that as done. */
 const missing = (e: any) => e?.status === 404 || e?.code === 'resource_missing';
 
+/** Marks an error as coming from a Stripe call (in place, so `missing` and every other reader of the error still sees the same object). The native delete route reports only these as `cardCancelFailed`. */
+const markStripe = (e: any): never => { throw e && typeof e === 'object' ? Object.assign(e, { stripeCall: true }) : Object.assign(new Error(String(e)), { stripeCall: true }); };
+const stripe = (path: string, body: unknown, method?: string) => stripeCall(path, body as any, method as any).catch(markStripe);
+
 /**
  * A first-time payer has no stored customer until the webhook lands. Stripe still knows their Checkout sessions (found by the
  * account email, filtered to this user): COMPLETED ones name the customer Stripe created; OPEN ones are still payable.
@@ -35,7 +39,7 @@ export async function sessionsOfUser(userId: string, lookupEmail: (id: string) =
   const stored = mode ? await storedSessionId(userId, mode) : null; // found by id, so it works without an email
   const email = await lookupEmail(userId);
   if (!email) return { customers: [], open: stored ? [stored] : [] };
-  const list = await stripeCall(`checkout/sessions?customer_details[email]=${enc(email)}&limit=100`, null, 'GET');
+  const list = await stripe(`checkout/sessions?customer_details[email]=${enc(email)}&limit=100`, null, 'GET');
   const customers = new Set<string>(); const open: string[] = [];
   for (const o of list?.data ?? []) {
     if (o?.metadata?.app !== WEB_APP_TAG || o?.metadata?.user_id !== userId) continue;
@@ -78,17 +82,17 @@ export async function planWebCancellations(userId: string, listForCustomer: (cus
 }
 
 async function defaultList(customerId: string): Promise<any[]> {
-  return (await stripeCall(`subscriptions?customer=${enc(customerId)}&status=all&limit=20`, null, 'GET'))?.data ?? [];
+  return (await stripe(`subscriptions?customer=${enc(customerId)}&status=all&limit=20`, null, 'GET'))?.data ?? [];
 }
 
 /** Cancel every still-paying web subscription of the user in THIS deployment's Stripe mode. Throws when one cannot be canceled. */
 export async function cancelWebSubscriptions(
   userId: string,
-  cancel: (subId: string) => Promise<void> = (id) => stripeCall(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
-  statusOf: (subId: string) => Promise<string> = async (id) => String((await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status),
+  cancel: (subId: string) => Promise<void> = (id) => stripe(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
+  statusOf: (subId: string) => Promise<string> = async (id) => String((await stripe(`subscriptions/${enc(id)}`, null, 'GET')).status),
   listForCustomer?: (customerId: string) => Promise<any[]>,
   discover: typeof sessionsOfUser = sessionsOfUser,
-  expire: (sessionId: string) => Promise<unknown> = (id) => stripeCall(`checkout/sessions/${enc(id)}/expire`, {}, 'POST'),
+  expire: (sessionId: string) => Promise<unknown> = (id) => stripe(`checkout/sessions/${enc(id)}/expire`, {}, 'POST'),
 ): Promise<string[]> {
   const ids = await planWebCancellations(userId, listForCustomer, discover); // refusal happens here, before anything is cancelled
   // Nobody may pay for a deleted account mid-delete: expire the user's still-open sessions (best effort; an already-expired one is fine).
@@ -167,7 +171,7 @@ async function planWithStripeFallback(userId: string): Promise<{ withoutStripe: 
   if (!keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY)) return { withoutStripe: await mayGoWithoutStripe(userId, 'Stripe key missing') };
   let emailReadFailed = false;
   const down = <A extends any[], T>(f: (...a: A) => Promise<T>) => async (...a: A): Promise<T> => { try { return await f(...a); } catch (e: any) { throw new StripeDown(`Stripe call failed: ${e?.message || e}`); } };
-  const list = down(async (c: string): Promise<any[]> => (await stripeCall(`subscriptions?customer=${enc(c)}&status=all&limit=20`, null, 'GET'))?.data ?? []);
+  const list = down(async (c: string): Promise<any[]> => (await stripe(`subscriptions?customer=${enc(c)}&status=all&limit=20`, null, 'GET'))?.data ?? []);
   const discover: typeof sessionsOfUser = (uid) => sessionsOfUser(uid, async (id) => { try { return await emailOfUser(id); } catch (e) { emailReadFailed = true; throw e; } });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -184,7 +188,8 @@ async function planWithStripeFallback(userId: string): Promise<{ withoutStripe: 
 
 async function mayGoWithoutStripe(userId: string, reason: string): Promise<string> {
   const enc1 = enc(userId);
-  if (await hasStripeHistory(userId)) throw new Error(`delete refused: ${reason} and the account has Stripe history`);
+  // (`cardCancel`: the account has a card plan or customer we could not reach, so the native delete route can say so; the message and every other behaviour are unchanged.)
+  if (await hasStripeHistory(userId)) throw Object.assign(new Error(`delete refused: ${reason} and the account has Stripe history`), { cardCancel: true });
   const apple = await readRows(`ios_purchases?user_id=eq.${enc1}&select=original_transaction_id&limit=1`);
   if (!apple) {
     const webSignup = (await readRows(`web_app_price_groups?user_id=eq.${enc1}&select=user_id&limit=1`)) || (await readRows(`web_app_drafts?user_id=eq.${enc1}&select=user_id&limit=1`));
@@ -195,7 +200,7 @@ async function mayGoWithoutStripe(userId: string, reason: string): Promise<strin
 }
 
 /** `keepPhone` (the native keep-content take offline only): the removal stamp leaves the saved contact phone alone, so "nothing is deleted" is fully true. */
-export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: boolean; onCancelled?: (subscriptionIds: string[]) => void } = {}): DeleteAccountDeps {
+export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: boolean; onCancelled?: (subscriptionIds: string[]) => void; skipStripe?: boolean } = {}): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();
   const stamp = (otid: string, body: Record<string, unknown>) =>
@@ -233,13 +238,19 @@ export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: b
     closeShop: base.closeShop
       ? async (userId) => {
           if (opts.allowNoStripe) {
-            // A failure of the card-plan part (asking Stripe, or cancelling) is tagged `cardCancel` so the native delete route can tell the app (`cardCancelFailed`): nothing was deleted.
-            const card = <T>(p: Promise<T>): Promise<T> => p.catch((e: any) => { throw Object.assign(e instanceof Error ? e : new Error(String(e)), { cardCancel: true }); });
-            const { withoutStripe } = await card(planWithStripeFallback(userId)); // refuses (throws) unless Stripe answered or the fallback rules allow it
+            // Native single route only (`skipStripe`): the route found no Stripe history and an Apple-only or empty account, so there is nothing to cancel and Stripe is not asked (logged, no alert).
+            if (opts.skipStripe) {
+              console.log('[ios/delete-account] no Stripe history on an Apple-only or empty account: Stripe not asked');
+              await suspendWork(userId, 'deleting');
+              return base.closeShop!(userId);
+            }
+            // `cardCancel` marks a failure the app may call "the card plan": Stripe history we could not reach (mayGoWithoutStripe), or a failed Stripe call while cancelling. A database read error,
+            // a live subscription out of this key's reach, or a web sign-up refused during an outage stay plain failures.
+            const { withoutStripe } = await planWithStripeFallback(userId); // refuses (throws) unless Stripe answered or the fallback rules allow it
             await suspendWork(userId, 'deleting');
             const r = await base.closeShop!(userId);
             if (!r.ok || withoutStripe) return r;
-            const cancelled = await card(cancelThenForgetCustomers(userId)); // (not inside an optional call: its argument must always be evaluated)
+            const cancelled = await cancelThenForgetCustomers(userId).catch((e: any) => { throw e?.stripeCall ? Object.assign(e, { cardCancel: true }) : e; }); // (not inside an optional call: its argument must always be evaluated)
             opts.onCancelled?.(cancelled);
             return r;
           }
