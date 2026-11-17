@@ -18,7 +18,7 @@ import { EXTRA_PAGES, GUIDES, GUIDE_IDS, SERVICE_ALT, SERVICE_VISIT, type Block,
 import { copyProblems, outputProblems, serviceWordsIn, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { checkEntryShape, lintLine, lintParagraph, MIN_SENTENCES, sentencesOf } from './svcCopy.js';
 import { familyAllowed, familyTitleRank, structuralGuide } from './familyKeywords.js';
-import { hasPagesV2, isWebCreated } from '../pagesV2.js';
+import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
 import { spliceable, TOKEN_KIND } from './spliceable.js';
@@ -198,7 +198,7 @@ export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number
 }
 
 /** Do the sites' service pages carry the Phase 1 library text? Web-created (isWebCreated), pages v2 (an `extraPages` object), service guides on. */
-export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages' | 'source'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true && isWebCreated(d);
+export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages' | 'source'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true && searchPagesOn(d);
 
 /**
  * Which service page shows the `service.alt.<guide>` block: a service with a page whose guide an earlier service with a
@@ -553,7 +553,7 @@ export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = nu
   }
   if (!e) return null;
   // Web-created pages-v2 sites have no FAQ (2026-11-05): no FAQ block resolves, so no FAQ question, price or time answer can ever be printed or suggested.
-  if (/^faq\./.test(key) && hasPagesV2(env.d) && isWebCreated(env.d)) return null;
+  if (/^faq\./.test(key) && hasPagesV2(env.d) && searchPagesOn(env.d)) return null;
   if (e.special) return null; // a line of a block, not a block (copyDefault / howOftenRows serve it)
   const { block } = e;
   // The barber's own question (`<page>.<id>.q`), when they wrote one.

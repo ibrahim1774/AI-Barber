@@ -165,7 +165,7 @@ export interface WebsiteData {
   // section hide/order (closed section ids, read from Phase C on).
   extraPages?: ExtraPagesModel;
   // Where the site was made. api/web-app/draft.ts stamps 'web-app'; the iOS app never sets it. The Phase 1 service-page text and
-  // search rules (lib/pagesV2.ts isWebCreated) apply to web-created sites only.
+  // search rules (lib/pagesV2.ts searchPagesOn) apply to web-created sites and to sites marked extraPages.searchPages.
   source?: string;
   copy?: Record<string, string>;
   pageSections?: Record<string, { hidden?: string[]; order?: string[] }>;

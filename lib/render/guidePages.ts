@@ -41,7 +41,7 @@ import { nicheOf } from './honest.js';
 import { buildPageSet, hasFilePages, isMultiPage, plainText, type PageContext, type PageSet } from './pages.js';
 import { checkPlainLine, type SeoFieldProblem, type SeoReason } from './seoText.js';
 import { spliceable } from './spliceable.js';
-import { hasPagesV2, isWebCreated } from '../pagesV2.js';
+import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 
 export const PAGE_FLOOR = 21;
 /** The hub and the guides together never add more than this many pages. */
@@ -84,7 +84,7 @@ export function guideSettings(d: Pick<WebsiteData, 'extraPages'>): GuideSettings
 
 /** Does this site get guide pages at all? Web-created, pages v2, multi-page, barber niche, and not switched off. */
 export function guidesApply(d: WebsiteData, set: PageSet): boolean {
-  return hasFilePages(set) && hasPagesV2(d) && isWebCreated(d) && nicheOf(d).key === 'barber' && !guideSettings(d).off;
+  return hasFilePages(set) && hasPagesV2(d) && searchPagesOn(d) && nicheOf(d).key === 'barber' && !guideSettings(d).off;
 }
 
 // ── Eligibility and the plan ────────────────────────────────────────────────────────────────────

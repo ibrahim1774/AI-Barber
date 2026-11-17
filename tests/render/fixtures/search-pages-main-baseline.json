@@ -1,0 +1,602 @@
+{
+ "ios-single|luxe|site": {
+  "pages": {
+   "index.html": "54887a20178197513d98ee955b04eef924d66429"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "ios-single|luxe|pending": {
+  "pages": {
+   "index.html": "54887a20178197513d98ee955b04eef924d66429"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "ios-single|prime|site": {
+  "pages": {
+   "index.html": "b4dfef1eeb347519d48be9be92de7b03a2c9d117"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "ios-single|euphoria|site": {
+  "pages": {
+   "index.html": "247def1463d960be29a366440ca150c387922363"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "ios-multi-faq|luxe|site": {
+  "pages": {
+   "index.html": "a376e3712729d7335aee572c0c0e6b3f8e879443",
+   "about/index.html": "7bc790fd76156ca6fb740afdfb86b0d3add25968",
+   "services/index.html": "20b32116c8019ba2c6767b0134943162df51c77c",
+   "services/skin-fade/index.html": "cd3ea0489c0dfa9e2920270bd718f17d03dd6e2f",
+   "services/low-fade/index.html": "abc9801f710c09cdbeb663d8b7bcf2b7cac81e9b",
+   "services/mid-fade/index.html": "994f3d1aa48f72ebdcfdc630ad9cf665d29783d1",
+   "services/taper/index.html": "aee041e9d1d789ae62943befab2c7e4ee6642582",
+   "services/beard-trim/index.html": "b5af0a88e709c8984cde28a6b6f18e3625703667",
+   "services/kids-cut/index.html": "832dfe3a5fe9fbbec6d126afb065bbf4363e5231",
+   "services/hot-towel-shave/index.html": "7a3019dcd89fba27fa274c081a2964580be972de",
+   "services/facial/index.html": "3202f1d0e3142b75e08de5e2f5a553491e244731",
+   "services/braids/index.html": "f7260706ad4f8cd21e71d19b91075230393fe4ec",
+   "services/wash-style/index.html": "7e81bf3dd96fb7ec27da1531c133b1ff1f0c3cd2",
+   "hours/index.html": "6c54481f9f03a579d5b4f14c5b35ab202169fe35",
+   "location/index.html": "8ea353ca924abe49eccb3e8876ca33af37d32a29",
+   "contact/index.html": "72d6fbd5b347a4b6ca768c46fa2f9cf6be654a55",
+   "faq/index.html": "3cbf8d88f488b2ce58409c2d06404bc272f287b1",
+   "first-visit/index.html": "5775be6591fe2d4acf3a6341f1855f1055d9fa06",
+   "hair-care/index.html": "ad481d6ab9fa34f175d8338db831e42af2d48f80",
+   "beard-care/index.html": "46793e60e3a2a538ebabe2c9c47f0e1715a58b6a"
+  },
+  "sitemap": "9e363200a29c4eef0393866c81fefbac79cc7466",
+  "robots": null
+ },
+ "ios-multi-faq|luxe|pending": {
+  "pages": {
+   "index.html": "a376e3712729d7335aee572c0c0e6b3f8e879443",
+   "about/index.html": "7bc790fd76156ca6fb740afdfb86b0d3add25968",
+   "services/index.html": "20b32116c8019ba2c6767b0134943162df51c77c",
+   "services/skin-fade/index.html": "cd3ea0489c0dfa9e2920270bd718f17d03dd6e2f",
+   "services/low-fade/index.html": "abc9801f710c09cdbeb663d8b7bcf2b7cac81e9b",
+   "services/mid-fade/index.html": "994f3d1aa48f72ebdcfdc630ad9cf665d29783d1",
+   "services/taper/index.html": "aee041e9d1d789ae62943befab2c7e4ee6642582",
+   "services/beard-trim/index.html": "b5af0a88e709c8984cde28a6b6f18e3625703667",
+   "services/kids-cut/index.html": "832dfe3a5fe9fbbec6d126afb065bbf4363e5231",
+   "services/hot-towel-shave/index.html": "7a3019dcd89fba27fa274c081a2964580be972de",
+   "services/facial/index.html": "3202f1d0e3142b75e08de5e2f5a553491e244731",
+   "services/braids/index.html": "f7260706ad4f8cd21e71d19b91075230393fe4ec",
+   "services/wash-style/index.html": "7e81bf3dd96fb7ec27da1531c133b1ff1f0c3cd2",
+   "hours/index.html": "6c54481f9f03a579d5b4f14c5b35ab202169fe35",
+   "location/index.html": "8ea353ca924abe49eccb3e8876ca33af37d32a29",
+   "contact/index.html": "72d6fbd5b347a4b6ca768c46fa2f9cf6be654a55",
+   "faq/index.html": "3cbf8d88f488b2ce58409c2d06404bc272f287b1",
+   "first-visit/index.html": "5775be6591fe2d4acf3a6341f1855f1055d9fa06",
+   "hair-care/index.html": "ad481d6ab9fa34f175d8338db831e42af2d48f80",
+   "beard-care/index.html": "46793e60e3a2a538ebabe2c9c47f0e1715a58b6a"
+  },
+  "sitemap": "9e363200a29c4eef0393866c81fefbac79cc7466",
+  "robots": null
+ },
+ "ios-multi-faq|prime|site": {
+  "pages": {
+   "index.html": "179d3fcc942a62dab532d4873f8b10d9cb13bea5",
+   "about/index.html": "96a78c37f69051f34184b86a9699c4938986a91b",
+   "services/index.html": "d485de42fc38d92f47dc40a328b0fbd8099fe5af",
+   "services/skin-fade/index.html": "44b0a3899da3d8188cb722ebd881254870353273",
+   "services/low-fade/index.html": "f49e38dbaac3ab4b457967d079fa74d62cc84cbc",
+   "services/mid-fade/index.html": "0cb03e2acd15d6e7db118a0aac3e2d70e6d4da08",
+   "services/taper/index.html": "1f29cd56589c3efc1d1aba7ba6f2fcf7401b72ff",
+   "services/beard-trim/index.html": "780aaf20e01838914bc561bc355e721009d9374b",
+   "services/kids-cut/index.html": "1630c35a3e0784fd1ff40cbc1a5bdcf1b02a68d7",
+   "services/hot-towel-shave/index.html": "5f1807a27447d5176a6a682e9512b1533c1a3a28",
+   "services/facial/index.html": "14a905ccf9fe9d0dd5e45cd3d379758c4d3abc57",
+   "services/braids/index.html": "6adc3f9382d91f112c9cc062ba7d3e289661ff81",
+   "services/wash-style/index.html": "d97e57c22101580f7e9b7d09e1280a46e3964e59",
+   "hours/index.html": "2408d20d76fe001ab49d69a612e17e4f9405db54",
+   "location/index.html": "3506426f65fc8ce51a87601b69fc37909f09512b",
+   "contact/index.html": "aaa281a77dcebea7e62ba48dfc52ffeee37ddd59",
+   "faq/index.html": "ba0367cab75e4e0446e759b0609358e58c3c7eb1",
+   "first-visit/index.html": "c156b2259727bfdecf7a789535311aca701efa07",
+   "hair-care/index.html": "c875fc97e9db8c3ea72ad1a1ba1100c1181bced1",
+   "beard-care/index.html": "b032562392eb3166e2653cbf296c8c65cecdbff7"
+  },
+  "sitemap": "9e363200a29c4eef0393866c81fefbac79cc7466",
+  "robots": null
+ },
+ "ios-multi-faq|euphoria|site": {
+  "pages": {
+   "index.html": "4f42a824f0191b7a94b95fa1deaa5616e4ad91cc",
+   "about/index.html": "9764962d9f433d7a741f962113b115fee6206570",
+   "services/index.html": "532603f3e3174de048f114877f9b3bae3fd993d2",
+   "services/skin-fade/index.html": "46eaf0451972db50cfad1ae5a2c613594f7a30ac",
+   "services/low-fade/index.html": "109d5747c2229b2f7fcb4007fa04140533f548d9",
+   "services/mid-fade/index.html": "ac2d84210b6ae693ad3b3d5d0586991cbc50b6bc",
+   "services/taper/index.html": "1975b79e43b3b11168a80d6c075299fbd582597a",
+   "services/beard-trim/index.html": "e68c4dafdc2f364d3ae065360d287d9478c8817a",
+   "services/kids-cut/index.html": "dbbd8e208de6bf928ff579309c2e169703821f51",
+   "services/hot-towel-shave/index.html": "0d800c5cf2ce806d279f756ac7958ac56564d572",
+   "services/facial/index.html": "42c0c683620c4af624807aa8455bccc048816081",
+   "services/braids/index.html": "9a2ddbca43954605b452a94ca288e39b1d398c0d",
+   "services/wash-style/index.html": "4aec80d6ca346fc465cbe9f08beaa447cd4cc413",
+   "hours/index.html": "ca120566a430d477d9b4b4df818155bc75b5d739",
+   "location/index.html": "b55fa6b4aa0e393fe60d29e7280f0cf9c8641f89",
+   "contact/index.html": "e5d177f81c9a89f15efaa072965123729fb54123",
+   "faq/index.html": "0dab417414c68cf0b018c8377b9552830d8af27f",
+   "first-visit/index.html": "81edccafc649cfc528e07d950729bc3fee7f6857",
+   "hair-care/index.html": "d66720225668c294f9eb2298ce8724dd5e069764",
+   "beard-care/index.html": "7eb3afa0a4bbec9ecc515d86c34a018ebf3ab16b"
+  },
+  "sitemap": "9e363200a29c4eef0393866c81fefbac79cc7466",
+  "robots": null
+ },
+ "ios-multi-guides|luxe|site": {
+  "pages": {
+   "index.html": "fc3c41efd5b56d628a7525d623887da0e55e9e57",
+   "about/index.html": "ed4a9dbccb72fbcab98c3be27092c134b0344eeb",
+   "services/index.html": "30895d0dd42409dbdf75eaafe1200be8caaa1266",
+   "services/fade/index.html": "c3ac3475ca9d52c96f2c35e5282518f0996f7d70",
+   "services/fade-beard/index.html": "c17261bebc15d2c21316506ff2e908344b28bad5",
+   "services/the-works/index.html": "436ff8df639ea25bf51225c70b5c69697a383763",
+   "services/mvp-cut/index.html": "1b7b7e7945adae54091c1c63e91a1605b9f1a95a",
+   "services/kids-cut/index.html": "4f928323a25eaabfcaaeb635566d90dd6c0e3db1",
+   "services/line-up/index.html": "b3214f28f019417f7573bc0d8c82faaaeed2c3c9",
+   "hours/index.html": "90824dc1155d33bce1582bba88ba02671cf846fb",
+   "location/index.html": "7e13c4a7843ce785b8c04529085f0364fbeda436",
+   "contact/index.html": "8b282b8a491bf10c202fdc9fc3a124f1d21f414d",
+   "faq/index.html": "2cdbc33f116f982e1d7195b7affe1125bd430fa1"
+  },
+  "sitemap": "f8aafa88d4562fe03fbc743f515f22b5462e2b45",
+  "robots": null
+ },
+ "ios-multi-guides|luxe|pending": {
+  "pages": {
+   "index.html": "fc3c41efd5b56d628a7525d623887da0e55e9e57",
+   "about/index.html": "ed4a9dbccb72fbcab98c3be27092c134b0344eeb",
+   "services/index.html": "30895d0dd42409dbdf75eaafe1200be8caaa1266",
+   "services/fade/index.html": "c3ac3475ca9d52c96f2c35e5282518f0996f7d70",
+   "services/fade-beard/index.html": "c17261bebc15d2c21316506ff2e908344b28bad5",
+   "services/the-works/index.html": "436ff8df639ea25bf51225c70b5c69697a383763",
+   "services/mvp-cut/index.html": "1b7b7e7945adae54091c1c63e91a1605b9f1a95a",
+   "services/kids-cut/index.html": "4f928323a25eaabfcaaeb635566d90dd6c0e3db1",
+   "services/line-up/index.html": "b3214f28f019417f7573bc0d8c82faaaeed2c3c9",
+   "hours/index.html": "90824dc1155d33bce1582bba88ba02671cf846fb",
+   "location/index.html": "7e13c4a7843ce785b8c04529085f0364fbeda436",
+   "contact/index.html": "8b282b8a491bf10c202fdc9fc3a124f1d21f414d",
+   "faq/index.html": "2cdbc33f116f982e1d7195b7affe1125bd430fa1"
+  },
+  "sitemap": "f8aafa88d4562fe03fbc743f515f22b5462e2b45",
+  "robots": null
+ },
+ "ios-multi-guides|prime|site": {
+  "pages": {
+   "index.html": "ebd6a55e80f863da94ae04795cdacec0bd4c5108",
+   "about/index.html": "63f46a8a2f5c35af4e3083281ba1d2650609905d",
+   "services/index.html": "c7c40bb32d7d34333fd1b1dfaf69f024aabe11c0",
+   "services/fade/index.html": "91dcf37d52b8bcb3ec3286b26cee481ea2f79694",
+   "services/fade-beard/index.html": "7c490d34daea29d315e53b394337a98aefe47060",
+   "services/the-works/index.html": "a663807c931b071478523fd93d2ca5dd42dfaa18",
+   "services/mvp-cut/index.html": "7230e16cc9a8ba1000899ff88c031cb3b0c1ec21",
+   "services/kids-cut/index.html": "25ab4e70e4213242355ce4c8e5959bf7135dcbcf",
+   "services/line-up/index.html": "77d3a689194d5a9016d3b74303f02f6e0e09070c",
+   "hours/index.html": "a525f3c9843d21bad7b5695f2b5f604d447954d1",
+   "location/index.html": "2c3ab253aa12fd0b813a9f8a254f50f918a0bb8e",
+   "contact/index.html": "ac265371e27f39daa5884037e8ed16312145b6a2",
+   "faq/index.html": "fa10d0607faf4d4e13868bd5399e662464e4e0ab"
+  },
+  "sitemap": "f8aafa88d4562fe03fbc743f515f22b5462e2b45",
+  "robots": null
+ },
+ "ios-multi-guides|euphoria|site": {
+  "pages": {
+   "index.html": "46a8a274873af29efb6752b0735fb49fcc2b657b",
+   "about/index.html": "96e0acf7fe51f67d6f7d6a46fe2b753c83248c85",
+   "services/index.html": "a946b3c43669608bd53c22222eb6964b6d21de65",
+   "services/fade/index.html": "cfcff4af37403874e4fb83716c78405ff25b1280",
+   "services/fade-beard/index.html": "a5863f6d5e31c4cd450bd706d0d471f5d2a06dec",
+   "services/the-works/index.html": "3552ca4d34076956d92ba1d33db1cf367cd25102",
+   "services/mvp-cut/index.html": "4f5f348817d689265c860082af9ee7b440e403e9",
+   "services/kids-cut/index.html": "d0036add1bc22595afb212918385a96149a0fecc",
+   "services/line-up/index.html": "dba37ae61c9465c0422f044d1f816e5fb188be29",
+   "hours/index.html": "70934bc291de176c7ff44fb9c3b51280d86f6543",
+   "location/index.html": "c01a0f4bdef1000f300cf6ab259676fdebea5d67",
+   "contact/index.html": "b96735d7584dd7a2fc3d397fcb639c34985d83d0",
+   "faq/index.html": "5180c9a5f4e8797db755ffa7ad55cdfe0a322f96"
+  },
+  "sitemap": "f8aafa88d4562fe03fbc743f515f22b5462e2b45",
+  "robots": null
+ },
+ "ios-sparse|luxe|site": {
+  "pages": {
+   "index.html": "8c10cf96829e125d2ca0832dee07beaa3f3a5f50",
+   "about/index.html": "e67fbe802bebfdd64779df8ef5a1d8ca56381dcb",
+   "services/index.html": "7749c727074445d87e9d2c68c88dfc7195a30efd",
+   "services/haircut/index.html": "e9afab674a0c5a714ef4247651b5369e14383226",
+   "services/facial/index.html": "77f9ab24ba7d3dbc98dc00a158cccc03a0cb7eab",
+   "location/index.html": "bd8c3814d959d88505eec2bfcef0082c617e561a",
+   "contact/index.html": "c77b4b2e81aef17d271e48366201dafab215eb47"
+  },
+  "sitemap": "7dcd34932bcdbcd88053a445b4d2cc88b1e61902",
+  "robots": null
+ },
+ "ios-sparse|luxe|pending": {
+  "pages": {
+   "index.html": "8c10cf96829e125d2ca0832dee07beaa3f3a5f50",
+   "about/index.html": "e67fbe802bebfdd64779df8ef5a1d8ca56381dcb",
+   "services/index.html": "7749c727074445d87e9d2c68c88dfc7195a30efd",
+   "services/haircut/index.html": "e9afab674a0c5a714ef4247651b5369e14383226",
+   "services/facial/index.html": "77f9ab24ba7d3dbc98dc00a158cccc03a0cb7eab",
+   "location/index.html": "bd8c3814d959d88505eec2bfcef0082c617e561a",
+   "contact/index.html": "c77b4b2e81aef17d271e48366201dafab215eb47"
+  },
+  "sitemap": "7dcd34932bcdbcd88053a445b4d2cc88b1e61902",
+  "robots": null
+ },
+ "ios-sparse|prime|site": {
+  "pages": {
+   "index.html": "952e91a0eb7e5d912eed670096bc333d0f0fa0ef",
+   "about/index.html": "b90d33d1b05b95c4ab4984eafac82aa9ff3e11ee",
+   "services/index.html": "8917c9898fdd4b1b93a10d78a1c61893e6549e9d",
+   "services/haircut/index.html": "5e0a85d1aa6ba74989e69b3020def69f58a0bfb7",
+   "services/facial/index.html": "a181e03366e7d5447b0b939051c1635018c704d6",
+   "location/index.html": "5aea2db660f967f7c5b18f663b23542d9753e709",
+   "contact/index.html": "4749b3e781e9be36bc077d0eb761e9eed4d5211a"
+  },
+  "sitemap": "7dcd34932bcdbcd88053a445b4d2cc88b1e61902",
+  "robots": null
+ },
+ "ios-sparse|euphoria|site": {
+  "pages": {
+   "index.html": "3b660729c1d6cf1c7dff312f81aa09a3eb3b1dc9",
+   "about/index.html": "042057ba8bc87490c1c4e0522d4667b91fcfcee6",
+   "services/index.html": "ef9c37a9b8daf15f54a1f100c3e796aafb9b6d5e",
+   "services/haircut/index.html": "a4085daf158840c6f4cb181935fdff62c4dfcbde",
+   "services/facial/index.html": "2bfc49c9b733d31202e2bc2663aeabf5f2245d10",
+   "location/index.html": "c7d66a48ecaa7d1a52813c595b8baf0b9caf3527",
+   "contact/index.html": "4412899429c34e57a196a4b09985fbb62e3d295c"
+  },
+  "sitemap": "7dcd34932bcdbcd88053a445b4d2cc88b1e61902",
+  "robots": null
+ },
+ "web-multi-faq|luxe|site": {
+  "pages": {
+   "index.html": "9c0445f4faeedd5ce1b6ee3f80844950492a5128",
+   "about/index.html": "d6754aa2b13840117e4fe22a3676f609b7eaea1c",
+   "services/index.html": "bef8aaf38c16b352d12c7fd1ba21ad707e026451",
+   "services/skin-fade/index.html": "8237fd7158bb30e60334030eabaabc36f38d554b",
+   "services/low-fade/index.html": "88f1e4404f9a709174fad7275b8b6eeebf2a43d3",
+   "services/mid-fade/index.html": "4afdbcda270d3f55b9845662d3d7b4bd73946611",
+   "services/taper/index.html": "a80b40c05e68cc9bc6996fdec6020ff98eff291d",
+   "services/beard-trim/index.html": "4d0208ca50bdc4a145d3c009cbd0013f23f419a5",
+   "services/kids-cut/index.html": "8da2445808ef8b8dd1b722c7387f0a34dc54c4bc",
+   "services/hot-towel-shave/index.html": "f939698ed675f870ec8db5eb454c050977ca4096",
+   "services/facial/index.html": "18ca1af6def6ee5912d9726eaf38524014c2d873",
+   "services/braids/index.html": "45c85ee0bbe343c4481903039d46f9ddad5865c6",
+   "services/wash-style/index.html": "0b66707251f4195b459625c435e55a6800e698a4",
+   "hours/index.html": "e187fd5f57d699fa42250ec151be002b831edef0",
+   "location/index.html": "2324d26345033e13da4fafad5eb363c4d2c1773e",
+   "contact/index.html": "810edc63e43422b2568c728c3a2f60d707f80155",
+   "first-visit/index.html": "29cc66a492e35c9d29bd5dcbe0ec40bfa7cf8b32",
+   "hair-care/index.html": "d077a1aacd03cde769cb31898574957df46465c0",
+   "beard-care/index.html": "680baf5223f272e72f71c2986894a285eae30e91",
+   "guides/index.html": "ffb180dcdf4567a022e0a7f2562d034962eac27b",
+   "guides/ask-for-the-cut/index.html": "b81fb8bf23d2465dc58f0289a6ce2dd957efa693"
+  },
+  "sitemap": "ea3f31a03fb40a13e3329c8c701000cee53ef837",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-faq|luxe|pending": {
+  "pages": {
+   "index.html": "9c0445f4faeedd5ce1b6ee3f80844950492a5128",
+   "about/index.html": "d6754aa2b13840117e4fe22a3676f609b7eaea1c",
+   "services/index.html": "bef8aaf38c16b352d12c7fd1ba21ad707e026451",
+   "services/skin-fade/index.html": "8237fd7158bb30e60334030eabaabc36f38d554b",
+   "services/low-fade/index.html": "88f1e4404f9a709174fad7275b8b6eeebf2a43d3",
+   "services/mid-fade/index.html": "4afdbcda270d3f55b9845662d3d7b4bd73946611",
+   "services/taper/index.html": "a80b40c05e68cc9bc6996fdec6020ff98eff291d",
+   "services/beard-trim/index.html": "4d0208ca50bdc4a145d3c009cbd0013f23f419a5",
+   "services/kids-cut/index.html": "8da2445808ef8b8dd1b722c7387f0a34dc54c4bc",
+   "services/hot-towel-shave/index.html": "f939698ed675f870ec8db5eb454c050977ca4096",
+   "services/facial/index.html": "18ca1af6def6ee5912d9726eaf38524014c2d873",
+   "services/braids/index.html": "45c85ee0bbe343c4481903039d46f9ddad5865c6",
+   "services/wash-style/index.html": "0b66707251f4195b459625c435e55a6800e698a4",
+   "hours/index.html": "e187fd5f57d699fa42250ec151be002b831edef0",
+   "location/index.html": "2324d26345033e13da4fafad5eb363c4d2c1773e",
+   "contact/index.html": "810edc63e43422b2568c728c3a2f60d707f80155",
+   "first-visit/index.html": "29cc66a492e35c9d29bd5dcbe0ec40bfa7cf8b32",
+   "hair-care/index.html": "d077a1aacd03cde769cb31898574957df46465c0",
+   "beard-care/index.html": "680baf5223f272e72f71c2986894a285eae30e91",
+   "guides/index.html": "ffb180dcdf4567a022e0a7f2562d034962eac27b",
+   "guides/ask-for-the-cut/index.html": "b81fb8bf23d2465dc58f0289a6ce2dd957efa693"
+  },
+  "sitemap": "ea3f31a03fb40a13e3329c8c701000cee53ef837",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-faq|prime|site": {
+  "pages": {
+   "index.html": "df371f6c660973e98124f4660554c015041f5795",
+   "about/index.html": "ac46e24999b6d448305554f98ee285b881881776",
+   "services/index.html": "48569ced6265733a7a79bc47ab215c32da2d1fe4",
+   "services/skin-fade/index.html": "9a4e77ec7052753c74f668916fe4a4c3c68790dc",
+   "services/low-fade/index.html": "efad907bc8f905ba5eb3b15d20a5c1e0c08bfbe5",
+   "services/mid-fade/index.html": "2822fe644a2b9c2275e3a5aee87e008ca55f5b6d",
+   "services/taper/index.html": "209f7f5b555b62abf1f46bd413c85375436b0ff8",
+   "services/beard-trim/index.html": "07337cd830e5570d52882e22b37daba58bcbdb9f",
+   "services/kids-cut/index.html": "d29d409b890f7052dfda2265b0592ad8786e9e68",
+   "services/hot-towel-shave/index.html": "45dd1c8dae4db4f24fc4b1c74a6a98b8ec457553",
+   "services/facial/index.html": "870143eb4773e85e7cfc095b84afdf54503ac6c5",
+   "services/braids/index.html": "fab2375f2138bda0f6078ac2ab0a2c238086bca5",
+   "services/wash-style/index.html": "ebda4842ee95c1c52382c0beaf12fcccd974ce91",
+   "hours/index.html": "260045cd2fb1028ccad44492ab8e0e8baf4d8a1c",
+   "location/index.html": "23bc12684b142d1f150554efcee4b29f759bf523",
+   "contact/index.html": "71c680a3f94f010c3f49d33a354604bafa851a00",
+   "first-visit/index.html": "1daa16f3209e03ed2f4236580aaacdd282a8b49a",
+   "hair-care/index.html": "9aaa7d62b15baa7bef86f06a22f32beb3437c9f9",
+   "beard-care/index.html": "749f50dcb01f900404297690a6af5412951c535a",
+   "guides/index.html": "e98ff974c201625da10ac539350d789cbef74f87",
+   "guides/ask-for-the-cut/index.html": "eb6a830de08f771d1dbd0d64bcea6e234a58b54c"
+  },
+  "sitemap": "ea3f31a03fb40a13e3329c8c701000cee53ef837",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-faq|euphoria|site": {
+  "pages": {
+   "index.html": "bb4da71092ede5ff9935ea06d0bc932d8fced0a7",
+   "about/index.html": "608a629b1c5996b8342adf998bc226d05a222d58",
+   "services/index.html": "338368322068f53e9039bddfe134d1eb64eba38b",
+   "services/skin-fade/index.html": "fb10f2e4d7a1e106aad5528150e8d4cbab8cf5f4",
+   "services/low-fade/index.html": "5a04dcb659f284afce1361e783dc813779c8953d",
+   "services/mid-fade/index.html": "01631c55e850827d9832eccc06170abe14141a89",
+   "services/taper/index.html": "4770ed51d3339e5e281e3bf840ea2bf5794264a1",
+   "services/beard-trim/index.html": "008ca5d100a8269d32f78b22d55df997a117b1fe",
+   "services/kids-cut/index.html": "ccc6050d82d0e438a0c54874ad8beac6a4684e8f",
+   "services/hot-towel-shave/index.html": "1918e80144b9082e51b2f3a2173a2d28191b9acf",
+   "services/facial/index.html": "54c61585f3a75de5efe9fff92122194ddd2ef368",
+   "services/braids/index.html": "68c027dabfe893f30fc517a5d735471c2d4408cf",
+   "services/wash-style/index.html": "0d12b9a75b251844cfba9358becf3c9b7d036fd7",
+   "hours/index.html": "19621bf3fe89de94e433f03a4f8967ba958eb290",
+   "location/index.html": "4a2028a3cf9ee38c7b4a9fc13ae49533f3d4b8c9",
+   "contact/index.html": "9d18221d141e40593848b08312aef530aa094dbd",
+   "first-visit/index.html": "5db55411cb65f4e716b66e286bc0a00e01ddae0d",
+   "hair-care/index.html": "1836dc0a2c7588f201d2cef1bf4dfc71f384d861",
+   "beard-care/index.html": "3aa2a29f7bef10221b18a9a8ddd3d9a136a21ffd",
+   "guides/index.html": "f8e1ba0af8823e98924e0dba36fdd9b86fda9938",
+   "guides/ask-for-the-cut/index.html": "a811538bec9fe2c98535b41e63ee22d2867498d2"
+  },
+  "sitemap": "ea3f31a03fb40a13e3329c8c701000cee53ef837",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-guides|luxe|site": {
+  "pages": {
+   "index.html": "5c6f1168cc99557fc010402eb98d05f10e770d8c",
+   "about/index.html": "f8750488ef9475ae43c078000b75890e259de6d3",
+   "services/index.html": "6e88d38999e9ab00c82afffc8c67a43905e262d3",
+   "services/fade/index.html": "7d217de37728a458bbf68faaf416d14fb89ffeda",
+   "services/fade-beard/index.html": "24a2be768177d4b3974d265e325c649810e179f4",
+   "services/the-works/index.html": "6c8d77cce724bd212fa09cab32b13c84484955d8",
+   "services/mvp-cut/index.html": "4b637ae6d479537db80131c256f1cefb7262583a",
+   "services/kids-cut/index.html": "8a23e11f98372e5d14f4d104678a5f3dbf3808ef",
+   "services/line-up/index.html": "da003d9e4a694f8faef5a3b1b24cce52b1d4f341",
+   "hours/index.html": "f95a433413de3ebef70b14f3587b5f8d1f0b8559",
+   "location/index.html": "c576e4fed609f05f5b6be0662d47b89c93c5653a",
+   "contact/index.html": "129f24d8a52cb439d99b4c1ce0498d844afb5901",
+   "guides/index.html": "4d2dc0869aab50d6f82336b22cd8356b5dc19711",
+   "guides/ask-for-the-cut/index.html": "4b9eff2b3d8dddd4978e458a755f87bf06d6d4e0",
+   "guides/hairstyle-ideas/index.html": "393d175339b556ee2e229e12e1588424f10e5424",
+   "guides/fade-and-taper/index.html": "c627c6d7385a5360dc452a187b13f4cdbdfa3c8e",
+   "guides/barber-matters/index.html": "7357c9c2dc488026e0c172ce6015b81356bfd0db",
+   "guides/gap-between-haircuts/index.html": "f73fe6dc54159c696b5c837544d4aa8c8a0d5c49",
+   "guides/prepare-your-visit/index.html": "2a7efbf23c473df81fc17953d461bf4b278d1e2a",
+   "guides/child-first-haircut/index.html": "72db1a675be88d0908d221cb2505169747e92a98"
+  },
+  "sitemap": "ee28d74c2ca37c79ca88ab0e6034e6ccdf191be0",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-guides|luxe|pending": {
+  "pages": {
+   "index.html": "5c6f1168cc99557fc010402eb98d05f10e770d8c",
+   "about/index.html": "f8750488ef9475ae43c078000b75890e259de6d3",
+   "services/index.html": "6e88d38999e9ab00c82afffc8c67a43905e262d3",
+   "services/fade/index.html": "7d217de37728a458bbf68faaf416d14fb89ffeda",
+   "services/fade-beard/index.html": "24a2be768177d4b3974d265e325c649810e179f4",
+   "services/the-works/index.html": "6c8d77cce724bd212fa09cab32b13c84484955d8",
+   "services/mvp-cut/index.html": "4b637ae6d479537db80131c256f1cefb7262583a",
+   "services/kids-cut/index.html": "8a23e11f98372e5d14f4d104678a5f3dbf3808ef",
+   "services/line-up/index.html": "da003d9e4a694f8faef5a3b1b24cce52b1d4f341",
+   "hours/index.html": "f95a433413de3ebef70b14f3587b5f8d1f0b8559",
+   "location/index.html": "c576e4fed609f05f5b6be0662d47b89c93c5653a",
+   "contact/index.html": "129f24d8a52cb439d99b4c1ce0498d844afb5901",
+   "guides/index.html": "4d2dc0869aab50d6f82336b22cd8356b5dc19711",
+   "guides/ask-for-the-cut/index.html": "4b9eff2b3d8dddd4978e458a755f87bf06d6d4e0",
+   "guides/hairstyle-ideas/index.html": "393d175339b556ee2e229e12e1588424f10e5424",
+   "guides/fade-and-taper/index.html": "c627c6d7385a5360dc452a187b13f4cdbdfa3c8e",
+   "guides/barber-matters/index.html": "7357c9c2dc488026e0c172ce6015b81356bfd0db",
+   "guides/gap-between-haircuts/index.html": "f73fe6dc54159c696b5c837544d4aa8c8a0d5c49",
+   "guides/prepare-your-visit/index.html": "2a7efbf23c473df81fc17953d461bf4b278d1e2a",
+   "guides/child-first-haircut/index.html": "72db1a675be88d0908d221cb2505169747e92a98"
+  },
+  "sitemap": "ee28d74c2ca37c79ca88ab0e6034e6ccdf191be0",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-guides|prime|site": {
+  "pages": {
+   "index.html": "4186b892c39fbe56cc79d8cb45814df9b1f45057",
+   "about/index.html": "3b77e10307dd7de5851738eb9bdd53a0c78bd496",
+   "services/index.html": "3092c89249f576b6b7ee5889f901a3c8a300192d",
+   "services/fade/index.html": "150e5db90ee87a3738cef9b6b97d28ba9af589f5",
+   "services/fade-beard/index.html": "68b93c1f118f54a4ec83b3a2214a3bb941d92772",
+   "services/the-works/index.html": "150027a8f44f59c96aec7d5d725f559295faaf86",
+   "services/mvp-cut/index.html": "34a6cd07636e29d6eb0ca116b33145bbb60c8d72",
+   "services/kids-cut/index.html": "4962ec5ba3c7fc391349afb0683f93f8a38f85df",
+   "services/line-up/index.html": "fc1c948ebc28f7287ff5c57c0be2debbb4c3e34e",
+   "hours/index.html": "1ef386773b68cdf269918fc3f4c320f6986ba3ae",
+   "location/index.html": "814a2baeb025932b8c7a46b3122785b5e9bc48ff",
+   "contact/index.html": "8597da35c080d7d893b20f81e85a5e28bb6de269",
+   "guides/index.html": "5e2da3aa27b2ff67a89775bf5e4117933248da0f",
+   "guides/ask-for-the-cut/index.html": "e4951fc73e55b99066fb5107edb60ec2d9e1d66d",
+   "guides/hairstyle-ideas/index.html": "d8080b2e974fa18e68e5a8499f40d48fbb3c0796",
+   "guides/fade-and-taper/index.html": "5e2280e9c1ff48b80cadf04d74342364c6853cc2",
+   "guides/barber-matters/index.html": "668aaa5a2f4fe8a1f804c56cda4478a60bb49504",
+   "guides/gap-between-haircuts/index.html": "f9088b4881e249ac04effb80a84fa9cfad2091b5",
+   "guides/prepare-your-visit/index.html": "45709fa6fc75af9356e2cbe60dc907678f87ec27",
+   "guides/child-first-haircut/index.html": "b8ccdad666442c3a36ece8f63daff880ee016c58"
+  },
+  "sitemap": "ee28d74c2ca37c79ca88ab0e6034e6ccdf191be0",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-multi-guides|euphoria|site": {
+  "pages": {
+   "index.html": "9f6bb7fc24deee5ea5825d9b655a440a91020611",
+   "about/index.html": "2fe58954d4a31bcd13264c587a9f6362d904f86f",
+   "services/index.html": "fe35898df239dbca466e335f996eb67362333207",
+   "services/fade/index.html": "736bcb45fa718365112690daee11f6b4129a8b2e",
+   "services/fade-beard/index.html": "e584e1fb6db6d208f19bb3af157800b0b0898ff3",
+   "services/the-works/index.html": "fe53c8f8a28650fc2959c1c79987e12d04e064e3",
+   "services/mvp-cut/index.html": "27ac6a4771468c6fb1d3ab3cd6ae098dd56be3af",
+   "services/kids-cut/index.html": "57843d99195aef418a3583e7c50c57256291ba59",
+   "services/line-up/index.html": "b5218fbf626015ca3b43577bc87e05342a10a7a1",
+   "hours/index.html": "61f63acfed3bb3fcde18ecf69314d2d15911e73e",
+   "location/index.html": "256459bbccad4b7bedaf34279a8303d7a3de9c17",
+   "contact/index.html": "65564da7e5b0330392b1f547c8d9bf4e777032dc",
+   "guides/index.html": "73f430d8de1e20f2096a2a9ce7db14de3069b8f3",
+   "guides/ask-for-the-cut/index.html": "b2742cbb9bbadd68c7b202c4ee297844bf523bec",
+   "guides/hairstyle-ideas/index.html": "dbdf47e213021605a658d34ce3ae05faffc2ac05",
+   "guides/fade-and-taper/index.html": "e248d75da032a5509c1d12c3ba9b501312d6ffa2",
+   "guides/barber-matters/index.html": "822669dc06d4101bfd7d3a7f303b0971485c5393",
+   "guides/gap-between-haircuts/index.html": "22397fffbd2c3056d93901a7e6bbf7e44ac71b49",
+   "guides/prepare-your-visit/index.html": "9b7deb2e3eba4ce13c2b9767884e6b5e90c76a7d",
+   "guides/child-first-haircut/index.html": "4e37f82538c8e91f140d97fdbf926919ef023434"
+  },
+  "sitemap": "ee28d74c2ca37c79ca88ab0e6034e6ccdf191be0",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-sparse|luxe|site": {
+  "pages": {
+   "index.html": "8c10cf96829e125d2ca0832dee07beaa3f3a5f50",
+   "about/index.html": "e3938888941c627acf95ed09c8adf473dbcf8900",
+   "services/index.html": "42266d7ce6476c0fcebf86938abcce4049837c38",
+   "services/haircut/index.html": "e7bf3645b2bb2efa0c8feeb9a41919b261241e93",
+   "services/facial/index.html": "e4fe58e7c7efc6a588dddc0d216c752c8b585787",
+   "location/index.html": "fbe5278526c4b5891cd33453c9b1180fec5f69bc",
+   "contact/index.html": "040f61a9d670bfc06af1ceefa531d76197888c17",
+   "guides/index.html": "dc31d8e51469b186afe1db37ed89aabaf221aefa",
+   "guides/ask-for-the-cut/index.html": "fb9f14b10c120650c1fe0f78b41c9fda1cebb949",
+   "guides/hairstyle-ideas/index.html": "b526b4830dbc656459ce8c90d1cf5a93f663c2ac",
+   "guides/barber-matters/index.html": "476f4d1e59c9b912ec55f05d14765c4e258e2a8c",
+   "guides/gap-between-haircuts/index.html": "df4e3fd017c1ab1c68445f449eb1cb2808dd090d",
+   "guides/prepare-your-visit/index.html": "71c2f04ba4bf18be4848551f03c413f45b298686",
+   "guides/face-shape/index.html": "ac85d9e38da967e8b798cae47bebb913b24d14f2",
+   "guides/hair-types/index.html": "2b1dc9eba1dfa6f07fddf66bd2a58bc2a1a63b2e",
+   "guides/hair-care-basics/index.html": "3e5bf91a5a395063f455051ed1c1dc9ab8ca471a",
+   "guides/beard-care-basics/index.html": "97849a02c1323cad650def3054186bd26b48fb30",
+   "guides/barber-words/index.html": "c3e8031cb657468e3cf2b131a721c3692fc2fd4f",
+   "guides/choosing-a-length/index.html": "62b3a366de1dd07f3939e83aab3d367e26aa0103"
+  },
+  "sitemap": "84ecd1d2808c687579b5227287c5701eb2649b32",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-sparse|luxe|pending": {
+  "pages": {
+   "index.html": "8c10cf96829e125d2ca0832dee07beaa3f3a5f50",
+   "about/index.html": "e3938888941c627acf95ed09c8adf473dbcf8900",
+   "services/index.html": "42266d7ce6476c0fcebf86938abcce4049837c38",
+   "services/haircut/index.html": "e7bf3645b2bb2efa0c8feeb9a41919b261241e93",
+   "services/facial/index.html": "e4fe58e7c7efc6a588dddc0d216c752c8b585787",
+   "location/index.html": "fbe5278526c4b5891cd33453c9b1180fec5f69bc",
+   "contact/index.html": "040f61a9d670bfc06af1ceefa531d76197888c17",
+   "guides/index.html": "dc31d8e51469b186afe1db37ed89aabaf221aefa",
+   "guides/ask-for-the-cut/index.html": "fb9f14b10c120650c1fe0f78b41c9fda1cebb949",
+   "guides/hairstyle-ideas/index.html": "b526b4830dbc656459ce8c90d1cf5a93f663c2ac",
+   "guides/barber-matters/index.html": "476f4d1e59c9b912ec55f05d14765c4e258e2a8c",
+   "guides/gap-between-haircuts/index.html": "df4e3fd017c1ab1c68445f449eb1cb2808dd090d",
+   "guides/prepare-your-visit/index.html": "71c2f04ba4bf18be4848551f03c413f45b298686",
+   "guides/face-shape/index.html": "ac85d9e38da967e8b798cae47bebb913b24d14f2",
+   "guides/hair-types/index.html": "2b1dc9eba1dfa6f07fddf66bd2a58bc2a1a63b2e",
+   "guides/hair-care-basics/index.html": "3e5bf91a5a395063f455051ed1c1dc9ab8ca471a",
+   "guides/beard-care-basics/index.html": "97849a02c1323cad650def3054186bd26b48fb30",
+   "guides/barber-words/index.html": "c3e8031cb657468e3cf2b131a721c3692fc2fd4f",
+   "guides/choosing-a-length/index.html": "62b3a366de1dd07f3939e83aab3d367e26aa0103"
+  },
+  "sitemap": "84ecd1d2808c687579b5227287c5701eb2649b32",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-sparse|prime|site": {
+  "pages": {
+   "index.html": "952e91a0eb7e5d912eed670096bc333d0f0fa0ef",
+   "about/index.html": "b511aee8d8632ac7e1bcca1a5e72efae37d61b57",
+   "services/index.html": "62d726adf5682c63003ba9721ea3358b548dad33",
+   "services/haircut/index.html": "0bba0d1305696efbc367f7fca0d448ff7bacf361",
+   "services/facial/index.html": "5db30abb623213a8e705d0f9db7367b05b5c18e3",
+   "location/index.html": "62a21a277c142536c2e173fa62a16569a8739113",
+   "contact/index.html": "93ba63750f4c3400fa2caa55827069625f62ade8",
+   "guides/index.html": "d67aa6da49b4406e16b44cbc32986fb3a8372b68",
+   "guides/ask-for-the-cut/index.html": "c7718ba22933814e2c6a5c5a3f4ae0a107d8b9fd",
+   "guides/hairstyle-ideas/index.html": "3c749b7de0492ab14cb9cde9b4a063a7a1e77025",
+   "guides/barber-matters/index.html": "cc2583cb7202ef9fc62d91eb4f5a99ed20532ba1",
+   "guides/gap-between-haircuts/index.html": "3cc1b0dc5442c7488713466ef8148fce6bad5b7e",
+   "guides/prepare-your-visit/index.html": "ab288e6cf6a7dc4fb7fbcbb70963f561c888440c",
+   "guides/face-shape/index.html": "04f978d03c28d759b8ce12fd3c21ebb0e20ab70f",
+   "guides/hair-types/index.html": "3a10525986b02dafe7085fdc0d4f7a388618378d",
+   "guides/hair-care-basics/index.html": "077dc8bd258ec4ef1243214fdf0e47aad8f8cb57",
+   "guides/beard-care-basics/index.html": "53d57dfa251d6b07ed7339535f21a193e5bb1e95",
+   "guides/barber-words/index.html": "44e9c707f9212e4e77c3276da8442ae098eef0bf",
+   "guides/choosing-a-length/index.html": "c49cd793739c96d10e99198bb5323ce6f050676d"
+  },
+  "sitemap": "84ecd1d2808c687579b5227287c5701eb2649b32",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-sparse|euphoria|site": {
+  "pages": {
+   "index.html": "3b660729c1d6cf1c7dff312f81aa09a3eb3b1dc9",
+   "about/index.html": "17cd82a4be52d93abd7edf9f508940ae6ee1f7b0",
+   "services/index.html": "cda2ed3201e27946839685593b7efcad4c7edd37",
+   "services/haircut/index.html": "8be331b03724778f0292afbcce09d62909ffc078",
+   "services/facial/index.html": "693812d1399d1c730a526642757dd97551975176",
+   "location/index.html": "b9444cecfcfdc94e52121ce64222c1559ef9ee07",
+   "contact/index.html": "1375eaecf57832ddea4241f1a29aaba7b4470c44",
+   "guides/index.html": "20b75a4b1e9ff21fea3b85fab571fb561d62807c",
+   "guides/ask-for-the-cut/index.html": "2da0bd7ab7718404e517b59a42fc9710e04afecc",
+   "guides/hairstyle-ideas/index.html": "e67d8ee39071d07c59546578af46b44367c3ff25",
+   "guides/barber-matters/index.html": "ecc8b1043ab411e43249740c5370fa0634f81676",
+   "guides/gap-between-haircuts/index.html": "be6b2217c718c7beaa1f70a27f9ff7096b5add64",
+   "guides/prepare-your-visit/index.html": "ca4b88985389521bd0fd67b94ec5b7c93da02191",
+   "guides/face-shape/index.html": "e862930535d2d323a8e08458695d696cf6039271",
+   "guides/hair-types/index.html": "3b9f97a1223c033a12cb2aa5db065dfd3682391a",
+   "guides/hair-care-basics/index.html": "150da1dbf530e41fa3c7d23dcb72b047dc8f97f7",
+   "guides/beard-care-basics/index.html": "711256979df96fe06bd842f45261e9c88bbea5a0",
+   "guides/barber-words/index.html": "ab1b59c08e38c7ae7943a9ec310e99b711601635",
+   "guides/choosing-a-length/index.html": "8ebd1ce18b19cb75f300ccc28300960658115dde"
+  },
+  "sitemap": "84ecd1d2808c687579b5227287c5701eb2649b32",
+  "robots": "267365d75a9597664767bcefe96c922c6b5c7aef"
+ },
+ "web-single|luxe|site": {
+  "pages": {
+   "index.html": "54887a20178197513d98ee955b04eef924d66429"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "web-single|luxe|pending": {
+  "pages": {
+   "index.html": "54887a20178197513d98ee955b04eef924d66429"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "web-single|prime|site": {
+  "pages": {
+   "index.html": "b4dfef1eeb347519d48be9be92de7b03a2c9d117"
+  },
+  "sitemap": null,
+  "robots": null
+ },
+ "web-single|euphoria|site": {
+  "pages": {
+   "index.html": "247def1463d960be29a366440ca150c387922363"
+  },
+  "sitemap": null,
+  "robots": null
+ }
+}

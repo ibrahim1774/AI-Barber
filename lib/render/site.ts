@@ -23,7 +23,7 @@ import { GUIDE_HUB } from './guideLibrary.js';
 import { guideFiles, guideHref, planGuides, renderGuideBody, renderHubBody } from './guidePages.js';
 import { isSiteBookLink } from './subpages.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
-import { hasPagesV2, isWebCreated } from '../pagesV2.js';
+import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 import { printable, stripMarkersText } from './markers.js';
 import { capDataPaths } from './editPaths.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
@@ -171,7 +171,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
   // Thin service pages (guides.ts thinServiceIndexes) stay on the site but are `noindex,follow` and not in the sitemap; robots.txt goes with the sitemap.
   // Gated on pages v2 (an `extraPages` object) AND on a web-created site (isWebCreated), like the library text: a multi-page site
   // from before pages v2, and every site made in the iOS app, keeps its output as it was.
-  const seoV2 = hasFilePages(set) && hasPagesV2(d) && isWebCreated(d);
+  const seoV2 = hasFilePages(set) && hasPagesV2(d) && searchPagesOn(d);
   // Guide pages (guidePages.ts): filler for visitors that brings a sparse site up to 21 pages. Same web-origin gate as above plus the barber niche.
   // They are not part of the page set: they are appended below, `noindex`, and never reach the sitemap, the JSON-LD or the menu.
   const guidesPlan = seoV2 ? planGuides(d, set) : null;
