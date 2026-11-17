@@ -12,8 +12,13 @@ import { offlineHtml } from '../../lib/ios/offlinePage.js';
 import { lazyDefaultVerifier } from '../../lib/ios/appleVerify.js';
 import { makeStripPending, sweepIos } from '../../lib/ios/sweep.js';
 import { findShopForSite } from '../../lib/siteSubpages.js';
+import { iosEmailOn } from '../../lib/ios/emails.js';
+import { liveIosEmailDeps, sweepIosNotLive } from '../../lib/ios/emailFlows.js';
 
 export const config = { maxDuration: 300 };
+
+/** Longest the "not live yet" email step may add to the response. */
+export const NOT_LIVE_STEP_MS = 60_000;
 
 export default async function handler(req: any, res: any) {
   if (!authorized(req)) return res.status(401).json({ error: 'Not authorized' });
@@ -35,7 +40,21 @@ export default async function handler(req: any, res: any) {
       // A restore drops Book/Shop links the current plan doesn't cover (Phase 4 tiers).
       stripPending: makeStripPending({ readPending: readPendingSite, writePending: writePendingSite, readPendingVersioned }),
     });
-    return res.status(200).json({ ok: true, ...summary });
+    // "Your website isn't live yet" emails: after the takedown sweep, so they can never delay or prevent it. Its own bounded step: raced against
+    // a 60 s timer, per-request timeouts on every call, never throws, and absent from the answer (and from every code path) while
+    // IOS_EMAIL_NOT_LIVE is not "1".
+    let iosEmail: unknown;
+    if (iosEmailOn('IOS_EMAIL_NOT_LIVE')) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        iosEmail = await Promise.race([
+          sweepIosNotLive(liveIosEmailDeps(undefined, undefined, { requestTimeoutMs: 10_000 })),
+          new Promise<{ timedOut: true }>((resolve) => { timer = setTimeout(() => resolve({ timedOut: true }), NOT_LIVE_STEP_MS); }),
+        ]);
+      } catch (e: any) { console.error('[Sweeper:iOS] not-live email step failed:', e?.message || e); }
+      finally { if (timer) clearTimeout(timer); }
+    }
+    return res.status(200).json({ ok: true, ...summary, ...(iosEmail !== undefined ? { iosEmail } : {}) });
   } catch (err: any) {
     console.error('[Sweeper:iOS] threw:', err?.message || err);
     return res.status(500).json({ error: err?.message || 'iOS sweep failed' });

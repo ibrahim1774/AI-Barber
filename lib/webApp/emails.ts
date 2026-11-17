@@ -151,6 +151,32 @@ export function nudgeFrom(): string {
   return `Ibrahim from Prime Barber <${addr}>`;
 }
 
+/** The grey P.S. opt-out line every personal reminder ends with (reply "stop"; no unsubscribe link or header). */
+export const NUDGE_OPT_OUT = 'P.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.';
+
+/** Body of a personal reminder letter: paragraphs, optional ONE link, closing lines, signature, grey opt-out. HTML and text mirror each other. */
+export function renderNudgeLetter(l: { paragraphs: string[]; link?: { label: string; href: string }; closing: string[] }): { html: string; text: string } {
+  const p = (t: string) => `<p>${esc(t)}</p>`;
+  const grey = (t: string) => `<p style="color:#777777;font-size:13px">${esc(t)}</p>`;
+  const html = [
+    '<!doctype html><html><body>',
+    ...l.paragraphs.map(p),
+    ...(l.link ? [`<p><a href="${esc(l.link.href)}">${esc(l.link.label)}</a></p>`] : []),
+    ...l.closing.map(p),
+    '<p>Ibrahim<br>Prime Barber</p>',
+    grey(NUDGE_OPT_OUT),
+    '</body></html>',
+  ].join('\n');
+  const text = [
+    ...l.paragraphs.flatMap((x) => [x, '']),
+    ...(l.link ? [`${l.link.label}: ${l.link.href}`, ''] : []),
+    ...l.closing.flatMap((x) => [x, '']),
+    'Ibrahim', 'Prime Barber', '',
+    NUDGE_OPT_OUT,
+  ].join('\n');
+  return { html, text };
+}
+
 /**
  * Unpaid sign-up reminder, step 1 (1 h), 2 (24 h) or 3 (72 h). A plain personal letter, built to reach the Primary tab:
  * no logo, header, button or table, ONE plain text link, no footer, no List-Unsubscribe headers and no unsubscribe link (the opt-out
@@ -196,26 +222,8 @@ export function signupNudgeEmail(step: 1 | 2 | 3, i: NudgeInput): Mail {
       'Tap the link below to sign back in and open it.'];
     closing = ["If you decided it's not for you, no problem. You won't get any more emails about it."];
   }
-  const optOut = 'P.S. If you\'d rather not hear from me about this, just reply "stop" and I won\'t email you about it again.';
   const linkLabel = i.noDraft ? 'Start my website' : 'Finish my website';
-  const p = (t: string) => `<p>${esc(t)}</p>`;
-  const grey = (t: string) => `<p style="color:#777777;font-size:13px">${esc(t)}</p>`;
-  const html = [
-    '<!doctype html><html><body>',
-    ...paragraphs.map(p),
-    `<p><a href="${esc(i.continueUrl)}">${linkLabel}</a></p>`,
-    ...closing.map(p),
-    '<p>Ibrahim<br>Prime Barber</p>',
-    grey(optOut),
-    '</body></html>',
-  ].join('\n');
-  const text = [
-    ...paragraphs.flatMap((x) => [x, '']),
-    `${linkLabel}: ${i.continueUrl}`, '',
-    ...closing.flatMap((x) => [x, '']),
-    'Ibrahim', 'Prime Barber', '',
-    optOut,
-  ].join('\n');
+  const { html, text } = renderNudgeLetter({ paragraphs, link: { label: linkLabel, href: i.continueUrl }, closing });
   return {
     subject, html, text, replyTo: replyToAddress(), from: nudgeFrom(),
     tags: [{ name: 'kind', value: 'signup_nudge' }, { name: 'step', value: String(step) }],
