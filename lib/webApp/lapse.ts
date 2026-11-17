@@ -174,7 +174,7 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
 }
 
 // ---- web subscriber who later bought on iOS: ALERT ONLY, once per subscription ----
-export interface OverlapRow { stripe_subscription_id: string; stripe_customer_id: string; user_id: string | null; tier: string; site_slug: string | null }
+export interface OverlapRow { stripe_subscription_id: string; stripe_customer_id: string; user_id: string | null; tier: string; site_slug: string | null; /** web_app_entitlements.status (active, trialing, past_due). */ status?: string }
 export interface IosOverlapDeps {
   /** Entitled rows in this mode that were never notified; least recently checked first (never-checked first); at most `limit`. */
   candidates(limit: number): Promise<OverlapRow[]>;
@@ -263,12 +263,12 @@ export async function sweepIosOverlap(deps: IosOverlapDeps, limit = 50): Promise
         extra = [`account email: ${f.email ?? '(unknown)'}`, `Apple subscriptions: ${f.appleSubs.join(', ') || '(none read)'}`, `site address: ${f.hasSite ? 'yes' : 'none yet'}`];
       } catch (e: any) { console.warn('[web-app ios-overlap] account facts failed (alert without them):', e?.message || e); }
     }
-    // The "cancel the app subscription" wording only when ALL hold: OVERLAP_EMAIL_BY_HOLDER=1, STRIPE_REFUND_ALERTS=1 (so the Apple-holder check above ran and found none), and
-    // the shop does not run on its Apple link (or GATE_ANY_SOURCE=1, where the account kind decides, not the link). Otherwise the old email, unchanged.
+    // The "cancel the app subscription" wording only when ALL hold: OVERLAP_EMAIL_BY_HOLDER=1, STRIPE_REFUND_ALERTS=1 (so the Apple-holder check above ran and found none),
+    // the shop's ios_otid link was READ and is absent (no GATE_ANY_SOURCE shortcut: a shop that runs on its Apple link must never be told to cancel it), and the web plan
+    // is `active` (not past_due or trialing). Otherwise the old email, unchanged.
     let byHolder = false;
-    if (state === 'active' && process.env.OVERLAP_EMAIL_BY_HOLDER === '1' && process.env.STRIPE_REFUND_ALERTS === '1' && holderKnownFalse) {
-      if (process.env.GATE_ANY_SOURCE === '1') byHolder = true;
-      else { try { byHolder = deps.shopHasIosLink ? !(await deps.shopHasIosLink(row.user_id)) : false; } catch { byHolder = false; } }
+    if (state === 'active' && process.env.OVERLAP_EMAIL_BY_HOLDER === '1' && process.env.STRIPE_REFUND_ALERTS === '1' && holderKnownFalse && row.status === 'active') {
+      try { byHolder = deps.shopHasIosLink ? !(await deps.shopHasIosLink(row.user_id)) : false; } catch { byHolder = false; }
     }
     let note: string;
     if (state === 'active') {
@@ -297,7 +297,7 @@ export async function sweepIosOverlap(deps: IosOverlapDeps, limit = 50): Promise
 export function liveIosOverlapDeps(mode: 'live' | 'test'): IosOverlapDeps {
   const patch = (subId: string, body: Record<string, unknown>, filter = '') => sbRest(`web_app_entitlements?stripe_subscription_id=eq.${enc(subId)}${filter}`, { method: 'PATCH', body, prefer: 'return=representation' });
   return {
-    candidates: async (limit) => (await sbRest(`web_app_entitlements?environment=eq.${mode}&status=in.(active,trialing,past_due)&ios_overlap_notified_at=is.null&select=stripe_subscription_id,stripe_customer_id,user_id,tier,site_slug&order=ios_overlap_checked_at.asc.nullsfirst&limit=${limit}`)) ?? [],
+    candidates: async (limit) => (await sbRest(`web_app_entitlements?environment=eq.${mode}&status=in.(active,trialing,past_due)&ios_overlap_notified_at=is.null&select=stripe_subscription_id,stripe_customer_id,user_id,tier,site_slug,status&order=ios_overlap_checked_at.asc.nullsfirst&limit=${limit}`)) ?? [],
     stampChecked: async (id) => { await patch(id, { ios_overlap_checked_at: new Date().toISOString() }); },
     appStoreState: (uid) => appStoreStateOf(uid, mode),
     claim: async (id) => ((await patch(id, { ios_overlap_notified_at: new Date().toISOString() }, '&ios_overlap_notified_at=is.null')) ?? []).length > 0,

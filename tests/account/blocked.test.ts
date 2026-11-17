@@ -52,7 +52,7 @@ describe('reportBlocked', () => {
     await reportBlocked(info({ slug: 'cuts' }), f.deps);
     const lines = f.alerts[0].lines.join('\n');
     expect(lines).toContain('account email: barber@gmail.com');
-    expect(lines).toContain('site address: yes');
+    expect(lines).not.toContain('site address:'); // the slug line is already printed
     const g = fakeDeps();
     await reportBlocked(info({ slug: null, otid: 'other' }), g.deps);
     expect(g.alerts[0].lines.join('\n')).toContain('site address: none yet');
@@ -147,14 +147,33 @@ describe('the barber email', () => {
     expect(m.text).toBe(webAccountParagraphs(E).join('\n\n'));
     expect(SIGN_IN_CODE_BUTTON).toBe('Email me a sign-in code');
   });
+  it('a web account whose plan has ended is never told it "already has a plan": the ended-plan letter, with renewal, cancel steps and the refund page', () => {
+    const p = webAccountParagraphs(E, false);
+    expect(p).toEqual([
+      'You bought a Prime Barber subscription in the iPhone app, but your website belongs to your web account (barber@gmail.com), so the new subscription was not used. The web plan on that account has ended. Nothing changed on your website.',
+      'So that you are not charged twice, cancel the new subscription on your iPhone: Settings, your name, Subscriptions. To ask for your money back, go to reportaproblem.apple.com.',
+      'If you want to keep your website, renew your web plan at primebarber.org, then open the app and sign in with barber@gmail.com. If you do not remember your password, tap Email me a sign-in code and we will email you a code.',
+    ]);
+    expect(p.join(' ')).not.toContain('already has');
+    const m = blockedPurchaseEmail('web-account', E, false);
+    expect(m.subject).toBe('About your Prime Barber subscription');
+    expect(m.subject + m.text + m.html).not.toMatch(/[\u2014\u2013]/);
+    expect(webAccountParagraphs(null, false)[2]).toBe('If you want to keep your website, renew your web plan at primebarber.org, then open the app and sign in. If you do not remember your password, tap Email me a sign-in code and we will email you a code.');
+  });
+  it('reportBlocked passes planLive to the letter (false = ended; absent = live)', async () => {
+    const a = fakeDeps(); await reportBlocked(info({ planLive: false }), a.deps);
+    expect(a.sent[0].text).toContain('has ended');
+    const b = fakeDeps(); await reportBlocked(info({ planLive: undefined }), b.deps);
+    expect(b.sent[0].text).toContain('already has a Prime Barber plan');
+  });
   it('without a readable email the bracketed part and the address are dropped, the letter still reads', () => {
     const p = webAccountParagraphs(null);
     expect(p[0]).toBe('You bought a Prime Barber subscription in the iPhone app, but your account already has a Prime Barber plan, so the new subscription was not used. Nothing changed on your website.');
     expect(p[2]).toBe('To use the app with the plan you already have, open the app and sign in. If you do not remember your password, tap Email me a sign-in code and we will email you a code.');
   });
   it('other-apple-id letter keeps its text and adds the account line', () => {
-    expect(otherAppleIdParagraphs(E)[0]).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. This is the account barber@gmail.com. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
-    expect(otherAppleIdParagraphs(null)[0]).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
+    expect(otherAppleIdParagraphs(E)[0]).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. This is the account barber@gmail.com. So that you are not charged twice, you can cancel the new subscription in iPhone Settings, your name, Subscriptions. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
+    expect(otherAppleIdParagraphs(null)[0]).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. So that you are not charged twice, you can cancel the new subscription in iPhone Settings, your name, Subscriptions. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
     expect(blockedPurchaseEmail('other-apple-id', E).subject).toBe('About your new Prime Barber subscription');
   });
   it('is a plain letter on the standard sender: no em dash, no links, no From override, and the sent mail carries the recipient\'s own address', async () => {

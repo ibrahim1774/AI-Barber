@@ -26,6 +26,8 @@ export interface BlockedInfo {
   slug: string | null;
   /** The purchase's environment: only a Production purchase is ever emailed (as emailFlows). */
   environment: 'Production' | 'Sandbox' | null;
+  /** web-account / mixed: false = the account's web plan has ended (the letter says so and offers renewal). Absent counts as live. */
+  planLive?: boolean;
   /** The guard is enforcing: send the barber email. Alert mode passes false. */
   email: boolean;
   /** Where it happened, for the alert text. */
@@ -87,7 +89,7 @@ export async function reportBlocked(info: BlockedInfo, deps: BlockedDeps = liveB
       try {
         await deps.alert(info.email ? 'Prime Barber: Apple purchase not tied to a web account' : 'Prime Barber: one-site guard would refuse an Apple purchase (alert mode)', [
           `reason: ${info.reason}`, `where: ${info.where}`, `purchase: ${info.otid}`, `user: ${info.uid}`, `environment: ${info.environment ?? '(unknown)'}`,
-          `account email: ${acctEmail}`, `site address: ${info.slug ? 'yes' : 'none yet'}`,
+          `account email: ${acctEmail}`, ...(info.slug ? [] : ['site address: none yet']), ...(info.planLive === false ? ['web plan: ended'] : []),
           `account address: ${info.slug ?? '(none)'}`, `enforcing: ${info.email ? 'yes, the purchase was not tied' : 'no (alert mode), the purchase was tied as before'}`,
         ]);
       } catch (e: any) {
@@ -103,7 +105,7 @@ export async function reportBlocked(info: BlockedInfo, deps: BlockedDeps = liveB
     const eStamp = new Date(deps.now()).toISOString();
     if (!(await deps.claim('emailed_at', info.otid, info.uid, eStamp))) return;
     try {
-      await deps.send(to, blockedPurchaseEmail(info.reason, to), `one-site:blocked:${info.otid}:${info.uid}`);
+      await deps.send(to, blockedPurchaseEmail(info.reason, to, info.planLive !== false), `one-site:blocked:${info.otid}:${info.uid}`);
       console.info('[one-site] blocked-purchase email sent', { userId: info.uid, reason: info.reason });
     } catch (e: any) {
       await deps.release('emailed_at', info.otid, info.uid, eStamp).catch(() => {});

@@ -45,7 +45,7 @@ describe('iosOverlapEmail new wording', () => {
 });
 
 describe('sweepIosOverlap: when the new wording and the owner alert apply', () => {
-  const row = (): OverlapRow => ({ stripe_subscription_id: 'sub_1', stripe_customer_id: 'cus_1', user_id: 'u1', tier: 'website', site_slug: null });
+  const row = (): OverlapRow => ({ stripe_subscription_id: 'sub_1', stripe_customer_id: 'cus_1', user_id: 'u1', tier: 'website', site_slug: null, status: 'active' });
   function deps(o: { ledger?: boolean; holder?: boolean; link?: boolean | 'absent'; state?: 'active' | 'linked' } = {}) {
     const claimed = new Set<string>();
     const d: any = {
@@ -70,10 +70,23 @@ describe('sweepIosOverlap: when the new wording and the owner alert apply', () =
     on(); const d = deps({ link: true }); await sweepIosOverlap(d);
     expect(byHolder(d)).toBe(false);
   });
-  it('the shop has an ios_otid link but GATE_ANY_SOURCE=1: new wording, and the link is not even asked', async () => {
-    on({ GATE_ANY_SOURCE: '1' }); const d = deps({ link: true }); await sweepIosOverlap(d);
-    expect(byHolder(d)).toBe(true);
-    expect(d.shopHasIosLink).not.toHaveBeenCalled();
+  it('GATE_ANY_SOURCE=1 is NOT a shortcut: a linked shop still gets the old email, and an unlinked one needs the link read', async () => {
+    on({ GATE_ANY_SOURCE: '1' });
+    const a = deps({ link: true }); await sweepIosOverlap(a);
+    expect(byHolder(a)).toBe(false);
+    const b = deps({ link: 'absent' }); await sweepIosOverlap(b);
+    expect(byHolder(b)).toBe(false);
+    const c = deps({ link: false }); await sweepIosOverlap(c);
+    expect(byHolder(c)).toBe(true);
+    expect(c.shopHasIosLink).toHaveBeenCalledTimes(1);
+  });
+  it('the web plan must be active: past_due, trialing or an unknown status get the old email', async () => {
+    on();
+    for (const status of ['past_due', 'trialing', undefined]) {
+      const d = deps(); d.candidates = vi.fn(async () => [{ ...row(), status }]) as any;
+      await sweepIosOverlap(d);
+      expect(byHolder(d), String(status)).toBe(false);
+    }
   });
   it('an Apple address holder with OVERLAP_EMAIL_BY_HOLDER=1 and STRIPE_REFUND_ALERTS OFF: the old email (the Apple-holder check never ran)', async () => {
     on({ STRIPE_REFUND_ALERTS: '' }); const d = deps({ holder: true }); await sweepIosOverlap(d);

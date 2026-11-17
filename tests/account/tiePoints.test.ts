@@ -361,5 +361,15 @@ describe('what the app is told about a refused tie (accountEmail, blockedPurchas
       expect('blockedPurchase' in pr.body).toBe(false);
     }
   });
+  it('planLive false travels on the 409 (next to accountEmail) and on blockedPurchase; absent when not given', async () => {
+    const t = tieOf({ action: 'refuse', reason: 'web-account', slug: '', planLive: false });
+    const r: any = await pub({ ...iosPublish([{ ...base }], t).deps, emailOf: async () => 'me@example.com' });
+    expect(r.body).toEqual({ error: 'account-has-site', slug: '', reason: 'web-account', accountEmail: 'me@example.com', planLive: false });
+    vi.stubEnv('ONE_SITE_GUARD', '1');
+    const pr: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, planDeps(true, t));
+    expect(pr.body.blockedPurchase).toEqual({ reason: 'web-account', accountEmail: 'me@example.com', planLive: false });
+    const none: any = await pub(iosPublish([{ ...base }], tieOf(refuse())).deps);
+    expect('planLive' in none.body).toBe(false);
+  });
 });
 

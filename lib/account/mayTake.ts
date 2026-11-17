@@ -16,6 +16,7 @@
 //                                 (as today), '1' = 'unavailable' (the caller answers 503 / skips the tie BEFORE writing anything).
 // Flows receive it as an optional dep (`tie`); absent = today's behaviour. liveTie() is the live wiring.
 import { sbRest } from '../webApp/webAppServer.js';
+import { readStoredGroup } from '../webApp/priceGroup.js';
 import { loadKindFacts, liveKindDeps, readKind, countedApplePurchases, type AccountKind, type KindDeps, type KindEnv } from './kind.js';
 import { defaultKindEnv } from './plan.js';
 import { guardMode, tableMissing, type AddressRow, type GuardMode } from './sites.js';
@@ -23,7 +24,7 @@ import { reportBlocked, type BlockReason, type BlockedInfo } from './blocked.js'
 
 export type MayTake =
   | { may: true }
-  | { may: false; reason: BlockReason; kind: AccountKind; /** The address the account already holds (null = none). */ slug: string | null; /** The purchase's environment, when it is known. */ environment: 'Production' | 'Sandbox' | null };
+  | { may: false; reason: BlockReason; kind: AccountKind; /** The address the account already holds (null = none). */ slug: string | null; /** The purchase's environment, when it is known. */ environment: 'Production' | 'Sandbox' | null; /** web-account and mixed only: does the account still have a live plan (a card plan or Free)? false = its web plan has ended. */ planLive?: boolean };
 
 export interface MayTakeDeps {
   kindDeps: KindDeps;
@@ -33,6 +34,8 @@ export interface MayTakeDeps {
   address(uid: string, env: KindEnv): Promise<AddressRow | null>;
   /** The purchase by original transaction id. */
   purchase(otid: string): Promise<{ original_transaction_id: string; user_id: string | null; environment: string | null } | null>;
+  /** Is the account on the Free group (a plan with no card)? A failed read counts as live (never claim a plan ended on a guess). */
+  isFree?(uid: string): Promise<boolean>;
   /** The purchase holding a slug. */
   purchaseOfSlug(slug: string): Promise<{ original_transaction_id: string; user_id: string | null } | null>;
 }
@@ -51,9 +54,14 @@ export async function mayTakePurchase(uid: string, otid: string, deps: MayTakeDe
   const own = countedApplePurchases(facts.applePurchases, env).filter((p) => !!p.site_slug);
   const appleSlug = own[0]?.site_slug ?? (row?.holder === 'apple' ? row.slug : null);
 
-  if (reading.kind === 'mixed') return { may: false, reason: 'mixed', kind: 'mixed', slug: webSlug ?? appleSlug, environment };
+  // Is the web side still paid for? A live card plan, or Free. (A web account whose plan ended must not be told it "already has a plan".)
+  const planLive = async (): Promise<boolean> => {
+    if (reading.cardPlan) return true;
+    try { return deps.isFree ? await deps.isFree(uid) : true; } catch { return true; }
+  };
+  if (reading.kind === 'mixed') return { may: false, reason: 'mixed', kind: 'mixed', slug: webSlug ?? appleSlug, environment, planLive: await planLive() };
   // An unpublished web row (a first publish in flight or failed) is not a web account yet.
-  if (reading.kind === 'web' || (row?.holder === 'web' && row.published_once)) return { may: false, reason: 'web-account', kind: reading.kind, slug: webSlug, environment };
+  if (reading.kind === 'web' || (row?.holder === 'web' && row.published_once)) return { may: false, reason: 'web-account', kind: reading.kind, slug: webSlug, environment, planLive: await planLive() };
   // The Apple address sits on another purchase.
   if (row?.holder === 'apple') {
     // The purchase holding the slug counts only when it is THIS account's: a stale row (a failed Move hand-over) never refuses the old account.
@@ -70,7 +78,7 @@ export async function mayTakePurchase(uid: string, otid: string, deps: MayTakeDe
 
 export type TieDecision =
   | { action: 'allow' }
-  | { action: 'refuse'; reason: BlockReason; /** The address the account holds, '' when none (the body of a 409 account-has-site). */ slug: string }
+  | { action: 'refuse'; reason: BlockReason; /** The address the account holds, '' when none (the body of a 409 account-has-site). */ slug: string; /** web-account / mixed: false = the account's web plan has ended. Absent for other-apple-id. */ planLive?: boolean }
   | { action: 'unavailable' };
 
 export interface TieDeps {
@@ -92,8 +100,8 @@ export async function checkTie(uid: string, otid: string, where: string, deps: T
   }
   if (d.may === true) return { action: 'allow' };
   // A refused Move or transfer link records and alerts only: the barber is not emailed about it (the Move screen already answers them).
-  await deps.report({ otid, uid, reason: d.reason, slug: d.slug, environment: d.environment, email: mode === 'enforce' && !/^ios\/transfer/.test(where), where });
-  return mode === 'enforce' ? { action: 'refuse', reason: d.reason, slug: d.slug ?? '' } : { action: 'allow' };
+  await deps.report({ otid, uid, reason: d.reason, slug: d.slug, environment: d.environment, planLive: d.planLive, email: mode === 'enforce' && !/^ios\/transfer/.test(where), where });
+  return mode === 'enforce' ? { action: 'refuse', reason: d.reason, slug: d.slug ?? '', ...(d.planLive !== undefined ? { planLive: d.planLive } : {}) } : { action: 'allow' };
 }
 
 const enc = encodeURIComponent;
@@ -107,6 +115,7 @@ export function liveMayTakeDeps(): MayTakeDeps {
       catch (e: any) { if (tableMissing(e)) return null; throw e; }
     },
     async purchase(otid) { return (await rest(`ios_purchases?original_transaction_id=eq.${enc(otid)}&select=original_transaction_id,user_id,environment&limit=1`))[0] ?? null; },
+    async isFree(uid) { return (await readStoredGroup(uid)) === 'free'; },
     async purchaseOfSlug(slug) { return (await rest(`ios_purchases?site_slug=eq.${enc(slug)}&select=original_transaction_id,user_id&limit=1`))[0] ?? null; },
   };
 }

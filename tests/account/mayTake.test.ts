@@ -159,3 +159,22 @@ describe('no barber email for the transfer tie points (B4)', () => {
     expect(report.mock.calls.map((c: any) => c[0].email)).toEqual([false, false, true]);
   });
 });
+
+describe('planLive on a web-account refusal', () => {
+  it('a live card plan is live; no card plan and not Free is an ended plan; Free is live; a failed Free read counts as live', async () => {
+    const base = (o: Parameters<typeof world>[0], isFree?: () => Promise<boolean>) => { const d = world(o); d.isFree = isFree; return d; };
+    expect(await mayTakePurchase(UID, 'NEW', base({ web: [web('cuts')], ents: [card] }))).toMatchObject({ may: false, reason: 'web-account', planLive: true });
+    expect(await mayTakePurchase(UID, 'NEW', base({ web: [web('cuts')] }, async () => false))).toMatchObject({ may: false, planLive: false });
+    expect(await mayTakePurchase(UID, 'NEW', base({ web: [web('cuts')] }, async () => true))).toMatchObject({ planLive: true });
+    expect(await mayTakePurchase(UID, 'NEW', base({ web: [web('cuts')] }, async () => { throw new Error('db'); }))).toMatchObject({ planLive: true });
+  });
+  it('checkTie hands planLive to the refusal and the report; other-apple-id has none', async () => {
+    const report = vi.fn(async () => {});
+    const deps: TieDeps = { mode: () => 'enforce', mayTake: async () => ({ may: false, reason: 'web-account', kind: 'web', slug: '', environment: 'Production', planLive: false }), report };
+    expect(await checkTie(UID, 'NEW', 'ios/publish', deps)).toEqual({ action: 'refuse', reason: 'web-account', slug: '', planLive: false });
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ planLive: false }));
+    const other: TieDeps = { ...deps, mayTake: async () => ({ may: false, reason: 'other-apple-id', kind: 'apple', slug: 's', environment: 'Production' }) };
+    expect(await checkTie(UID, 'NEW', 'x', other)).toEqual({ action: 'refuse', reason: 'other-apple-id', slug: 's' });
+  });
+});
+

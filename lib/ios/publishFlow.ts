@@ -77,7 +77,7 @@ export type IosPublishResult =
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
   | { status: 409; body: OtherAccountBody }
-  | { status: 409; body: { error: 'account-has-site'; slug: string; reason?: 'web-account' | 'other-apple-id' | 'mixed'; /** The signed-in caller's OWN email (never anyone else's), so the app can say which account already has the plan. */ accountEmail?: string } }
+  | { status: 409; body: { error: 'account-has-site'; slug: string; reason?: 'web-account' | 'other-apple-id' | 'mixed'; /** The signed-in caller's OWN email (never anyone else's), so the app can say which account already has the plan. */ accountEmail?: string; /** web-account / mixed: false = the account's web plan has ended. Absent (address-conflict refusals, other-apple-id): treat as live. */ planLive?: boolean } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
@@ -353,7 +353,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         const t = await deps.tie(caller, otid, 'ios/publish');
         if (t.action === 'unavailable') return unavailable;
         // 409 account-has-site is what builds handle. `reason` says why; the slug is the account's own address, '' when it has none (never an invented site).
-        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: t.reason, ...(await ownEmail(deps, caller, tx.environment)) } };
+        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: t.reason, ...(await ownEmail(deps, caller, tx.environment)), ...(t.planLive !== undefined ? { planLive: t.planLive } : {}) } };
       }
       let linked = false;
       try {
