@@ -35,8 +35,8 @@ export interface GuideBlockDef {
   styleOf?: [StyleId[], StyleId[], StyleId[]];
 }
 
-/** Which services must exist for the guide to be offered at all: structuralGuide() ids (familyKeywords.ts). Absent = general, offered to every barber site. */
-export type GuideWhen = 'fade-or-taper' | 'kids-cut' | 'shave';
+/** Which services must exist for the guide to be offered at all: structuralGuide() ids (familyKeywords.ts), or 'beard-service' (a service name that mentions a beard or a shave, see guidePages.hasBeardService). Absent = general, offered to every barber site. */
+export type GuideWhen = 'fade-or-taper' | 'kids-cut' | 'shave' | 'beard-service';
 
 export interface GuideDef {
   title: string;
@@ -480,6 +480,7 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
   'beard-trim-prep': {
     title: 'Getting ready for a beard trim',
     blurb: 'Read what to think about before a beard trim.',
+    when: 'beard-service',
     allow: ['beard', 'beard-trim'],
     blocks: [
       intro([

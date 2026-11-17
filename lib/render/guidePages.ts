@@ -50,6 +50,9 @@ import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 export const PAGE_FLOOR = 21;
 /** The hub and the guides together never add more than this many pages (see THE CAP above). */
 export const GUIDE_ADDED_CAP = PAGE_FLOOR - 2;
+/** The selection rules before 2026-11-16: the first 17 library ids and a cap of 12 (hub + 11 guides). Used only to tell what an owner was offered back then. */
+const LEGACY_GUIDE_IDS: readonly GuidePageId[] = GUIDE_PAGE_IDS.slice(0, 17);
+const LEGACY_ADDED_CAP = 12;
 
 const own = (o: unknown, k: string): boolean => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -104,6 +107,12 @@ function serviceGuideIds(d: Pick<WebsiteData, 'services'>): Set<string> {
   return out;
 }
 
+/** Does any service name mention a beard or a shave (beard, shave, shaving, razor, goatee, moustache / mustache)? Names only, case-insensitive. */
+const BEARD_SERVICE = /beard|shav(?:e|ing)|razor|goatee|mou?stache|mustache/i;
+export function hasBeardService(d: Pick<WebsiteData, 'services'>): boolean {
+  return (Array.isArray(d.services) ? d.services : []).some((s) => BEARD_SERVICE.test(plainText(s?.title)));
+}
+
 /** Is this guide offered to this site? A general guide always; a conditional one only when the closed vocabulary finds a matching service. */
 export function guideEligible(d: Pick<WebsiteData, 'services'>, id: GuidePageId, seen: Set<string> = serviceGuideIds(d), set?: PageSet): boolean {
   // A real page on the same topic is never repeated by a guide: first visit -> prepare-your-visit, hair care -> hair-care-basics, beard care -> beard-care-basics.
@@ -113,6 +122,7 @@ export function guideEligible(d: Pick<WebsiteData, 'services'>, id: GuidePageId,
   if (!when) return true;
   if (when === 'fade-or-taper') return seen.has('fade') || seen.has('taper');
   if (when === 'kids-cut') return seen.has('kids-cut');
+  if (when === 'beard-service') return hasBeardService(d);
   return seen.has('shave');
 }
 
@@ -143,7 +153,16 @@ export function planGuides(d: WebsiteData, set: PageSet): GuidePlan | null {
   // A stored selection is an ORDER, not a whitelist: ids it does not list (a partial list, or guides added to the library later) follow it in library
   // order, so a site never ends under the floor because of a short list. Removing a guide is `guidesHidden`, which stays hidden either way.
   const order = st.sel ? [...st.sel, ...GUIDE_PAGE_IDS.filter((id) => !st.sel!.includes(id))] : GUIDE_PAGE_IDS;
-  const slots = order.filter((id) => guideEligible(d, id, seen, set)).slice(0, want);
+  // The owner chose the beard guide by name in the saved selection: keep it even without a beard service.
+  const offered = (id: GuidePageId): boolean => guideEligible(d, id, seen, set) || (GUIDE_LIBRARY[id].when === 'beard-service' && !!st.sel?.includes(id));
+  // HIDDEN STAYS HIDDEN (2026-11-17): an owner who hid every guide the old selection offered (first 17 ids, cap 12) switched the guides off in effect.
+  // The guides added later were never hidden, so they must not come back: nothing is added for that site.
+  if (st.hidden.size) {
+    const oldWant = Math.max(1, Math.min(LEGACY_ADDED_CAP, need) - 1);
+    const legacy = order.filter((id) => LEGACY_GUIDE_IDS.includes(id) && offered(id)).slice(0, oldWant);
+    if (legacy.length && legacy.every((id) => st.hidden.has(id))) return null;
+  }
+  const slots = order.filter(offered).slice(0, want);
   const shown = slots.filter((id) => !st.hidden.has(id));
   if (!shown.length) return null;
   return { real, added, slots, shown };

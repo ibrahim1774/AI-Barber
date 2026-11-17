@@ -27,12 +27,12 @@ for (const [k, v] of Object.entries(GUIDE_UI)) rows.push({ where: `ui ${k}`, tex
 rows.push({ where: 'hub services link label', text: GUIDE_HUB.servicesLinkLabel, allow: [], kind: 'heading' });
 
 describe('the guide library: shape', () => {
-  it('has the 23 guides in the fixed order (the first 17 as published before 2026-11-16, 6 appended), 20 of them general', () => {
+  it('has the 23 guides in the fixed order (the first 17 as published before 2026-11-16, 6 appended), 19 of them general', () => {
     expect(GUIDE_PAGE_IDS).toHaveLength(23);
     expect(GUIDE_PAGE_IDS.slice(0, 17)).toEqual(['ask-for-the-cut', 'hairstyle-ideas', 'fade-and-taper', 'barber-matters', 'gap-between-haircuts', 'prepare-your-visit', 'child-first-haircut', 'face-shape', 'hair-types', 'hair-care-basics', 'beard-care-basics', 'shave-guide', 'barber-words', 'choosing-a-length', 'styling-basics', 'between-visits', 'new-barber']);
     expect(Object.keys(GUIDE_LIBRARY)).toEqual([...GUIDE_PAGE_IDS]);
-    expect(GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when)).toHaveLength(20);
-    expect(GUIDE_PAGE_IDS.filter((id) => GUIDE_LIBRARY[id].when).map((id) => GUIDE_LIBRARY[id].when).sort()).toEqual(['fade-or-taper', 'kids-cut', 'shave']);
+    expect(GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when)).toHaveLength(19);
+    expect(GUIDE_PAGE_IDS.filter((id) => GUIDE_LIBRARY[id].when).map((id) => GUIDE_LIBRARY[id].when).sort()).toEqual(['beard-service', 'fade-or-taper', 'kids-cut', 'shave']);
   });
   it('every guide has intro, points and tip blocks with exactly three non-empty wordings', () => {
     for (const id of GUIDE_PAGE_IDS) {
@@ -64,9 +64,9 @@ describe('the guide library: shape', () => {
     expect(b.styleOf).toBeDefined();
     b.variants.forEach((v, i) => expect(b.styleOf![i], `wording ${i}`).toHaveLength(v.length));
   });
-  it('only the fade, kids and shave guides are conditional; the others can be offered to every barber site', () => {
+  it('only the fade, kids, shave and beard-trim guides are conditional; the others can be offered to every barber site', () => {
     const general = GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when);
-    expect(general.length).toBeGreaterThanOrEqual(20); // worst case: 2 real pages = hub + 18 guides, plus a margin of 2
+    expect(general.length).toBeGreaterThanOrEqual(19); // worst case: 2 real pages = hub + 18 guides, plus a margin of 1 (the beard-trim guide needs a beard service)
   });
 });
 

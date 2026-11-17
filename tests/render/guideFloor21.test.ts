@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
 import { buildPageSet } from '../../lib/render/pages';
-import { GUIDE_ADDED_CAP, PAGE_FLOOR, countPages, guideSettings, planGuides, resolveGuide } from '../../lib/render/guidePages';
+import { GUIDE_ADDED_CAP, PAGE_FLOOR, countPages, guideEligible, guideSettings, hasBeardService, planGuides, resolveGuide } from '../../lib/render/guidePages';
 import { GUIDE_PAGE_IDS } from '../../lib/render/guideIds';
 import { GUIDE_LIBRARY } from '../../lib/render/guideLibrary';
 import { guideSentenceProblems } from '../../lib/render/guideLint';
@@ -39,11 +39,11 @@ const label = (o: Opt) => `h${+o.hours} p${+o.phone} a${+o.addr} c${+o.city}`;
 const homeOnly = (n: number, o: Opt) => n === 0 && !o.hours && !o.phone && !o.addr;
 
 describe('every site with search pages on reaches 21 pages', () => {
-  it('constants: cap = floor - 2, and the library holds the worst case (hub + 18 guides) plus a margin of 2 general guides', () => {
+  it('constants: cap = floor - 2, and the library holds the worst case (hub + 18 guides) plus a margin of 1 general guide (the beard-trim guide is not general: it needs a beard service)', () => {
     expect(PAGE_FLOOR).toBe(21);
     expect(GUIDE_ADDED_CAP).toBe(19);
     const general = GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when);
-    expect(general.length).toBeGreaterThanOrEqual(GUIDE_ADDED_CAP - 1 + 2);
+    expect(general.length).toBeGreaterThanOrEqual(GUIDE_ADDED_CAP - 1 + 1);
   });
   for (const kind of ['web', 'ios-marked'] as const) for (const n of SERVICES) for (const o of COMBOS) {
     it(`${kind}, ${n} services, ${label(o)}: ${homeOnly(n, o) ? '1 page (Home only, out of scope)' : 'at least 21 pages, exactly 21 here'}`, () => {
@@ -54,13 +54,14 @@ describe('every site with search pages on reaches 21 pages', () => {
       expect(t).toBe(21);
     });
   }
-  it('the worst case that can pass the gate (Home and Contact only) has 2 real pages and needs hub + 18 guides, with 2 eligible guides to spare', () => {
+  it('the worst case that can pass the gate (Home and Contact only) has 2 real pages and needs hub + 18 guides, with 1 eligible guide to spare (no beard service, so no beard-trim guide)', () => {
     const d = site(0, { hours: false, phone: true, addr: false, city: false }, 'web');
     expect(countPages(d)).toBe(2);
     const plan = planGuides(d, buildPageSet(d))!;
     expect(plan.added).toBe(19);
     expect(plan.shown).toHaveLength(18);
-    expect(GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when).length - plan.shown.length).toBeGreaterThanOrEqual(2);
+    expect(GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when).length - plan.shown.length).toBeGreaterThanOrEqual(1);
+    expect(plan.shown).not.toContain('beard-trim-prep');
   });
   it('all three designs reach 21 in the worst cases', () => {
     for (const t of ['luxe', 'prime', 'euphoria'] as const) for (const n of [0, 1, 2]) for (const o of [FULL, { ...FULL, hours: false, addr: false, phone: false, city: false }, { hours: false, phone: true, addr: false, city: false }]) {
@@ -114,11 +115,11 @@ describe('the guide pages of one site never repeat', () => {
 
 describe('the new topics', () => {
   const NEW = GUIDE_PAGE_IDS.slice(17);
-  it('are the six appended ids, general (offered to every barber site), with no token and no place', () => {
+  it('are the six appended ids (the beard-trim one only where a beard service exists, the rest offered to every barber site), with no token and no place', () => {
     expect([...NEW]).toEqual(['beard-trim-prep', 'event-haircut', 'wavy-and-curly', 'long-hair-shape', 'after-a-long-break', 'active-routine']);
     for (const id of NEW) {
       const g = GUIDE_LIBRARY[id];
-      expect(g.when, id).toBeUndefined();
+      expect(g.when, id).toBe(id === 'beard-trim-prep' ? 'beard-service' : undefined);
       const all = [g.title, g.blurb, ...g.blocks.flatMap((b) => [b.h ?? '', ...b.variants.flat()])].join(' ');
       expect(all, id).not.toMatch(/[{}\d]|[!]|[–—]/);
       expect(all, id).not.toMatch(/\b(?:city|town|near|nearby|parking|walk-?ins?|pay|cash|card|price|hours|open|award|years?|best|brand|product)\b/i);
@@ -128,7 +129,7 @@ describe('the new topics', () => {
     it(`${t}, ${city ? 'with' : 'without'} a city, wording ${v}: every sentence passes the lint and prints in full (nothing is dropped at render time)`, () => {
       const pick: Record<string, number> = {};
       for (const id of NEW) for (const b of ['intro', 'points', 'tip']) pick[`guides.${id}.${b}`] = v;
-      // The stored selection puts the six new ids first, so all six are in the plan (in the worst case the library has 20 general guides and 18 slots).
+      // The stored selection puts the six new ids first, so all six are in the plan (the stored selection names the beard-trim guide, so it is honoured without a beard service).
       const d = site(0, { hours: false, phone: true, addr: false, city }, 'web', { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 3, pick, guidesSel: [...NEW] } as WebsiteData['extraPages'] });
       const out = render(d, t);
       const names = new Set(planGuides(d, buildPageSet(d))!.shown);
@@ -282,5 +283,85 @@ describe('saved guide settings keep working', () => {
     for (const id of GUIDE_PAGE_IDS) copy[`guides.${id}.title`] = `Own title ${id.replace(/-/g, ' ')}`;
     const v = resolveGuide({ ...d, copy } as WebsiteData, 'active-routine');
     expect(v.title).toBe('Own title active routine');
+  });
+});
+
+describe('hidden guides stay hidden after the library grew', () => {
+  const zero = (extra: Record<string, unknown> = {}, n = 0) => site(n, n === 0 ? { hours: false, phone: true, addr: false, city: false } : FULL, 'web', { extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 7, ...extra } as WebsiteData['extraPages'] });
+  const OLD = GUIDE_PAGE_IDS.slice(0, 17);
+  // What an owner was offered before 2026-11-16: the first 11 eligible of the first 17 ids (a site with no fade, kids or shave service: 14 are eligible).
+  const offeredBefore = (d: WebsiteData): string[] => {
+    const set = buildPageSet(d);
+    return OLD.filter((id) => guideEligible(d, id, undefined, set)).slice(0, 11);
+  };
+  it('an owner who hid every guide that was offered before gets no guide pages and no hub', () => {
+    const base = zero();
+    const hid = offeredBefore(base);
+    expect(hid).toHaveLength(11);
+    const d = zero({ guidesHidden: hid });
+    expect(planGuides(d, buildPageSet(d))).toBeNull();
+    expect(render(d).pages.some((p) => p.path.startsWith('guides/'))).toBe(false);
+    expect(total(d)).toBe(countPages(d));
+  });
+  it('the same holds when the owner hid all 17 old ids, and for a site that needs fewer pages', () => {
+    const d = zero({ guidesHidden: [...OLD] });
+    expect(planGuides(d, buildPageSet(d))).toBeNull();
+    const d3 = zero({}, 3);
+    const hid = offeredBefore(d3);
+    expect(hid.length).toBeGreaterThan(0);
+    const h3 = zero({ guidesHidden: hid }, 3);
+    expect(planGuides(h3, buildPageSet(h3))).toBeNull();
+    expect(total(h3)).toBe(countPages(h3));
+  });
+  it('an owner who hid only some of them keeps today\'s behaviour: the slots are filled to 21 and the hidden ones stay out', () => {
+    const base = zero();
+    const hid = offeredBefore(base).slice(0, 10);
+    const d = zero({ guidesHidden: hid });
+    const plan = planGuides(d, buildPageSet(d))!;
+    expect(plan).not.toBeNull();
+    expect(plan.slots).toHaveLength(18);
+    expect(plan.shown).toHaveLength(18 - 10);
+    expect(plan.shown.some((id) => hid.includes(id))).toBe(false);
+    expect(total(d)).toBe(21 - 10);
+  });
+  it('hiding only the new guides, or nothing, is not "hid everything"; a site without saved settings is filled to 21', () => {
+    const hidNew = zero({ guidesHidden: [...GUIDE_PAGE_IDS.slice(17)] });
+    expect(planGuides(hidNew, buildPageSet(hidNew))).not.toBeNull();
+    expect(total(zero({ guidesHidden: [] }))).toBe(21);
+    expect(total(zero())).toBe(21);
+    const noExtra = site(0, { hours: false, phone: true, addr: false, city: false }, 'web', { extraPages: { on: [], seed: 7 } as WebsiteData['extraPages'] });
+    expect(total(noExtra)).toBe(21);
+  });
+});
+
+describe('the beard-trim guide only where a beard service exists', () => {
+  const only = (titles: string[], extra: Record<string, unknown> = {}): WebsiteData => site(0, { hours: false, phone: true, addr: false, city: false }, 'web', { services: titles.map(svc), extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: 7, ...extra } as WebsiteData['extraPages'] });
+  it('hasBeardService matches beard, shave, razor, goatee, moustache and mustache in a service name, in any case', () => {
+    for (const t of ['Beard Trim', 'HOT TOWEL SHAVE', 'Straight Razor', 'Goatee shape', 'Moustache trim', 'Mustache Trim', 'Haircut and Beard', 'Head shaving']) expect(hasBeardService({ services: [svc(t)] } as WebsiteData), t).toBe(true);
+    for (const t of ['Haircut', 'Skin Fade', 'Kids Haircut', 'Line Up', 'Buzz Cut', 'Designs']) expect(hasBeardService({ services: [svc(t)] } as WebsiteData), t).toBe(false);
+    expect(hasBeardService({ services: [] } as unknown as WebsiteData)).toBe(false);
+  });
+  it('a site with no beard service is never given the guide, and still reaches 21 pages', () => {
+    for (const titles of [[], ['Haircut'], ['Haircut', 'Skin Fade']]) {
+      const d = only(titles);
+      const plan = planGuides(d, buildPageSet(d))!;
+      expect(plan.shown, titles.join()).not.toContain('beard-trim-prep');
+      expect(total(d), titles.join()).toBe(21);
+    }
+    const worst = only([]);
+    expect(planGuides(worst, buildPageSet(worst))!.shown).toHaveLength(18);
+  });
+  it('a site with a beard service gets it, still at 21 pages', () => {
+    const d = only(['Haircut', 'Beard Trim']);
+    const plan = planGuides(d, buildPageSet(d))!;
+    expect(plan.slots).toContain('beard-trim-prep');
+    expect(total(d)).toBe(21);
+    expect(render(d).pages.some((p) => p.path === 'guides/beard-trim-prep/index.html')).toBe(true);
+  });
+  it('a guide the owner chose in the saved selection is honoured even without a beard service', () => {
+    const d = only(['Haircut'], { guidesSel: ['beard-trim-prep'] });
+    const plan = planGuides(d, buildPageSet(d))!;
+    expect(plan.slots[0]).toBe('beard-trim-prep');
+    expect(total(d)).toBe(21);
   });
 });
