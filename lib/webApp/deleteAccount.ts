@@ -128,6 +128,21 @@ export async function removeWebSitesOf(userId: string): Promise<number> {
   return sites.length;
 }
 
+/**
+ * True when the user has any row in web_app_entitlements, web_app_customers or web_app_checkout_sessions.
+ * web_app_price_groups is NOT Stripe history (it is written at web sign-up). A read error throws (fail closed).
+ */
+export async function hasStripeHistory(userId: string): Promise<boolean> {
+  for (const t of ['web_app_entitlements', 'web_app_customers', 'web_app_checkout_sessions']) {
+    const rows = await sbRest(`${t}?user_id=eq.${enc(userId)}&select=user_id&limit=1`);
+    if (Array.isArray(rows) && rows.length > 0) return true;
+  }
+  return false;
+}
+
+/** Behind APP_DELETE_CANCELS_WEB: an account with no Stripe history never calls Stripe on delete. */
+const skipStripeWithoutHistory = () => process.env.APP_DELETE_CANCELS_WEB === '1';
+
 export function liveWebDeleteDeps(): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();
@@ -164,6 +179,10 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
     // The shop is closed first (customers told, money refunded); only then is the billing stopped.
     closeShop: base.closeShop
       ? async (userId) => {
+          if (skipStripeWithoutHistory() && !(await hasStripeHistory(userId))) {
+            await suspendWork(userId, 'deleting');
+            return base.closeShop!(userId);
+          }
           await planWebCancellations(userId); // refuse BEFORE the shop is closed if a live subscription is out of this key's reach
           await suspendWork(userId, 'deleting');
           const r = await base.closeShop!(userId);

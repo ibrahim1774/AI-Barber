@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { deleteAccount, liveDeleteDeps } from '../../lib/ios/deleteAccount.js';
+import { liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
 
 // POST with `Authorization: Bearer <supabase access token>`. No body is read:
 // the token alone decides which account is deleted.
@@ -10,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const h = req.headers?.authorization;
-    const r = await deleteAccount(Array.isArray(h) ? h[0] : h, liveDeleteDeps());
+    const r = await deleteAccount(Array.isArray(h) ? h[0] : h, process.env.APP_DELETE_CANCELS_WEB === '1' ? liveWebDeleteDeps() : liveDeleteDeps());
     return res.status(r.status).json(r.body);
   } catch (e: any) {
     console.error('[ios/delete-account] handler error:', e?.message || e);
