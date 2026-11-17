@@ -44,6 +44,19 @@ describe('removeWebSitesOf', () => {
     expect(order).toEqual(['domain:fresh-cuts', 'content:fresh-cuts']);
   });
 
+  it('web removal uses the WEB stamp deps, never the plain iOS ones (tells the two apart)', async () => {
+    const { sbRest } = await import('../../lib/webApp/webAppServer.js');
+    vi.stubEnv('SAFE_TAKE_OFFLINE', '1');
+    await removeWebSitesOf('u1');
+    // the plain (iOS) stamps would have pushed 'stamp' / 'removed' through rm; the web ones PATCH web_app_sites instead
+    expect(order).not.toContain('stamp');
+    expect(order).not.toContain('removed');
+    expect(rm.markTakenDown).not.toHaveBeenCalled();
+    expect(rm.markRemoved).not.toHaveBeenCalled();
+    const patches = (sbRest as any).mock.calls.filter((c: any[]) => c[1]?.method === 'PATCH' && String(c[0]).startsWith('web_app_sites?stripe_subscription_id=eq.sub_1'));
+    expect(patches.length).toBeGreaterThan(0);
+  });
+
   it('switch on: taken down, domain released, address cleared, nothing deleted', async () => {
     vi.stubEnv('SAFE_TAKE_OFFLINE', '1');
     expect(await removeWebSitesOf('u1')).toBe(1);
@@ -62,14 +75,16 @@ const SITE = {
   contact: { address: '1 Main St', email: 'a@b.co' },
 };
 const USER = '3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f';
-async function publishOnce(clear: any, markPublished = vi.fn(async () => {})) {
-  const row = { slug: 'fresh-cuts', stripe_subscription_id: 'sub_1', user_id: USER, environment: 'live', published_at: 'x', taken_down_at: 'y', removed_at: 'z' };
+async function publishOnce(clear: any, markPublished = vi.fn(async () => {}), after: Partial<{ removed_at: string | null; user_id: string }> = {}) {
+  const row: any = { slug: 'fresh-cuts', stripe_subscription_id: 'sub_1', user_id: USER, environment: 'live', published_at: 'x', taken_down_at: 'y', removed_at: 'z' };
   const deps: any = {
     environment: 'live',
     userOf: async () => ({ id: USER, email: 'o@example.com' }),
     entitlementOf: async () => ({ stripe_subscription_id: 'sub_1', stripe_customer_id: 'cus_1', user_id: USER, site_slug: null, tier: 'website', billing_interval: 'month', status: 'active', environment: 'live', current_period_end: null, cancel_at_period_end: false } as any),
     sites: {
-      byUser: async () => row, get: async () => row, insertIfAbsent: async () => false, releaseUnpublished: async () => {}, markPublished,
+      byUser: async () => row, get: async () => row, insertIfAbsent: async () => false, releaseUnpublished: async () => {},
+      // like the live markPublished: clears the removed and taken-down marks; `after` simulates a take-offline or a move that won meanwhile
+      markPublished: async (...a: any[]) => { await (markPublished as any)(...a); Object.assign(row, { removed_at: null, taken_down_at: null }, after); },
     },
     owners: { get: async () => ({ slug: 'fresh-cuts', user_id: USER }), insertIfAbsent: async () => false },
     isTaken: async () => false,
@@ -99,6 +114,18 @@ describe('web publish lifts the domain removal', () => {
     expect(r.status).toBe(200);
     expect(markPublished).toHaveBeenCalled();
     expect(clear).toHaveBeenCalledWith('fresh-cuts');
+  });
+  it('switch on: removed again meanwhile -> the domain removal is NOT lifted', async () => {
+    vi.stubEnv('SAFE_TAKE_OFFLINE', '1');
+    const clear = vi.fn(async () => {});
+    expect((await publishOnce(clear, undefined, { removed_at: 'later' })).status).toBe(200);
+    expect(clear).not.toHaveBeenCalled();
+  });
+  it('switch on: no longer the caller\'s site (moved) -> the domain removal is NOT lifted', async () => {
+    vi.stubEnv('SAFE_TAKE_OFFLINE', '1');
+    const clear = vi.fn(async () => {});
+    await publishOnce(clear, undefined, { user_id: '00000000-0000-4000-8000-000000000000' });
+    expect(clear).not.toHaveBeenCalled();
   });
   it('switch on: a failing clear does not fail the publish; a failing markPublished skips it', async () => {
     vi.stubEnv('SAFE_TAKE_OFFLINE', '1');

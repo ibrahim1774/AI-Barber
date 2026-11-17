@@ -85,7 +85,7 @@ export const MAX_REDEPLOYS = 3;
 /** The same, on request paths (review fix round 1, finding 9). */
 export const REQUEST_MAX_REDEPLOYS = 1;
 
-export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details';
+export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details' | 'site-removed';
 
 // Flat rather than a discriminated union: this repo compiles with
 // strictNullChecks off, and without it TS won't narrow on an `ok: true | false`
@@ -469,6 +469,15 @@ async function payFirstMoveAllowed(
   return true;
 }
 
+async function liveRemovedCheck(slug: string): Promise<boolean> {
+  const { sbRest } = await import('./webApp/webAppServer.js');
+  const q = encodeURIComponent(slug);
+  const ios = await sbRest(`ios_purchases?site_slug=eq.${q}&removed_at=not.is.null&select=original_transaction_id&limit=1`);
+  if (Array.isArray(ios) && ios.length) return true;
+  const web = await sbRest(`web_app_sites?slug=eq.${q}&removed_at=not.is.null&select=slug&limit=1`);
+  return Array.isArray(web) && web.length > 0;
+}
+
 export async function publishSite(
   siteId: string,
   opts: {
@@ -509,6 +518,13 @@ export async function publishSite(
     siteOwners?: SiteOwnerStore;
     /** The checkout session behind this publish (webhook, sweeper): the pay-first purchase whose binding is checked. */
     sessionId?: string | null;
+    /**
+     * SAFE_TAKE_OFFLINE: the owner's own publish (lib/ios/publishFlow.ts, lib/webApp/publishFlow.ts). Those clear removed_at themselves after
+     * the deploy. Every other caller (checkout webhook, sweeper, restore sweeps, admin) is refused for a slug an owner took offline.
+     */
+    ownerPublish?: boolean;
+    /** Is this slug removed (ios_purchases or web_app_sites removed_at set)? Throws when it can't tell. Injectable for tests. */
+    removedCheck?: (slug: string) => Promise<boolean>;
     /** Internal: a followed pay-first move is never followed again. */
     noFollow?: boolean;
     /**
@@ -522,6 +538,16 @@ export async function publishSite(
 ): Promise<PublishOutcome> {
   const safe = slugify(siteId);
   if (!safe) return { ok: false, reason: 'bad-backup', siteId, error: 'Invalid siteId' };
+
+  // SAFE_TAKE_OFFLINE keeps the stored copy after "take my website offline", so an old checkout path (webhook, sweeper) or a sweep must
+  // never redeploy it. Switch off: no read, no change. A lookup error fails closed (nothing is deployed).
+  if (process.env.SAFE_TAKE_OFFLINE === '1' && !opts.ownerPublish) {
+    try {
+      if (await (opts.removedCheck ?? liveRemovedCheck)(safe)) return { ok: false, reason: 'site-removed', siteId: safe, error: 'the owner took this site offline' };
+    } catch (e: any) {
+      return { ok: false, reason: 'site-removed', siteId: safe, error: `removed-site lookup failed: ${e?.message || e}` };
+    }
+  }
 
   let pending: PendingSite | null;
   try {

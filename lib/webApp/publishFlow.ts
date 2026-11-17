@@ -346,8 +346,12 @@ export async function runWebPublish(
     });
     // Only once the removed mark is cleared (as on iOS); a failure is retried by the next publish.
     if (process.env.SAFE_TAKE_OFFLINE === '1' && stamped && deps.clearDomainRemoval) {
-      await deps.clearDomainRemoval(slug).catch((e) =>
-        console.error(`[web-app/publish] ${slug}: live but clearDomainRemoval failed (the next publish retries):`, e?.message || e));
+      // As on iOS: only while the site is still not removed and still the caller's (a take-offline or a move may have won meanwhile).
+      const now = await deps.sites.get(slug).catch(() => null);
+      if (now && !now.removed_at && now.user_id === caller.id) {
+        await deps.clearDomainRemoval(slug).catch((e) =>
+          console.error(`[web-app/publish] ${slug}: live but clearDomainRemoval failed (the next publish retries):`, e?.message || e));
+      }
     }
 
     return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt, seoFallbacks } };
@@ -417,7 +421,7 @@ export function liveWebPublishDeps(): WebPublishDeps {
     owners,
     isTaken: async (s) => (await iosTaken(s)) || !!(await owners.get(s)) || !!(await sites.get(s)),
     writePending: writePendingSite,
-    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS, ownerPublish: true }),
     readPending: readPendingSite,
     readPendingVersioned,
     clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
