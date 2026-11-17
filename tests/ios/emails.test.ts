@@ -186,7 +186,7 @@ describe('not-live sweep', () => {
     const g = fake({ rows: [arow()] }); g.d.env = { ...ON, IOS_EMAIL_NOT_LIVE_SINCE: undefined };
     expect((await sweepIosNotLive(g.d)).skippedReason).toBe('no_since'); expect(g.sent).toEqual([]);
   });
-  const stops: [string, Partial<IosEmailDeps> & { p?: PurchaseLite | null }, string][] = [
+  const stops: [string, Partial<IosEmailDeps> & { p?: PurchaseLite | null; email?: string }, string][] = [
     ['site published', { p: purchase({ published_at: 'x' }) }, 'live'],
     ['published on another purchase of the account', { hasPublishedSite: async () => true }, 'live'],
     ['purchase lapsed (taken down)', { p: purchase({ taken_down_at: 'x' }) }, 'lapsed'],
