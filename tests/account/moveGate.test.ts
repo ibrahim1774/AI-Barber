@@ -3,6 +3,7 @@ import { runTransfer, type TransferDeps } from '../../lib/ios/transfer.js';
 import { supabasePurchases } from '../../lib/ios/purchases.js';
 import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
 import { fakePurchasesDb } from '../ios/fakePurchasesDb.js';
+import { accountKindReading } from '../../lib/account/kind.js';
 
 const NOW = 1_800_000_000_000;
 const OTID = '2000000123';
@@ -155,6 +156,42 @@ describe('Move with GATE_ANY_SOURCE', () => {
     const r = await call(s, CONF);
     expect(r.status).toBe(503);
     expect(s.db.row(OTID)!.user_id).toBe(O);
+  });
+});
+
+describe('Move with the real kind reader (Production, Sandbox rows)', () => {
+  beforeEach(() => vi.stubEnv('GATE_ANY_SOURCE', '1'));
+  const kindFor = (rows: Record<string, any[]>, sites: Record<string, any[]> = {}) => ({
+    kindOf: (u: string) => accountKindReading(u, 'Production', { applePurchases: async () => rows[u] ?? [], webSites: async () => sites[u] ?? [], entitlements: async () => [], now: () => NOW }),
+  });
+  const owned = [{ ...base, user_id: O, ...liveSite }];
+  it('a Sandbox Apple address on the receiver does not change its kind: the move goes through', async () => {
+    const sandbox = { ...base, original_transaction_id: 'sb', environment: 'Sandbox', user_id: A, site_slug: 'rev', published_at: '2026-10-01T00:00:00Z', taken_down_at: '2026-11-01T00:00:00Z' };
+    const s = setup(owned, kindFor({ [A]: [sandbox] }));
+    expect((await call(s, CONF)).status).toBe(200);
+  });
+  it('a published web address on the receiver is refused', async () => {
+    const s = setup(owned, kindFor({}, { [A]: [{ slug: 'w', published_at: '2026-10-01T00:00:00Z' }] }));
+    expect((await call(s, CONF)).body).toMatchObject({ error: 'move-blocked-web-account' });
+  });
+});
+
+describe('Move with the real kind reader wired in', () => {
+  beforeEach(() => vi.stubEnv('GATE_ANY_SOURCE', '1'));
+  const live = (over: any = {}) => ({ ...base, ...over });
+  const kindFor = (rows: Record<string, any[]>, cards: Record<string, any[]> = {}) => ({
+    kindOf: (u: string) => accountKindReading(u, 'Production', { applePurchases: async () => rows[u] ?? [], webSites: async () => [], entitlements: async () => cards[u] ?? [], now: () => NOW }),
+  });
+  it('a receiver with only a card plan is refused', async () => {
+    const s = setup([{ ...base, user_id: O, ...liveSite }], kindFor({}, { [A]: [{ status: 'active', stripe_subscription_id: 'sub_1' }] }));
+    expect((await call(s, CONF)).body).toMatchObject({ error: 'move-blocked-web-account' });
+    expect(s.db.row(OTID)!.user_id).toBe(O);
+  });
+  it('a giver whose purchase holds the address reads apple and may give', async () => {
+    const giverRow = live({ user_id: O, ...liveSite });
+    const s = setup([giverRow], kindFor({ [O]: [{ ...giverRow, environment: 'Production' }] }));
+    const r = await call(s, CONF);
+    expect(r.status).toBe(200); expect(s.db.row(OTID)!.user_id).toBe(A);
   });
 });
 

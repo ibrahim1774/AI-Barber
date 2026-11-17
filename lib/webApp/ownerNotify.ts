@@ -73,7 +73,7 @@ export async function isWebShop(shop: { owner_id: string; ios_otid?: string | nu
 /** The account has a live plan from any source: the lean check (lib/account/plan.ts hasLivePlan), never the full plan answer. */
 const liveAnyPlan: WebPlanLookup = async (ownerId) => (await import('../account/plan.js')).hasLivePlan(ownerId);
 
-/** Today's rule, unchanged. Also what webReturnBaseOf uses: the Stripe return page does not follow GATE_ANY_SOURCE. */
+/** Today's rule, unchanged. Also the fallback webReturnBaseOf uses for kinds neither and mixed when GATE_ANY_SOURCE is on. */
 export async function isWebShopToday(shop: { owner_id: string; ios_otid?: string | null }, hasWebPlan?: WebPlanLookup): Promise<boolean> {
   if (shop.ios_otid) return false;
   // Every drop below is for a shop with no iOS link, i.e. one that would be a web shop if the gate passed. They used to be silent,
@@ -108,10 +108,13 @@ export async function webReturnBaseOf(
   kindOf?: (userId: string) => Promise<string>,
 ): Promise<string | null> {
   try {
-    // GATE_ANY_SOURCE (default off): follow the account kind. A web account returns to the web page even with a stray lapsed Apple link.
+    // GATE_ANY_SOURCE (default off): follow the account kind. A web account returns to the web page even with a stray lapsed Apple link;
+    // an apple account goes to the iOS page; neither and mixed keep today's rule (a Free account that has not published, or an unlinked
+    // mixed shop with a web plan, still return to the web page).
     if (process.env.GATE_ANY_SOURCE === '1') {
       const kind = await (kindOf ?? liveKindOf)(userId);
-      return kind === 'web' ? APP_ORIGIN() : null;
+      if (kind === 'web') return APP_ORIGIN();
+      if (kind === 'apple') return null;
     }
     if (!webAppEntitlementsOn()) return null;
     const ios_otid = await shopOtidOf(userId);

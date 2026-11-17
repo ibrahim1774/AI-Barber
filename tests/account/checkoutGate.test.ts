@@ -1,7 +1,7 @@
 // /api/web-app/checkout under GATE_ANY_SOURCE: the stray-link refusal ('linked') is replaced by a refusal by account kind.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const h = vi.hoisted(() => ({ guard: null as any, kind: 'web' as any, kindErr: false, kindCalls: 0 }));
+const h = vi.hoisted(() => ({ guard: null as any, kind: 'web' as any, live: true, kindErr: false, kindCalls: 0 }));
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   APP_ORIGIN: () => 'https://app.test', webAppCors: () => false, webAppCheckoutOn: () => true,
   callerFrom: async () => ({ id: 'u1', email: 'o@example.com' }),
@@ -9,12 +9,12 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
   sbRest: async () => [],
 }));
 vi.mock('../../lib/webApp/appStoreGuard.js', () => ({ appStoreStateOf: async () => h.guard }));
-vi.mock('../../lib/account/kind.js', async (orig) => ({ ...(await orig<any>()), accountKind: async () => { h.kindCalls++; if (h.kindErr) throw new Error('db'); return h.kind; } }));
+vi.mock('../../lib/account/kind.js', async (orig) => ({ ...(await orig<any>()), accountKindReading: async () => { h.kindCalls++; if (h.kindErr) throw new Error('db'); return { kind: h.kind, liveApplePurchase: h.live }; } }));
 
 import handler from '../../api/web-app/checkout.js';
 const run = async () => { const r: any = { code: 0, body: null, setHeader() {}, end() { return r; } }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; await handler({ method: 'POST', headers: { authorization: 'Bearer t' }, body: { tier: 'website', interval: 'month' } }, r); return r; };
 
-beforeEach(() => { vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_x'); Object.assign(h, { guard: null, kind: 'web', kindErr: false, kindCalls: 0 }); vi.spyOn(console, 'error').mockImplementation(() => {}); });
+beforeEach(() => { vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_x'); Object.assign(h, { guard: null, kind: 'web', live: true, kindErr: false, kindCalls: 0 }); vi.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('checkout, switch off', () => {
@@ -51,12 +51,20 @@ describe('checkout, GATE_ANY_SOURCE on', () => {
     expect((await run()).body?.error).not.toBe('ios_linked_lapsed');
   });
   for (const kind of ['apple', 'mixed']) {
-    it(`${kind}: refused with ios_subscription_active, shop link or not`, async () => {
-      h.kind = kind;
+    it(`${kind} with a live Apple purchase: ios_subscription_active, shop link or not`, async () => {
+      h.kind = kind; h.live = true;
       for (const guard of [null, 'linked']) {
         h.guard = guard;
         const r = await run();
         expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'ios_subscription_active' });
+      }
+    });
+    it(`${kind} with a lapsed or removed Apple purchase: ios_linked_lapsed, never "active"`, async () => {
+      h.kind = kind; h.live = false;
+      for (const guard of [null, 'linked']) {
+        h.guard = guard;
+        const r = await run();
+        expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'ios_linked_lapsed' });
       }
     });
   }

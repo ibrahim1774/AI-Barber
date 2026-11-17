@@ -85,9 +85,9 @@ export interface OrderNotifyDeps {
   loadContext(orderId: string): Promise<OrderNotifyContext | null>;
   sendEmail(msg: EmailMessage): Promise<EmailResult>;
   push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
-  /** Web-app owners only (see ownerNotify isWebShop): email the shop owner. Absent = never emails the owner. */
+  /** Web-app owners only (see ownerNotify isWebShop): email the shop owner. Absent = never emails the owner (with or without GATE_ANY_SOURCE). */
   emailOwner?(ownerId: string, event: OwnerEvent): Promise<unknown>;
-  /** Does the owner hold an entitled web plan in the current Stripe mode? Absent = never emails the owner. Throws on a lookup error. */
+  /** Does the owner hold an entitled web plan in the current Stripe mode? Used only with GATE_ANY_SOURCE off (absent = no email then). With it on, ownerHasLivePlan decides instead. Throws on a lookup error. */
   ownerHasWebPlan?(ownerId: string): Promise<boolean>;
   /** GATE_ANY_SOURCE only: does the owner's account have a live plan from any source? Absent: the live lookup (lib/account/plan.ts). */
   ownerHasLivePlan?(ownerId: string): Promise<boolean>;
