@@ -164,6 +164,15 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   return { status: 200, body: { ...view, ...(v2?.fields ?? {}), capabilities: { memberProfile, ...(v2 ? { siteMode: v2.siteMode } : {}) } } };
 }
 
+/**
+ * A refused tie on the plan check, for the app (ONE_SITE_GUARD=1 only; absent otherwise, so old builds and switch-off answers are unchanged):
+ * `blockedPurchase: { reason, accountEmail? }`. accountEmail is the signed-in caller's OWN email, never anyone else's.
+ */
+function blockedPurchaseOf(t: { reason: string }, email: string | null | undefined): { blockedPurchase?: { reason: string; accountEmail?: string } } {
+  if (process.env.ONE_SITE_GUARD !== '1') return {};
+  return { blockedPurchase: { reason: t.reason, ...(email ? { accountEmail: email } : {}) } };
+}
+
 /** The ACCOUNT_PLAN_V2 additions to the GET body. A failed lookup adds nothing (the old answer, never a 5xx). */
 async function planV2Fields(userId: string, read: NonNullable<PlanDeps['accountPlan']>) {
   try {
@@ -230,7 +239,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     const other = await otherAccountBody(deps.emailOf, row.user_id, row);
     return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
   }
-  if (!shopRow) return refreshNoShop(user.id, tx, row, now(), deps);
+  if (!shopRow) return refreshNoShop(user.id, tx, row, now(), deps, user.email);
   let shop = shopRow;
   // An unlinked purchase whose slug/shop already belongs to another account is theirs, not this
   // caller's (the same Apple ID under a second email). Nothing attached yet: first signed-in claim wins.
@@ -256,7 +265,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
     if (t.action !== 'allow') {
       const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
-      return { status: 200, body: planView(shop, current, now(), user.id) };
+      return { status: 200, body: { ...planView(shop, current, now(), user.id), ...blockedPurchaseOf(t, user.email) } };
     }
   }
   // The shop link first: when another shop already holds this purchase ('taken') nothing is linked.
@@ -294,7 +303,8 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
  * active one is linked to them (unless its bound slug belongs to someone else's shop). Returns the same view GET
  * gives a no-shop account (`linked` stays false: there is no shop to link).
  */
-async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, nowMs: number, deps: PlanDeps): Promise<FlowResult> {
+async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, nowMs: number, deps: PlanDeps, email: string | null = null): Promise<FlowResult> {
+  let blocked: { blockedPurchase?: unknown } = {};
   let mine = row.user_id === userId ? row : null;
   if (!mine && !row.user_id && isActive(tx, nowMs)) {
     if (row.site_slug && deps.bindingOwner) {
@@ -307,6 +317,7 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
     // ONE_SITE_GUARD: not allowed (or undecidable): nothing is linked, the answer is the one a purchase that is not theirs gets.
     const t = deps.tie ? await deps.tie(userId, row.original_transaction_id, 'shop/plan (no shop)') : null;
     if (t?.action === 'unavailable') return err(503, 'temporarily-unavailable');
+    if (t && t.action === 'refuse') blocked = blockedPurchaseOf(t, email);
     try {
       if (t && t.action !== 'allow') { /* tie nothing */ }
       else if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };
@@ -325,7 +336,7 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
   const view = mine && purchaseLive(mine, nowMs)
     ? { ...planView({ ios_otid: mine.original_transaction_id }, mine, nowMs, userId), linked: false }
     : planView({ ios_otid: null }, null, nowMs, userId);
-  return { status: 200, body: view };
+  return { status: 200, body: { ...view, ...blocked } };
 }
 
 /** Real dependencies for api/shop/plan.ts (service-role Supabase, Apple). */

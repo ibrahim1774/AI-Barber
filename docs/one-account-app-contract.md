@@ -113,6 +113,7 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 - `reason: "web-account"`: this account already has (or is publishing) a website on the web. `slug` is that address, or an empty string when it has none yet. Do not say the account has a live website when `slug` is empty.
 - `reason: "other-apple-id"`: the account's website belongs to a subscription bought with a different Apple ID. `slug` is that website's address.
 - `reason: "mixed"`: the account would hold two websites. `slug` may be empty.
+- The body also carries `accountEmail`: the signed-in caller's OWN email (never anyone else's), when it can be read. Use it to say which account already has the plan.
 - In all cases the new subscription was not used and nothing changed on the website. Builds that only know `account-has-site` keep working: they read `slug`, and anything but `reason: "shop"` counts as "site".
 
 ## 6b. Take offline and delete account for native callers
@@ -140,7 +141,7 @@ A 1.2 app in device mode, with every switch off, gets exactly today's answers fr
 
 ## 7. Plan check and shop setup
 
-- `POST /api/shop/plan` `{ transactionId }`: 200 with the current plan when the purchase may not be tied to this account (nothing is linked; the answer is the plan as it was). 503 `temporarily-unavailable` when the server could not decide: show a retry, never "no plan".
+- `POST /api/shop/plan` `{ transactionId }`: 200 with the current plan when the purchase may not be tied to this account (nothing is linked; the answer is the plan as it was). When `ONE_SITE_GUARD=1` the 200 also has `blockedPurchase: { reason, accountEmail? }` (`reason` is `web-account`, `other-apple-id` or `mixed`; `accountEmail` is the caller's own email). It is absent when the purchase was tied, when the guard is not `1`, and for old builds' answers, so it is the clear signal that this Apple purchase was not used. Show: "This account ({email}) already has a Prime Barber plan. This Apple subscription was not used. So that you are not charged twice, cancel it in iPhone Settings, then Subscriptions." Leave out "({email})" when `accountEmail` is missing. The server also emails the same advice once per purchase and account (only with the guard on and a Production purchase). 503 `temporarily-unavailable` when the server could not decide: show a retry, never "no plan".
 - `POST /api/shop/setup`: 503 `temporarily-unavailable` is answered before anything is created, so a retry is safe. When the purchase may not be tied, the shop is still set up and `shop.purchaseLinked` is `false`.
 - `GET /api/shop/plan` also returns `kind` (`web`, `apple`, `mixed`, `neither`), `site`, and `capabilities.siteMode` when the plan answer is on.
 

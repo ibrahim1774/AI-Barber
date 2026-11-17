@@ -1,7 +1,7 @@
 // Every place that ties an Apple purchase to an account or a shop asks `tie` first, and on a refusal writes nothing to
 // ios_purchases.user_id or ab_shops.ios_otid. The flows take `tie` as an optional dep (absent = today's behaviour; the live wiring
 // passes liveTie, which reads ONE_SITE_GUARD).
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runIosPublish, runIosSiteLookup, type PublishDeps } from '../../lib/ios/publishFlow.js';
 import { refreshPlan, type PlanDeps } from '../../lib/ios/planFlow.js';
 import { setupShop } from '../../lib/bookings/ownerFlow.js';
@@ -298,3 +298,49 @@ describe('transfer (lib/ios/transfer.ts, the unlinked link and the confirmed mov
     vi.unstubAllEnvs();
   });
 });
+
+describe('what the app is told about a refused tie (accountEmail, blockedPurchase)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('iOS publish 409 carries the caller\'s OWN email, and only the caller\'s', async () => {
+    const emailOf = vi.fn(async (id: string) => (id === WEB_USER ? 'me@example.com' : 'someone-else@example.com'));
+    const { deps } = iosPublish([{ ...base }], tieOf(refuse('web-account', '')));
+    const r: any = await pub({ ...deps, emailOf });
+    expect(r).toEqual({ status: 409, body: { error: 'account-has-site', slug: '', reason: 'web-account', accountEmail: 'me@example.com' } });
+    expect(emailOf.mock.calls).toEqual([[WEB_USER]]);
+  });
+  it('no email known or a failing lookup: the body is as before (no accountEmail)', async () => {
+    const a: any = await pub({ ...iosPublish([{ ...base }], tieOf(refuse())).deps, emailOf: async () => null });
+    expect('accountEmail' in a.body).toBe(false);
+    const b: any = await pub({ ...iosPublish([{ ...base }], tieOf(refuse())).deps, emailOf: async () => { throw new Error('x'); } });
+    expect(b.status).toBe(409); expect('accountEmail' in b.body).toBe(false);
+  });
+  const SHOP = '33333333-3333-4333-8333-333333333333';
+  const planDeps = (hasShop: boolean, tie: TieCheck): PlanDeps => {
+    const rows: Record<string, PurchaseRow> = { [OTID]: { ...base } as any };
+    return {
+      getUser: async () => ({ id: WEB_USER, email: 'me@example.com', fullName: null }),
+      shopByOwner: async () => (hasShop ? { id: SHOP, ios_otid: null } : null), purchase: async (o: string) => ({ ...rows[o] }),
+      verify: async () => TX, upsertVerified: async () => ({ ...rows[OTID] }), setShopOtid: async () => 'ok', setUserIfUnlinked: async () => true, now: () => NOW, tie,
+    } as any;
+  };
+  for (const hasShop of [true, false]) {
+    it(`plan check refused (${hasShop ? 'shop' : 'no shop'}): ONE_SITE_GUARD=1 adds blockedPurchase with the caller's own email; otherwise nothing is added`, async () => {
+      const mk = () => planDeps(hasShop, tieOf(refuse('other-apple-id', 'x')));
+      vi.stubEnv('ONE_SITE_GUARD', '1');
+      const on: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, mk());
+      expect(on.status).toBe(200);
+      expect(on.body.blockedPurchase).toEqual({ reason: 'other-apple-id', accountEmail: 'me@example.com' });
+      for (const v of ['alert', '']) {
+        vi.stubEnv('ONE_SITE_GUARD', v);
+        const off: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, mk());
+        expect('blockedPurchase' in off.body).toBe(false);
+      }
+    });
+  }
+  it('an allowed tie never carries blockedPurchase', async () => {
+    vi.stubEnv('ONE_SITE_GUARD', '1');
+    const r: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, planDeps(true, tieOf({ action: 'allow' })));
+    expect('blockedPurchase' in r.body).toBe(false);
+  });
+});
+
