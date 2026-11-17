@@ -1,6 +1,6 @@
 import { prepareIntent, readDraft, reliabilityOn, modeOf, enc } from '../../lib/webApp/reliability.js';
 import { runJob, dispatchJob } from '../../lib/webApp/publishJobs.js';
-import { callerFrom, sbRest } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, authOutage } from '../../lib/webApp/webAppServer.js';
 // POST { siteData, baseVersion? } + Authorization: Bearer <supabase jwt>. Publishes the caller's web-app site.
 // Same response shapes as POST /api/ios/publish (see lib/webApp/publishFlow.ts). 404 unless WEB_APP_ENTITLEMENTS=1.
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
@@ -89,6 +89,7 @@ export default async function handler(req: any, res: any) {
     const r = await runWebPublish((body ?? {}) as any, liveWebPublishDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app/publish] handler error:', e?.message || e);
     return res.status(e?.status === 409 ? 409 : e?.status === 400 ? 400 : 503).json({ error: e?.status === 409 ? 'publish_in_progress_or_draft_changed' : e?.status === 400 ? 'invalid_draft' : 'temporarily-unavailable' });
   }

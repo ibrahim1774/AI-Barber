@@ -2,7 +2,7 @@
 // POSTs the image here and this relays it to the signed URL server-side. POST ?u=<signed url> with the image as the
 // body (Content-Type = the type the URL was signed for) + Authorization: Bearer <supabase jwt>. 404 unless
 // WEB_APP_ENTITLEMENTS=1. Only signed URLs for our own bucket are relayed, so this is not an open proxy.
-import { callerFrom, webAppCors, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, webAppCors, webAppEntitlementsOn, authOutage } from '../../lib/webApp/webAppServer.js';
 
 export const config = { api: { bodyParser: false }, maxDuration: 60 };
 
@@ -46,6 +46,7 @@ export default async function handler(req: any, res: any) {
     if (!r.ok) { console.error('[web-app/upload-proxy] gcs', r.status); return res.status(502).json({ error: 'upload-failed', status: r.status }); }
     return res.status(200).json({ ok: true });
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app/upload-proxy]', e?.message || e);
     return res.status(503).json({ error: 'temporarily-unavailable' });
   }

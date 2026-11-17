@@ -7,7 +7,7 @@ import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGu
 import { needsPhone } from '../../lib/webApp/phoneGate.js';
 import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
 import { readStoredGroup } from '../../lib/webApp/priceGroup.js';
-import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 
 // Free floor: a free-group account with a hosting-only ('website') paid row still gets at least the bookings tier.
 const floorTier = (tier: string | null | undefined, isFreeGroup: boolean) => (isFreeGroup && tier === 'website' ? 'bookings' : tier);
@@ -60,6 +60,7 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : floorTier(row?.tier, priceGroup === 'free' && !!live) ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null, ...(v2 ?? {}) });
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app me]', e.message);
     return res.status(502).json({ error: 'lookup_failed' });
   }

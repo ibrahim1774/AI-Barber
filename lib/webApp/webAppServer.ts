@@ -29,12 +29,33 @@ export async function sbRest(path: string, init: { method?: string; body?: unkno
 }
 
 /** The signed-in caller from `Authorization: Bearer <supabase jwt>`, verified by Supabase itself. */
+export class AuthUnavailableError extends Error {
+  status = 503;
+  constructor(why: string) { super(`auth service unavailable: ${why}`); this.name = 'AuthUnavailableError'; }
+}
+export const isAuthUnavailable = (e: unknown): e is AuthUnavailableError => e instanceof AuthUnavailableError;
+/** In a handler's catch: an auth outage (AUTH_OUTAGE_503 only) answers 503 temporarily-unavailable, never 401. True when it answered. */
+export function authOutage(res: any, e: unknown): boolean {
+  if (!isAuthUnavailable(e)) return false;
+  res.status(503).json({ error: 'temporarily-unavailable' });
+  return true;
+}
+/** AUTH_OUTAGE_503=1 (default off): "auth could not be asked" is told apart from "this token is invalid". */
+export const authOutage503On = () => process.env.AUTH_OUTAGE_503 === '1';
+
 export async function callerFrom(authorization: unknown): Promise<{ id: string; email: string | null } | null> {
   const m = typeof authorization === 'string' ? /^Bearer\s+(\S+)\s*$/i.exec(authorization) : null;
   if (!m) return null;
   const { url, key } = SB();
-  const r = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${m[1]}` } });
-  if (!r.ok) return null;
+  const outage = authOutage503On();
+  let r: Response;
+  try { r = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${m[1]}` } }); }
+  catch (e: any) { if (outage) throw new AuthUnavailableError(e?.message || 'network'); throw e; }
+  // The auth service said the token is not valid (401/403): signed out, today's 401. Anything else it could not answer (5xx, 429, other 4xx) is an outage.
+  if (!r.ok) {
+    if (outage && !(r.status === 401 || r.status === 403)) throw new AuthUnavailableError(`status ${r.status}`);
+    return null;
+  }
   const u: any = await r.json().catch(() => null);
   return u?.id ? { id: u.id, email: u.email ?? null } : null;
 }

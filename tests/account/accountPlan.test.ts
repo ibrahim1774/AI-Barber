@@ -118,13 +118,28 @@ describe('getPlan with ACCOUNT_PLAN_V2 on', () => {
     const on: any = await getPlan('Bearer x', base({ accountPlan: async () => plan, memberProfileLive: async () => true }));
     expect(on.body.capabilities).toEqual({ memberProfile: true, siteMode: 'device' });
   });
-  it('a failing lookup answers exactly as the switch off would', async () => {
+  it('a failing lookup keeps the old fields and says siteMode unknown (no kind, no site); the switch off adds nothing', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const bad: any = await getPlan('Bearer x', base({ accountPlan: async () => { throw new Error('db down'); } }));
     vi.stubEnv('ACCOUNT_PLAN_V2', '');
     const off: any = await getPlan('Bearer x', base());
-    expect(JSON.stringify(bad)).toBe(JSON.stringify(off));
+    expect(bad.status).toBe(200);
+    for (const k of Object.keys(off.body)) expect(bad.body[k]).toEqual(off.body[k]);
+    expect(bad.body.capabilities).toEqual({ siteMode: 'unknown' });
+    expect('kind' in bad.body).toBe(false);
+    expect('site' in bad.body).toBe(false);
+    expect(JSON.stringify(off.body)).not.toMatch(/siteMode|unknown/); // switch off: exactly today's answer
     err.mockRestore();
+  });
+  it('with memberProfile live the unknown mode sits next to it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad: any = await getPlan('Bearer x', base({ accountPlan: async () => { throw new Error('db'); }, memberProfileLive: async () => true }));
+    expect(bad.body.capabilities).toEqual({ memberProfile: true, siteMode: 'unknown' });
+  });
+  it("'unknown' is never produced by siteModeOf or siteModeFromKind", async () => {
+    const { siteModeFromKind, siteModeOf } = await import('../../lib/account/siteMode.js');
+    for (const k of ['web', 'apple', 'mixed', 'neither'] as const) for (const env of [{}, { ACCOUNT_DRAFTS_IOS: 'all' }]) expect(siteModeFromKind(k, UID, env)).not.toBe('unknown');
+    await expect(siteModeOf(UID, { kind: async () => { throw new Error('x'); } })).rejects.toThrow();
   });
   it('a stray ios_otid on a web account still reads web', async () => {
     const plan = planFromFacts(facts({ name: 'x', sites: [webSite()], cards: [card('active')] }));

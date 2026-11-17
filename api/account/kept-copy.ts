@@ -3,7 +3,7 @@
 // first). 413 above the draft size limit, 429 per-user rate limit, 503 while the table is missing. 404 unless WEB_APP_CHECKOUT and WEB_APP_RELIABILITY (as the draft endpoint).
 import { modeOf, reliabilityOn } from '../../lib/webApp/reliability.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
-import { callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { authOutage, callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { storeKeptCopy } from '../../lib/account/keptCopy.js';
 import { siteModeOf } from '../../lib/account/siteMode.js';
 import { kindEnvOf } from '../../lib/account/kind.js';
@@ -30,6 +30,7 @@ export default async function handler(req: any, res: any) {
     const r = await storeKeptCopy(user.id, kindEnvOf(modeOf()), req.body);
     return res.status(r.status).json(r.body);
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[kept copy]', e?.message);
     return res.status(503).json({ error: 'kept_copy_unavailable' });
   }

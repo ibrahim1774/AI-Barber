@@ -1,6 +1,6 @@
 import { accountRow, digest, draftPath, modeOf, publishedBinding, readDraft, reliabilityOn } from '../../lib/webApp/reliability.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
-import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 import { MAX_BODY_BYTES, hasDataUrl, jsonBytes, validSiteData } from '../../lib/ios/siteShape.js';
 import { seoProblem, seoSanitize } from '../../lib/render/seoText.js';
 import { guideCopySanitize } from '../../lib/render/guidePages.js';
@@ -90,6 +90,7 @@ export default async function handler(req: any, res: any) {
     if (!written?.length) { const current = await readDraft(user.id); return res.status(409).json({ error: 'draft_changed', draft: current ? accountRow(current) : null }); }
     return res.status(200).json({ draft: accountRow(written[0]), seoProblems });
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web draft]', e?.message);
     return res.status(503).json({ error: 'save_unavailable' });
   }

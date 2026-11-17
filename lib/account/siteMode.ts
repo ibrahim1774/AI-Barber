@@ -9,6 +9,8 @@
 import type { AccountKind } from './kind.js';
 
 export type SiteMode = 'device' | 'account' | 'web-only';
+/** What GET /api/shop/plan can say: a SiteMode, or 'unknown' when ACCOUNT_PLAN_V2 is on and the account lookup failed. siteModeOf and siteModeFromKind never return 'unknown'. */
+export type PlanSiteMode = SiteMode | 'unknown';
 
 export function accountDraftsCovers(uid: string, env: Record<string, string | undefined> = process.env): boolean {
   const v = env.ACCOUNT_DRAFTS_IOS;

@@ -15,6 +15,7 @@ import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } fr
 import { tierOf, type Tier } from './tiers.js';
 import { webAppEntitlementsOn } from '../webApp/entitlementGate.js';
 import type { AccountPlan } from '../account/plan.js';
+import type { PlanSiteMode } from '../account/siteMode.js';
 import { liveTie, type TieCheck } from '../account/mayTake.js';
 
 export interface PlanView {
@@ -172,8 +173,10 @@ async function planV2Fields(userId: string, read: NonNullable<PlanDeps['accountP
       siteMode: p.siteMode,
     };
   } catch (e: any) {
+    // ACCOUNT_PLAN_V2 is on but the account could not be read: the old fields stay, and the answer says so with siteMode 'unknown' (no kind, no site). The new
+    // app must not read this as "switch off" (which means device); it shows "Checking your plan. Try again." This is the ONLY place 'unknown' is produced.
     console.error('[shop/plan] account plan lookup failed:', e?.message || e);
-    return null;
+    return { fields: {}, siteMode: 'unknown' as PlanSiteMode };
   }
 }
 

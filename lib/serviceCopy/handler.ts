@@ -16,7 +16,7 @@ import { memoryStore, supabaseRateStore, type RateLimitStore } from '../bookings
 import { hasPagesV2, isWebCreated } from '../pagesV2.js';
 import { sbRest } from '../webApp/webAppServer.js';
 import { serviceTextOn, svcTitleKey } from '../render/guides.js';
-import { callerFrom, webAppCheckoutOn, webAppCors } from '../webApp/webAppServer.js';
+import { authOutage, callerFrom, webAppCheckoutOn, webAppCors } from '../webApp/webAppServer.js';
 import { modeOf, readDraft, reliabilityOn, type Draft } from '../webApp/reliability.js';
 import { serviceFacts } from './facts.js';
 import { approveProposal, classifyServiceFamily, generateServiceCopy, type GenerateDeps } from './generate.js';
@@ -141,6 +141,7 @@ export function makeHandler(deps: HandlerDeps) {
         default: return res.status(503).json({ error: 'ai_unavailable' });
       }
     } catch (e: any) {
+      if (authOutage(res, e)) return;
       deps.log(`[service-copy] request failed: ${e?.name || 'error'}`);
       return res.status(503).json({ error: 'ai_unavailable' });
     }

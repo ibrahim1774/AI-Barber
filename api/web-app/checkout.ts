@@ -8,14 +8,15 @@ import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, isPriceGroup, keyMod
 import { assignGroup, readStoredGroup } from '../../lib/webApp/priceGroup.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { expireSession, rememberSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
-import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 import { newCheckoutMethodParams } from '../../lib/checkoutPaymentMethods.js';
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-  const caller = await callerFrom(req.headers.authorization);
+  let caller: Awaited<ReturnType<typeof callerFrom>>;
+  try { caller = await callerFrom(req.headers.authorization); } catch (e) { if (authOutage(res, e)) return; throw e; }
   if (!caller) return res.status(401).json({ error: 'unauthorized' });
   const { tier, interval, siteSlug, draftId, revision, publish } = req.body ?? {};
   if (!isTier(tier) || !isInterval(interval)) return res.status(400).json({ error: 'bad_plan' });
