@@ -104,8 +104,8 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 
 `POST /api/ios/publish` and `POST /api/ios/site` (Restore), sent WITH `X-PB-Build`:
 
-- 409 `use-account-publish`: the account is a web account (mode `account` or `web-only`). Never use these routes for it. Go by `siteMode`.
-- 503 `temporarily-unavailable`: the mode could not be decided. Try again later.
+- 409 `use-account-publish`: the account is a web account (mode `account` or `web-only`). Never use these routes for it. Re-read the mode (`GET /api/shop/plan`) and go by `siteMode`; do not retry the old route. This answer only exists while `ACCOUNT_PLAN_V2=1`. With it off these routes answer exactly as for a call without the header, whatever the app sends, so the app and the server always agree on whether modes exist.
+- 503 `temporarily-unavailable`: the mode could not be read (with `ACCOUNT_PLAN_V2=1`). Try again later. A missing or unknown Stripe key never causes this for an Apple account: the server treats the caller as `device` on these old routes.
 - Otherwise the route answers as before.
 
 `POST /api/ios/publish` can answer **409 `account-has-site`** with `{ slug, reason }`:
@@ -125,6 +125,18 @@ Send `X-PB-Build` on both.
 ## 6c. Get paid (Stripe onboarding) return page
 
 `POST /api/shop/stripe/onboard` takes an optional JSON body `{ "client": "ios" | "web" }`. `ios` returns to the iOS return page, `web` to the web app. Leave it out and today's rule applies unchanged. Any other value (including a URL) is 400 `bad-request`. The app should always send its own value. Other answers are as before: 200 `{ url }`, 401, 404 `no-shop`, 409 `stripe-account-unavailable`, 502 `stripe-error`.
+
+## 6d. Which switch makes each header-based gate active
+
+| Route and gate | Active when | Notes |
+|---|---|---|
+| `/api/ios/publish`, `/api/ios/site` (409 `use-account-publish`) | `ACCOUNT_PLAN_V2=1` | Off: identical to a header-less call, no reads. The only gate on a route that device mode uses. |
+| `/api/web-app/draft`, `/api/web-app/publish` (403 `not-account-mode`, 409 `use-drafted-publish`) | Header present (routes need `WEB_APP_CHECKOUT`, `WEB_APP_RELIABILITY`) | The app calls these only in `account` mode, so a device-mode app never reaches them. |
+| `/api/account/kept-copy` (403 `not-account-mode`) | Header-independent: always requires account mode | Account mode only. |
+| `/api/web-app/take-offline` (403 `not-account-mode`) | Header present | Account mode only; device mode keeps `/api/ios/take-offline`. |
+| `/api/web-app/delete-account` (403 `not-account-mode` for `device`) | Header present | Web accounts only; device mode keeps `/api/ios/delete-account`. |
+
+A 1.2 app in device mode, with every switch off, gets exactly today's answers from every route it uses.
 
 ## 7. Plan check and shop setup
 

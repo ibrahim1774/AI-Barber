@@ -44,7 +44,7 @@ beforeEach(() => {
   Object.assign(st, { callerCalls: 0, kind: 'web', kindFails: false, kindCalls: 0, prepare: [], runWeb: [], iosPublish: [], iosSite: [] });
 });
 afterEach(() => vi.unstubAllEnvs());
-const setEnv = (e: Record<string, string>) => { vi.unstubAllEnvs(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); for (const [k, v] of Object.entries(e)) vi.stubEnv(k, v); };
+const setEnv = (e: Record<string, string>) => { vi.unstubAllEnvs(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('ACCOUNT_PLAN_V2', '1'); for (const [k, v] of Object.entries(e)) vi.stubEnv(k, v); };
 
 describe('requests without X-PB-Build are unchanged in every switch state', () => {
   it('web publish (plain and drafted): identical outcomes and what reaches prepareIntent; the kind is never read', async () => {
@@ -138,5 +138,30 @@ describe('item 5: the old routes refuse a native account-mode caller only', () =
     vi.spyOn(console, 'error').mockImplementation(() => {});
     setEnv({ ACCOUNT_DRAFTS_IOS: 'all' }); st.kindFails = true;
     expect((await call(iosPublish, HDR, { transactionId: '1', siteData })).code).toBe(503);
+  });
+});
+
+describe('old iOS routes with the header and ACCOUNT_PLAN_V2 (the 1.2 app always sends the header)', () => {
+  it('ALL switches off: identical to a header-less call, and the kind is never read (even for a web account or a failing lookup)', async () => {
+    vi.unstubAllEnvs(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', '');
+    st.kind = 'web'; st.kindFails = true;
+    for (const [h, b, flow] of [[iosPublish, { transactionId: '1', siteData }, st.iosPublish], [iosSite, { transactionId: '1' }, st.iosSite]] as const) {
+      const withHdr = await call(h as any, HDR, b);
+      const without = await call(h as any, {}, b);
+      expect([withHdr.code, withHdr.body]).toEqual([without.code, without.body]);
+      expect(withHdr.code).toBe(200);
+      expect(flow.length).toBe(2);
+    }
+    expect(st.kindCalls).toBe(0);
+  });
+  it('ACCOUNT_PLAN_V2 on + kind web: 409 use-account-publish', async () => {
+    setEnv({}); st.kind = 'web';
+    expect((await call(iosPublish, HDR, { transactionId: '1', siteData })).body).toEqual({ error: 'use-account-publish' });
+  });
+  it('ACCOUNT_PLAN_V2 on + missing Stripe key + Apple caller: today\'s flow, no 503', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    setEnv({}); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', ''); st.kind = 'apple';
+    expect((await call(iosPublish, HDR, { transactionId: '1', siteData })).code).toBe(200);
+    expect((await call(iosSite, HDR, { transactionId: '1' })).code).toBe(200);
   });
 });

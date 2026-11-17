@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountDraftsCovers, nativeBuild, nativeModeGate, oldRouteGate, siteModeFromKind, siteModeOf } from '../../lib/account/siteMode.js';
 import { accountPlan } from '../../lib/account/plan.js';
 import type { AccountKind } from '../../lib/account/kind.js';
@@ -53,6 +53,8 @@ describe('getPlan capabilities.siteMode (accountPlan)', () => {
 });
 
 describe('gates', () => {
+  beforeEach(() => vi.stubEnv('ACCOUNT_PLAN_V2', '1'));
+  afterEach(() => vi.unstubAllEnvs());
   const boom = { kind: async (): Promise<AccountKind> => { throw new Error('no reads without the header'); } };
   const withHdr = (h: any = { 'x-pb-build': '57' }) => ({ headers: h });
   it('nativeBuild: present, any value, trimmed; absent or empty is not native', () => {
@@ -87,5 +89,21 @@ describe('gates', () => {
   it('oldRouteGate: a lookup failure for a native caller is 503', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await oldRouteGate({ headers: { 'x-pb-build': '57', authorization: 'Bearer t' } }, async () => ({ id: U }), boom)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
+  });
+});
+
+describe('oldRouteGate is off with ACCOUNT_PLAN_V2 off', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('header present, switch off: null, no user lookup, no kind read, even for a web account or when the lookup would throw', async () => {
+    vi.stubEnv('ACCOUNT_PLAN_V2', '');
+    const userOf = vi.fn(async () => ({ id: U }));
+    const kind = vi.fn(async (): Promise<AccountKind> => { throw new Error('must not be read'); });
+    expect(await oldRouteGate({ headers: { 'x-pb-build': '57', authorization: 'Bearer t' } }, userOf, { kind, env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
+    expect(userOf).not.toHaveBeenCalled(); expect(kind).not.toHaveBeenCalled();
+  });
+  it('switch on and the Stripe key missing: an Apple-only caller is device (no 503), logged', async () => {
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', '');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await oldRouteGate({ headers: { 'x-pb-build': '57', authorization: 'Bearer t' } }, async () => ({ id: U }))).toBeNull();
   });
 });

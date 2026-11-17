@@ -77,6 +77,9 @@ export type OldRouteGate = { status: 409 | 503; body: { error: string } };
  */
 export async function oldRouteGate(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, deps?: Parameters<typeof siteModeOf>[1]): Promise<OldRouteGate | null> {
   if (!nativeBuild(req)) return null;
+  // Active ONLY with ACCOUNT_PLAN_V2=1, the switch that makes the plan answer carry siteMode: the 1.2 app always sends the header, and with the switch
+  // off it believes it is in device mode, so these routes must answer exactly as they do for a header-less call (no kind read, no refusal, no 503).
+  if (process.env.ACCOUNT_PLAN_V2 !== '1') return null;
   try {
     const h = req.headers?.authorization;
     const token = (Array.isArray(h) ? h[0] : h);
@@ -85,7 +88,15 @@ export async function oldRouteGate(req: { headers?: Record<string, unknown> }, u
     const user = await userOf(t);
     if (!user?.id) return null;
     // Both 'account' and 'web-only' come from kind web: a web account never uses the old route.
-    return (await siteModeOf(user.id, deps)) !== 'device' ? { status: 409, body: { error: 'use-account-publish' } } : null;
+    // The kind is decided WITHOUT defaultKindEnv() being able to 503 an Apple-only caller: a missing or unknown Stripe key makes the environment
+    // undecidable, and then the caller is treated as device on these OLD routes only (logged). Any other failed read is still a 503.
+    const kind = deps?.kind ?? (async (uid: string) => {
+      const [{ accountKind }, { defaultKindEnv }] = await Promise.all([import('./kind.js'), import('./plan.js')]);
+      let env;
+      try { env = defaultKindEnv(); } catch (e: any) { console.error('[site mode] environment unknown, treating the caller as device on the old route:', e?.message || e); return 'neither' as const; }
+      return accountKind(uid, env);
+    });
+    return (await siteModeOf(user.id, { ...deps, kind })) !== 'device' ? { status: 409, body: { error: 'use-account-publish' } } : null;
   } catch (e: any) {
     console.error('[site mode] lookup failed for a native caller on the old route (refusing):', e?.message || e);
     return { status: 503, body: { error: 'temporarily-unavailable' } };
