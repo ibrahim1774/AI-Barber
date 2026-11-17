@@ -125,9 +125,12 @@ describe('remove, rename, re-add, chains', () => {
     await go(['Fade', 'Beard Trim'], s);
     expect((await go(['Fade'], s)).redirects).toEqual([R('beard-trim', '')]);
     const arg = await go(['Fade', 'Beard Trim'], s);
-    expect(arg.redirects).toBeUndefined();
-    expect(get()!.redirects).toEqual([]);
-    expect(vercelJson(arg).redirects).toBeUndefined();
+    // The service redirect is gone. The site is filled to 21 pages, so the returning service page takes the place of one guide,
+    // and that guide's address now forwards to the guides hub (the only redirect left).
+    const guideToHub = [{ from: '/guides/styling-basics/', to: '/guides/' }];
+    expect(arg.redirects).toEqual(guideToHub);
+    expect(get()!.redirects).toEqual(guideToHub);
+    expect(JSON.stringify(arg.redirects)).not.toContain('beard-trim');
     expect(arg.sitemap).toContain('/services/beard-trim/');
   });
   it('remove, then rename another: both redirects, each one hop', async () => {
