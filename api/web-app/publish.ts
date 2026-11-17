@@ -8,6 +8,8 @@ import { liveWebPublishDeps, runWebPublish } from '../../lib/webApp/publishFlow.
 import { webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { entitlementOrFree, isFreeSubscriptionId } from '../../lib/webApp/priceGroup.js';
 import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
+import { nativeBuild, nativeModeGate } from '../../lib/account/siteMode.js';
+import { nativePublication } from '../../lib/account/nativePublish.js';
 
 export const config = { maxDuration: 300 };
 
@@ -28,6 +30,12 @@ export default async function handler(req: any, res: any) {
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { return res.status(400).json({ error: 'bad-request' }); } }
     const input = body as any;
     const drafted = typeof input?.draftId === 'string' && Number.isSafeInteger(input?.revision);
+    // A native caller (X-PB-Build) must be in account mode (403 not-account-mode; 503 when that cannot be decided). A browser sends no such header and is asked nothing.
+    const native = !!nativeBuild(req);
+    if (native) {
+      const who = await callerFrom(req.headers?.authorization);
+      if (who) { const gate = await nativeModeGate(req, who.id); if (gate) return res.status(gate.status).json(gate.body); }
+    }
     if (reliabilityOn() && !drafted) {
       // An older web client (no draft engine): the pre-reliability browser publish, unchanged. Never deploy alongside this account's running server job.
       const caller = await callerFrom(req.headers?.authorization);
@@ -47,7 +55,18 @@ export default async function handler(req: any, res: any) {
         const ps = await savedPhoneState(caller.id); // contacts unreadable: skip the check rather than 403 forever
         if (!ps.phone && ps.contactsOk) return res.status(403).json({ error: 'phone-required' });
       }
-      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, input?.siteData, input?.republish === true);
+      // Native account publish: the server decides the Book/Shop links and refreshes the team cards (lib/account/nativePublish.ts). A browser's own list stays as is.
+      let publication = input?.siteData;
+      if (native) {
+        try {
+          const d = await readDraft(caller.id);
+          publication = d ? await nativePublication(caller.id, d.site_data) : undefined;
+        } catch (e: any) {
+          console.error('[web-app/publish] native links/team lookup failed (refusing):', e?.message || e);
+          return res.status(503).json({ error: 'temporarily-unavailable' });
+        }
+      }
+      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, input?.republish === true);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);
       const finished = (await sbRest(`web_app_publish_intents?id=eq.${job.id}&select=status,result&limit=1`))?.[0];
