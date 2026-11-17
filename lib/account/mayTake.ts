@@ -16,7 +16,7 @@
 //                                 (as today), '1' = 'unavailable' (the caller answers 503 / skips the tie BEFORE writing anything).
 // Flows receive it as an optional dep (`tie`); absent = today's behaviour. liveTie() is the live wiring.
 import { sbRest } from '../webApp/webAppServer.js';
-import { readStoredGroup } from '../webApp/priceGroup.js';
+import { isFreeOrUnknown } from './planLive.js';
 import { loadKindFacts, liveKindDeps, readKind, countedApplePurchases, type AccountKind, type KindDeps, type KindEnv } from './kind.js';
 import { defaultKindEnv } from './plan.js';
 import { guardMode, tableMissing, type AddressRow, type GuardMode } from './sites.js';
@@ -115,7 +115,7 @@ export function liveMayTakeDeps(): MayTakeDeps {
       catch (e: any) { if (tableMissing(e)) return null; throw e; }
     },
     async purchase(otid) { return (await rest(`ios_purchases?original_transaction_id=eq.${enc(otid)}&select=original_transaction_id,user_id,environment&limit=1`))[0] ?? null; },
-    async isFree(uid) { return (await readStoredGroup(uid)) === 'free'; },
+    isFree: isFreeOrUnknown, // the same rule as the GET plan check (lib/account/planLive.ts): a missing table or failed read never claims the plan ended
     async purchaseOfSlug(slug) { return (await rest(`ios_purchases?site_slug=eq.${enc(slug)}&select=original_transaction_id,user_id&limit=1`))[0] ?? null; },
   };
 }

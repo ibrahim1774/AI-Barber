@@ -77,25 +77,40 @@ export async function oldRouteKind(uid: string): Promise<AccountKind> {
   return accountKind(uid, env);
 }
 
+export type IosDestructive = { action: 'allow' } | { action: 'forceCancel' } | { action: 'respond'; status: 409 | 503; body: { error: string } };
 /**
- * /api/ios/delete-account and /api/ios/take-offline: with ACCOUNT_PLAN_V2=1, a caller whose kind is `web` or `mixed` (a stale Apple transaction on the phone) gets 409 with
- * `code` and is never deleted or taken offline through the Apple route (the delete would leave the card plan billing). Off: null at once, nothing read. No token: null (the
- * route's own rules apply). A failed lookup is 503 (the route is destructive: fail closed).
+ * /api/ios/delete-account and /api/ios/take-offline. INVARIANT: no account is ever left without a working in-app delete, and no route deletes an account while leaving its
+ * live card plan billing. Acts ONLY with ACCOUNT_PLAN_V2=1 AND X-PB-Build present (builds 55 and 1.1 and every header-less call are untouched; off: nothing is read) and a bearer.
+ *  - kind web, delete: APP_DELETE_CANCELS_WEB=1 -> allow (that branch cancels the card plan). Else if the account route is unavailable (WEB_APP_ENTITLEMENTS off, so
+ *    /api/web-app/* answers 404) -> forceCancel (the iOS delete cancels the card plan itself, the same code as the APP_DELETE_CANCELS_WEB branch). Else 409 use-account-delete.
+ *  - kind mixed, delete: never refused (it resolves to device mode and has no other delete): allow with APP_DELETE_CANCELS_WEB=1, else forceCancel.
+ *  - kind web, take offline: 409 use-account-take-offline only while the account route is available; otherwise allow (no billing is involved).
+ *  - apple / neither: allow. A failed kind lookup is 503 (destructive routes fail closed).
  */
-export async function webAccountOnIosRoute(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, code: 'use-account-delete' | 'use-account-take-offline', deps?: { kind?(uid: string): Promise<AccountKind> }): Promise<OldRouteGate | null> {
-  if (process.env.ACCOUNT_PLAN_V2 !== '1') return null;
+export async function iosDestructiveRoute(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, route: 'delete' | 'take-offline', deps?: { kind?(uid: string): Promise<AccountKind> }): Promise<IosDestructive> {
+  if (process.env.ACCOUNT_PLAN_V2 !== '1' || !nativeBuild(req)) return { action: 'allow' };
   try {
     const h = req.headers?.authorization;
     const raw = Array.isArray(h) ? h[0] : h;
     const t = typeof raw === 'string' ? raw.replace(/^Bearer\s+/i, '').trim() : '';
-    if (!t) return null;
+    if (!t) return { action: 'allow' };
     const user = await userOf(t);
-    if (!user?.id) return null;
+    if (!user?.id) return { action: 'allow' };
     const kind = await (deps?.kind ?? oldRouteKind)(user.id);
-    return kind === 'web' || kind === 'mixed' ? { status: 409, body: { error: code } } : null;
+    const cancels = process.env.APP_DELETE_CANCELS_WEB === '1';
+    const accountRoute = process.env.WEB_APP_ENTITLEMENTS === '1'; // /api/web-app/* answers 404 without it
+    if (route === 'delete') {
+      if (kind === 'mixed') return cancels ? { action: 'allow' } : { action: 'forceCancel' };
+      if (kind === 'web') {
+        if (cancels) return { action: 'allow' };
+        return accountRoute ? { action: 'respond', status: 409, body: { error: 'use-account-delete' } } : { action: 'forceCancel' };
+      }
+      return { action: 'allow' };
+    }
+    return kind === 'web' && accountRoute ? { action: 'respond', status: 409, body: { error: 'use-account-take-offline' } } : { action: 'allow' };
   } catch (e: any) {
     console.error('[site mode] kind lookup failed on a destructive old route (refusing):', e?.message || e);
-    return { status: 503, body: { error: 'temporarily-unavailable' } };
+    return { action: 'respond', status: 503, body: { error: 'temporarily-unavailable' } };
   }
 }
 

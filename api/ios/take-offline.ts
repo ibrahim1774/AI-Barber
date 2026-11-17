@@ -6,7 +6,7 @@ import { liveRemoveDeps } from '../../lib/ios/removeSiteLive.js';
 import { liveUserOf } from '../../lib/ios/publishFlow.js';
 import { liveDeleteAccountRows } from '../../lib/ios/removeSiteLive.js';
 import { takeSiteOffline } from '../../lib/ios/takeOffline.js';
-import { webAccountOnIosRoute } from '../../lib/account/siteMode.js';
+import { iosDestructiveRoute } from '../../lib/account/siteMode.js';
 
 // POST { transactionId } (+ optional Authorization: Bearer <token>, required only when the
 // purchase is linked to an account). Removes the site bound to that App Store purchase: no
@@ -47,8 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     // ACCOUNT_PLAN_V2 only: a web or mixed account takes its site offline through the account route (409 use-account-take-offline here). Off: nothing is read.
-    const web = await webAccountOnIosRoute(req as any, liveUserOf, 'use-account-take-offline');
-    if (web) return res.status(web.status).json(web.body);
+    const route = await iosDestructiveRoute(req as any, liveUserOf, 'take-offline');
+    if (route.action === 'respond') return res.status(route.status).json(route.body);
     const r = await takeSiteOffline(
       body,
       { ...liveRemoveDeps(), verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf, deleteAccountRows: liveDeleteAccountRows },

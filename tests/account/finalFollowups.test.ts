@@ -23,19 +23,19 @@ vi.mock('../../lib/ios/appleVerify.js', () => ({ lazyDefaultVerifier: () => asyn
 vi.mock('../../lib/ios/purchases.js', () => ({ supabasePurchases: () => ({}) }));
 vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<typeof import('../../lib/bookings/rateLimit.js')>()), clientIp: () => '1', iosLimiter: { allow: async () => true } }));
 vi.mock('../../lib/ios/publishFlow.js', () => ({ liveUserOf: async () => ({ id: 'u1' }) }));
-vi.mock('../../lib/webApp/reliability.js', () => ({ suspendWork: vi.fn(async () => { order.push('suspend'); }), markSiteOffline: vi.fn(async () => { order.push('markSiteOffline'); }), resumeAfterFailedDelete: async () => {} }));
+vi.mock('../../lib/webApp/reliability.js', () => ({ suspendWork: vi.fn(async () => { order.push('suspend'); }), markSiteOffline: vi.fn(async () => { order.push('markSiteOffline'); }), resumeAfterFailedDelete: async () => {}, reliabilityOn: () => process.env.WEB_APP_RELIABILITY === '1' }));
 vi.mock('../../lib/account/kind.js', async (orig) => ({ ...(await orig<typeof import('../../lib/account/kind.js')>()), accountKind: async () => { st.kindCalls++; if (st.kindFails) throw new Error('db'); return st.kind; } }));
 
 import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 import takeOffline from '../../api/web-app/take-offline.js';
 import iosDelete from '../../api/ios/delete-account.js';
 import iosTakeOffline from '../../api/ios/take-offline.js';
-import { webAccountOnIosRoute } from '../../lib/account/siteMode.js';
+import { iosDestructiveRoute } from '../../lib/account/siteMode.js';
 import { getPlan, type PlanDeps } from '../../lib/ios/planFlow.js';
 
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; r.end = () => r; return r; };
 const post = async (h: any, headers: any = {}, body: any = { transactionId: '1' }) => { const r = res(); await h({ method: 'POST', headers: { authorization: 'Bearer t', ...headers }, body }, r); return r; };
-beforeEach(() => { order.length = 0; vi.clearAllMocks(); Object.assign(st, { kind: 'web', kindFails: false, kindCalls: 0, deleted: 0, tookOffline: 0 }); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); });
+beforeEach(() => { vi.stubEnv('WEB_APP_RELIABILITY', '1'); order.length = 0; vi.clearAllMocks(); Object.assign(st, { kind: 'web', kindFails: false, kindCalls: 0, deleted: 0, tookOffline: 0 }); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('S1: native account-mode take offline never deletes the stored copy', () => {
@@ -70,36 +70,39 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
   });
 });
 
-describe('S2: a web or mixed account never deletes or takes offline through the Apple routes', () => {
+describe('S2: iosDestructiveRoute decisions', () => {
   const userOf = async () => ({ id: 'u1' });
-  const hdr = { headers: { authorization: 'Bearer t' } };
-  it('switch off: null at once, nothing read (the kind lookup would throw)', async () => {
-    vi.stubEnv('ACCOUNT_PLAN_V2', '');
+  const hdr = { headers: { authorization: 'Bearer t', 'x-pb-build': '57' } };
+  const run = (kind: any, route: 'delete' | 'take-offline', req: any = hdr) => iosDestructiveRoute(req, userOf, route, { kind: async () => kind });
+  it('switch off, no header or no token: allow at once, nothing read', async () => {
     const kind = vi.fn(async () => { throw new Error('no'); });
-    expect(await webAccountOnIosRoute(hdr, userOf, 'use-account-delete', { kind: kind as any })).toBeNull();
+    vi.stubEnv('ACCOUNT_PLAN_V2', '');
+    expect(await iosDestructiveRoute(hdr, userOf, 'delete', { kind: kind as any })).toEqual({ action: 'allow' });
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1');
+    expect(await iosDestructiveRoute({ headers: { authorization: 'Bearer t' } }, userOf, 'delete', { kind: kind as any })).toEqual({ action: 'allow' }); // builds 55 and 1.1
+    expect(await iosDestructiveRoute({ headers: { 'x-pb-build': '57' } }, userOf, 'delete', { kind: kind as any })).toEqual({ action: 'allow' });
     expect(kind).not.toHaveBeenCalled();
   });
-  it('switch on: web and mixed are 409 with the route\'s code; apple, neither, no token and a bad token pass; a failed lookup is 503', async () => {
-    vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.spyOn(console, 'error').mockImplementation(() => {});
-    for (const k of ['web', 'mixed'] as const) {
-      expect(await webAccountOnIosRoute(hdr, userOf, 'use-account-delete', { kind: async () => k })).toEqual({ status: 409, body: { error: 'use-account-delete' } });
-      expect(await webAccountOnIosRoute(hdr, userOf, 'use-account-take-offline', { kind: async () => k })).toEqual({ status: 409, body: { error: 'use-account-take-offline' } });
-    }
-    for (const k of ['apple', 'neither'] as const) expect(await webAccountOnIosRoute(hdr, userOf, 'use-account-delete', { kind: async () => k })).toBeNull();
-    expect(await webAccountOnIosRoute({ headers: {} }, userOf, 'use-account-delete', { kind: async () => 'web' })).toBeNull();
-    expect(await webAccountOnIosRoute(hdr, async () => null, 'use-account-delete', { kind: async () => 'web' })).toBeNull();
-    expect((await webAccountOnIosRoute(hdr, userOf, 'use-account-delete', { kind: async () => { throw new Error('db'); } }))?.status).toBe(503);
-  });
-  it('handlers: ACCOUNT_PLAN_V2 on + web: 409 and nothing is deleted or taken offline; off: today\'s flow; an unknown Stripe key never 503s an Apple account', async () => {
+  it('web account: 409 only while the account route exists and APP_DELETE_CANCELS_WEB is off; otherwise the iOS delete cancels the card plan itself or the switch branch does', async () => {
     vi.stubEnv('ACCOUNT_PLAN_V2', '1');
-    let r = await post(iosDelete); expect([r.code, r.body]).toEqual([409, { error: 'use-account-delete' }]);
-    r = await post(iosTakeOffline); expect([r.code, r.body]).toEqual([409, { error: 'use-account-take-offline' }]);
-    expect(st.deleted).toBe(0); expect(st.tookOffline).toBe(0);
-    st.kind = 'apple'; vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', ''); vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect((await post(iosDelete)).code).toBe(200); expect((await post(iosTakeOffline)).code).toBe(200);
-    vi.stubEnv('ACCOUNT_PLAN_V2', ''); st.kind = 'web'; st.kindCalls = 0; st.deleted = 0;
-    expect((await post(iosDelete)).code).toBe(200);
-    expect(st.deleted).toBe(1); expect(st.kindCalls).toBe(0);
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
+    expect(await run('web', 'delete')).toEqual({ action: 'respond', status: 409, body: { error: 'use-account-delete' } });
+    expect(await run('web', 'take-offline')).toEqual({ action: 'respond', status: 409, body: { error: 'use-account-take-offline' } });
+    vi.stubEnv('APP_DELETE_CANCELS_WEB', '1');
+    expect(await run('web', 'delete')).toEqual({ action: 'allow' });
+    vi.stubEnv('APP_DELETE_CANCELS_WEB', '');
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '');
+    expect(await run('web', 'delete')).toEqual({ action: 'forceCancel' });
+    expect(await run('web', 'take-offline')).toEqual({ action: 'allow' });
+  });
+  it('mixed is never refused (it resolves to device and has no other delete): forceCancel unless APP_DELETE_CANCELS_WEB=1; apple and neither pass; a failed lookup is 503', async () => {
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await run('mixed', 'delete')).toEqual({ action: 'forceCancel' });
+    expect(await run('mixed', 'take-offline')).toEqual({ action: 'allow' });
+    vi.stubEnv('APP_DELETE_CANCELS_WEB', '1');
+    expect(await run('mixed', 'delete')).toEqual({ action: 'allow' });
+    for (const k of ['apple', 'neither']) expect(await run(k, 'delete')).toEqual({ action: 'allow' });
+    expect(await iosDestructiveRoute(hdr, userOf, 'delete', { kind: async () => { throw new Error('db'); } })).toMatchObject({ action: 'respond', status: 503 });
   });
 });
 
@@ -130,12 +133,16 @@ describe('S3: GET /api/shop/plan carries blockedPurchase while the refused purch
     const bad: any = await getPlan('Bearer x', base({ blockedPurchase: async () => { throw new Error('db'); } }));
     expect(bad.status).toBe(200); expect('blockedPurchase' in bad.body).toBe(false);
     vi.stubEnv('ACCOUNT_PLAN_V2', '1');
-    const plan = { source: 'stripe', status: 'canceled', active: false, kind: 'web', site: null, legacy: false, holderPurchaseEnded: false, siteMode: 'account' } as any;
-    const v2: any = await getPlan('Bearer x', base({ blockedPurchase: blocked(), accountPlan: async () => plan }));
-    expect(v2.body.blockedPurchase).toMatchObject({ reason: 'web-account', planLive: false });
-    const other: any = await getPlan('Bearer x', base({ blockedPurchase: blocked('other-apple-id'), accountPlan: async () => plan }));
+    // planLive comes from the one planLive source (deps.planLive), independent of ACCOUNT_PLAN_V2
+    vi.stubEnv('ACCOUNT_PLAN_V2', '');
+    const ended: any = await getPlan('Bearer x', base({ blockedPurchase: blocked(), planLive: async () => false }));
+    expect(ended.body.blockedPurchase).toMatchObject({ reason: 'web-account', planLive: false });
+    const live: any = await getPlan('Bearer x', base({ blockedPurchase: blocked(), planLive: async () => true }));
+    expect(live.body.blockedPurchase.planLive).toBe(true);
+    const failing: any = await getPlan('Bearer x', base({ blockedPurchase: blocked(), planLive: async () => { throw new Error('db'); } }));
+    expect(failing.body.blockedPurchase.planLive).toBe(true); // never "ended" on a guess
+    const other: any = await getPlan('Bearer x', base({ blockedPurchase: blocked('other-apple-id'), planLive: async () => false }));
     expect('planLive' in other.body.blockedPurchase).toBe(false);
-    expect('planLive' in v2.body).toBe(false);
   });
   it('the live lookup: ledger rows of the account, Production purchases only, live and not tied to the account; web-publish: rows ignored; no ledger table = none', async () => {
     const { livePlanDeps } = await import('../../lib/ios/planFlow.js');
@@ -143,9 +150,11 @@ describe('S3: GET /api/shop/plan carries blockedPurchase while the refused purch
     const NOW = Date.now(); const FUT = new Date(NOW + 30 * 86_400_000).toISOString(); const PAST = new Date(NOW - 86_400_000).toISOString();
     const { sbRest } = await import('../../lib/webApp/webAppServer.js');
     const calls: string[] = [];
+    let shopLinks: any[] = [];
     const fetchWith = (ledger: any[] | 404, purchases: any[]) => (sbRest as any).mockImplementation(async (path: string) => {
       calls.push(decodeURIComponent(path));
       if (path.startsWith('blocked_purchases')) { if (ledger === 404) throw Object.assign(new Error('supabase 404'), { status: 404 }); return ledger; }
+      if (path.startsWith('ab_shops')) return shopLinks;
       return purchases;
     });
     const dep = (livePlanDeps() as any).blockedPurchase as (u: string, n: number) => Promise<any>;
@@ -155,6 +164,12 @@ describe('S3: GET /api/shop/plan carries blockedPurchase while the refused purch
     expect(calls.find((c) => c.startsWith('ios_purchases'))).toMatch(/original_transaction_id=in\.\(OLD,LIVE\).*environment=eq\.Production/);
     fetchWith([{ original_transaction_id: 'X', reason: 'web-account' }], [prod('X', { user_id: 'u1' })]); // tied to the account now: resolved
     expect(await dep('u1', NOW)).toBeNull();
+    fetchWith([{ original_transaction_id: 'P', reason: 'web-account' }], [prod('P', { user_id: 'B' })]); // refused for A, later tied to B: A's GET has no signal
+    expect(await dep('A', NOW)).toBeNull();
+    shopLinks = [{ ios_otid: 'P2' }];
+    fetchWith([{ original_transaction_id: 'P2', reason: 'web-account' }], [prod('P2')]); // a shop now points at it: resolved too
+    expect(await dep('A', NOW)).toBeNull();
+    shopLinks = [];
     fetchWith([{ original_transaction_id: 'X', reason: 'web-account' }], [prod('X', { revoked_at: PAST })]); // refunded
     expect(await dep('u1', NOW)).toBeNull();
     fetchWith(404, []); expect(await dep('u1', NOW)).toBeNull();

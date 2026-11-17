@@ -9,7 +9,7 @@ import { serviceCopyAutoPublish } from '../../lib/serviceCopy/flags.js';
 import { draftRef, signingSecret, siteRef } from '../../lib/serviceCopy/approval.js';
 import { serviceCopyEnabled } from '../../lib/serviceCopy/handler.js';
 import { tableCopyStore } from '../../lib/serviceCopy/store.js';
-import { nativeModeGate } from '../../lib/account/siteMode.js';
+import { nativeBuild, nativeModeGate } from '../../lib/account/siteMode.js';
 
 /** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
 export const DRAFT_WRITES_PER_MINUTE = 120;
@@ -71,7 +71,9 @@ export default async function handler(req: any, res: any) {
       updated_at: new Date().toISOString(),
       // DRAFT_PUT_KEEPS_LIVE_URL (default off): a save of an existing draft never writes the live address back (a publish may have changed it
       // since `previous` was read); the row keeps what the database holds and the answer shows that. The first insert below is unchanged.
-      ...(process.env.DRAFT_PUT_KEEPS_LIVE_URL === '1' && previous ? {} : { deployed_url: previous?.deployed_url ?? null }) };
+      // A native caller (X-PB-Build) never writes the live address back, whatever the switch says: a take offline (which clears it) may land between the read of `previous`
+      // and this write, and a stale PUT must not bring the old address back. The web (no header) is byte-identical.
+      ...((process.env.DRAFT_PUT_KEEPS_LIVE_URL === '1' || nativeBuild(req)) && previous ? {} : { deployed_url: previous?.deployed_url ?? null }) };
     let written: any[];
     if (previous) written = await sbRest(`${draftPath(user.id)}&revision=eq.${expectedRevision}`, { method: 'PATCH', body: row, prefer: 'return=representation' });
     else {

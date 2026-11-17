@@ -73,6 +73,8 @@ export interface PlanDeps {
    * still live at Apple and is not tied to the account), or null. Absent once the purchase has expired, been refunded or been tied.
    */
   blockedPurchase?(userId: string, nowMs: number): Promise<{ reason: string; originalTransactionId: string } | null>;
+  /** ONE_SITE_GUARD=1 only, GET: does the account still have a live plan (a card plan or Free; lib/account/planLive.ts, the mayTake rule)? Independent of ACCOUNT_PLAN_V2. */
+  planLive?(userId: string): Promise<boolean>;
   /** ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the shop link or the account link is written. Absent or off: today's behaviour. */
   tie?: TieCheck;
 }
@@ -169,7 +171,7 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   if (process.env.ONE_SITE_GUARD === '1' && deps.blockedPurchase) {
     try {
       const b = await deps.blockedPurchase(a.user.id, now);
-      if (b) blockedExtra = { blockedPurchase: { reason: b.reason, originalTransactionId: b.originalTransactionId, ...(a.user.email ? { accountEmail: a.user.email } : {}), ...(v2 && v2.planLive !== undefined && b.reason !== 'other-apple-id' ? { planLive: v2.planLive } : {}) } };
+      if (b) blockedExtra = { blockedPurchase: { reason: b.reason, originalTransactionId: b.originalTransactionId, ...(a.user.email ? { accountEmail: a.user.email } : {}), ...(b.reason !== 'other-apple-id' && deps.planLive ? { planLive: await deps.planLive(a.user.id).catch(() => true) } : {}) } };
     } catch (e: any) { console.error('[shop/plan] blocked purchase lookup failed (left out):', e?.message || e); }
   }
   if (!deps.memberProfileLive) return { status: 200, body: v2 ? { ...view, ...v2.fields, ...blockedExtra, capabilities: { siteMode: v2.siteMode } } : { ...view, ...blockedExtra } };
@@ -195,8 +197,6 @@ async function planV2Fields(userId: string, read: NonNullable<PlanDeps['accountP
     return {
       fields: { source: p.source, status: p.status, kind: p.kind, site: p.site, legacy: p.legacy, holderPurchaseEnded: p.holderPurchaseEnded },
       siteMode: p.siteMode,
-      /** For blockedPurchase on the GET: is the account's own plan live? */
-      planLive: p.active,
     };
   } catch (e: any) {
     // ACCOUNT_PLAN_V2 is on but the account could not be read: the old fields stay, and the answer says so with siteMode 'unknown' (no kind, no site). The new
@@ -380,6 +380,7 @@ export function livePlanDeps(): PlanDeps {
     limiter: userLimiter,
     accountPlan: async (uid) => (await import('../account/plan.js')).accountPlan(uid),
     tie: liveTie,
+    planLive: async (uid) => (await import('../account/planLive.js')).webPlanLive(uid, 'Production'),
     async blockedPurchase(uid, nowMs) {
       const { sbRest } = await import('../webApp/webAppServer.js');
       let rows: any[];
@@ -389,7 +390,10 @@ export function livePlanDeps(): PlanDeps {
       if (!refused.length) return null;
       const ids = refused.map((r) => encodeURIComponent(r.original_transaction_id)).join(',');
       const ps: any[] = (await sbRest(`ios_purchases?original_transaction_id=in.(${ids})&environment=eq.Production&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,user_id`)) ?? [];
-      const live = new Map(ps.filter((p) => p.user_id !== uid && purchaseLive(p, nowMs)).map((p) => [p.original_transaction_id as string, p]));
+      // Unresolved = still live at Apple, tied to NO account (user_id null) and not the link of any shop: a purchase now tied to anyone is resolved, never "cancel it".
+      const shopLinked: any[] = (await sbRest(`ab_shops?ios_otid=in.(${ids})&select=ios_otid`)) ?? [];
+      const linked = new Set(shopLinked.map((s) => s.ios_otid as string));
+      const live = new Map(ps.filter((p) => p.user_id == null && !linked.has(p.original_transaction_id) && purchaseLive(p, nowMs)).map((p) => [p.original_transaction_id as string, p]));
       const hit = refused.find((r) => live.has(r.original_transaction_id));
       return hit ? { reason: hit.reason as string, originalTransactionId: hit.original_transaction_id as string } : null;
     },
