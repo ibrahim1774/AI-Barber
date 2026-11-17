@@ -69,6 +69,36 @@ export async function nativeDeleteGate(req: { headers?: Record<string, unknown> 
   }
 }
 
+/** The account kind for the OLD iOS routes: an undecidable environment (missing or unknown Stripe key) reads as 'neither' (device), logged; never a 503 for an Apple-only caller. */
+export async function oldRouteKind(uid: string): Promise<AccountKind> {
+  const [{ accountKind }, { defaultKindEnv }] = await Promise.all([import('./kind.js'), import('./plan.js')]);
+  let env;
+  try { env = defaultKindEnv(); } catch (e: any) { console.error('[site mode] environment unknown, treating the caller as device on the old route:', e?.message || e); return 'neither'; }
+  return accountKind(uid, env);
+}
+
+/**
+ * /api/ios/delete-account and /api/ios/take-offline: with ACCOUNT_PLAN_V2=1, a caller whose kind is `web` or `mixed` (a stale Apple transaction on the phone) gets 409 with
+ * `code` and is never deleted or taken offline through the Apple route (the delete would leave the card plan billing). Off: null at once, nothing read. No token: null (the
+ * route's own rules apply). A failed lookup is 503 (the route is destructive: fail closed).
+ */
+export async function webAccountOnIosRoute(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, code: 'use-account-delete' | 'use-account-take-offline', deps?: { kind?(uid: string): Promise<AccountKind> }): Promise<OldRouteGate | null> {
+  if (process.env.ACCOUNT_PLAN_V2 !== '1') return null;
+  try {
+    const h = req.headers?.authorization;
+    const raw = Array.isArray(h) ? h[0] : h;
+    const t = typeof raw === 'string' ? raw.replace(/^Bearer\s+/i, '').trim() : '';
+    if (!t) return null;
+    const user = await userOf(t);
+    if (!user?.id) return null;
+    const kind = await (deps?.kind ?? oldRouteKind)(user.id);
+    return kind === 'web' || kind === 'mixed' ? { status: 409, body: { error: code } } : null;
+  } catch (e: any) {
+    console.error('[site mode] kind lookup failed on a destructive old route (refusing):', e?.message || e);
+    return { status: 503, body: { error: 'temporarily-unavailable' } };
+  }
+}
+
 export type OldRouteGate = { status: 409 | 503; body: { error: string } };
 /**
  * /api/ios/publish and /api/ios/site (Restore): a caller WITH X-PB-Build whose mode is not 'device' (account or web-only) must use the account publish (409
@@ -90,12 +120,7 @@ export async function oldRouteGate(req: { headers?: Record<string, unknown> }, u
     // Both 'account' and 'web-only' come from kind web: a web account never uses the old route.
     // The kind is decided WITHOUT defaultKindEnv() being able to 503 an Apple-only caller: a missing or unknown Stripe key makes the environment
     // undecidable, and then the caller is treated as device on these OLD routes only (logged). Any other failed read is still a 503.
-    const kind = deps?.kind ?? (async (uid: string) => {
-      const [{ accountKind }, { defaultKindEnv }] = await Promise.all([import('./kind.js'), import('./plan.js')]);
-      let env;
-      try { env = defaultKindEnv(); } catch (e: any) { console.error('[site mode] environment unknown, treating the caller as device on the old route:', e?.message || e); return 'neither' as const; }
-      return accountKind(uid, env);
-    });
+    const kind = deps?.kind ?? oldRouteKind;
     return (await siteModeOf(user.id, { ...deps, kind })) !== 'device' ? { status: 409, body: { error: 'use-account-publish' } } : null;
   } catch (e: any) {
     console.error('[site mode] lookup failed for a native caller on the old route (refusing):', e?.message || e);

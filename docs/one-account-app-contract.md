@@ -108,6 +108,8 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 - 503 `temporarily-unavailable`: the mode could not be read (with `ACCOUNT_PLAN_V2=1`). Try again later. A missing or unknown Stripe key never causes this for an Apple account: the server treats the caller as `device` on these old routes.
 - Otherwise the route answers as before.
 
+With `ACCOUNT_PLAN_V2=1`, `POST /api/ios/delete-account` and `POST /api/ios/take-offline` also refuse a bearer whose account is a web or two-site account (a stale Apple transaction on the phone): 409 `use-account-delete` and 409 `use-account-take-offline`. Nothing is deleted or taken offline, because deleting through the Apple route would leave the card plan billing. Use `POST /api/web-app/delete-account` or `POST /api/web-app/take-offline` instead (section 6b). 503 `temporarily-unavailable` if the account could not be read (these routes are destructive, so they fail closed). With the switch off, or with no bearer, these routes answer exactly as before. A missing Stripe key never blocks an Apple-only account.
+
 `POST /api/ios/publish` can answer **409 `account-has-site`** with `{ slug, reason }`:
 
 - `reason: "web-account"`: this account already has (or is publishing) a website on the web. `slug` is that address, or an empty string when it has none yet. Do not say the account has a live website when `slug` is empty.
@@ -120,7 +122,7 @@ The server decides the Book and Shop buttons from the plan, the shop and the sto
 
 Send `X-PB-Build` on both.
 
-- `POST /api/web-app/take-offline`: only `account` mode may use it. `web-only` and `device` callers get 403 `not-account-mode`. A lookup failure is 503 `temporarily-unavailable`. 404 `no-site` when there is nothing to take offline; 500 `remove-failed` otherwise.
+- `POST /api/web-app/take-offline`: only `account` mode may use it. `web-only` and `device` callers get 403 `not-account-mode`. A lookup failure is 503 `temporarily-unavailable`. 404 `no-site` when there is nothing to take offline; 500 `remove-failed` otherwise. **From the 1.2 app in account mode this route NEVER deletes the stored copy or photos, whatever `SAFE_TAKE_OFFLINE` is set to** (it needs no switch). The site goes offline, a custom domain is detached, the old live address is forgotten (the saved draft no longer reports it, so a later save cannot bring it back), and the saved copy and the draft stay. The app may say "Nothing is deleted" for this action, only for a call that carried `X-PB-Build` on this route. Publishing again uses the normal account publish and reuses the same address. The web's own take offline and old builds are unchanged.
 - `POST /api/web-app/delete-account`: a web account (`account` or `web-only`) deletes through this route. A `device` caller gets 403 `not-account-mode` and keeps using `/api/ios/delete-account`. A lookup failure is 503 `temporarily-unavailable`. The delete itself answers as the web route always did.
 
 ## 6c. Get paid (Stripe onboarding) return page
@@ -141,7 +143,7 @@ A 1.2 app in device mode, with every switch off, gets exactly today's answers fr
 
 ## 7. Plan check and shop setup
 
-- `POST /api/shop/plan` `{ transactionId }`: 200 with the current plan when the purchase may not be tied to this account (nothing is linked; the answer is the plan as it was). When `ONE_SITE_GUARD=1` the 200 also has `blockedPurchase: { reason, accountEmail?, planLive? }` (`reason` is `web-account`, `other-apple-id` or `mixed`; `accountEmail` is the caller's own email). It is absent when the purchase was tied, when the guard is not `1`, and for old builds' answers, so it is the clear signal that this Apple purchase was not used. Only Production purchases carry this field and the email (a Sandbox purchase never does). Show by `reason`:
+- `POST /api/shop/plan` `{ transactionId }`: 200 with the current plan when the purchase may not be tied to this account (nothing is linked; the answer is the plan as it was). When `ONE_SITE_GUARD=1` the 200 also has `blockedPurchase: { reason, accountEmail?, planLive? }` (`reason` is `web-account`, `other-apple-id` or `mixed`; `accountEmail` is the caller's own email). `GET /api/shop/plan` carries the same `blockedPurchase` (with the guard at `1`), plus `originalTransactionId`, for as long as the account has a refused Production purchase that is still live at Apple and not tied to the account. Key "shown once" by `originalTransactionId`. It is gone once that purchase expires, is refunded, or is tied. The POST answer carries `originalTransactionId` too. Only Production purchases ever produce it. It is absent when the purchase was tied, when the guard is not `1`, and for old builds' answers, so it is the clear signal that this Apple purchase was not used. Only Production purchases carry this field and the email (a Sandbox purchase never does). Show by `reason`:
 
 - `web-account` and `mixed`: "This account ({email}) already has a Prime Barber plan. This Apple subscription was not used. So that you are not charged twice, cancel it in iPhone Settings, then Subscriptions." Leave out "({email})" when `accountEmail` is missing.
 - `other-apple-id`: "Your website belongs to a subscription bought with a different Apple ID. This subscription was not used. So that you are not charged twice, cancel it in iPhone Settings, then Subscriptions. Then resubscribe with the original Apple ID, or contact support." Do not say this account has a plan.
@@ -165,4 +167,5 @@ All default to off. With every switch off the server behaves exactly as before.
 6. `ACCOUNT_DRAFTS_IOS=allowlist` with `ACCOUNT_DRAFTS_IOS_USERS`, then `all`. Must be deployed before any 1.2 phone exists. Until it covers an account that account is `web-only`.
 7. `DRAFT_PUT_KEEPS_LIVE_URL=1`: a save no longer writes an old live address back. Turn it on before account mode goes wide.
 8. `GATE_ANY_SOURCE=1`: Move and checkout follow the account kind.
-9. `AUTH_OUTAGE_503=1`: sign-in outages answer 503 instead of 401 (section 2b). Turn it on together with the 1.2 app, which handles the 503 correctly; older builds treat a 503 as a plain failure.
+9. Nothing to switch for the take-offline promise: the native account-mode take offline always keeps the stored copy (section 6b).
+10. `AUTH_OUTAGE_503=1`: sign-in outages answer 503 instead of 401 (section 2b). Turn it on together with the 1.2 app, which handles the 503 correctly; older builds treat a 503 as a plain failure.

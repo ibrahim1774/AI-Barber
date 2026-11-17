@@ -118,13 +118,18 @@ export async function cancelThenForgetCustomers(userId: string, cancel?: Paramet
   return done;
 }
 
-/** Take the user's web sites offline and delete their stored copy, keeping the account and the subscription ("Take my website offline"). */
-export async function removeWebSitesOf(userId: string): Promise<number> {
+/**
+ * Take the user's web sites offline and delete their stored copy, keeping the account and the subscription ("Take my website offline").
+ * `opts.keepContent` (ONLY the native app's account-mode take offline, api/web-app/take-offline.ts with X-PB-Build): never deletes the stored copy or photos,
+ * whatever SAFE_TAKE_OFFLINE says (the domain is detached and the stored address forgotten, exactly the SAFE_TAKE_OFFLINE path). The browser and old builds
+ * pass nothing and get today's behaviour.
+ */
+export async function removeWebSitesOf(userId: string, opts: { keepContent?: boolean } = {}): Promise<number> {
   await suspendWork(userId);
   const deps = liveWebDeleteDeps();
   const sites = (await deps.listSites(userId)).filter(isWebSite);
   for (const s of sites) await deps.takeDown(s);
-  if (safeTakeOfflineOn()) { const rm = liveRemoveDeps(); for (const s of sites) await purgeOffline(s, rm); } // keeps the stored copy
+  if (opts.keepContent || safeTakeOfflineOn()) { const rm = liveRemoveDeps(); for (const s of sites) await purgeOffline(s, rm); } // keeps the stored copy
   else for (const s of sites) await deps.purge(s);
   await markSiteOffline(userId);
   return sites.length;

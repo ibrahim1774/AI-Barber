@@ -3,6 +3,8 @@ import { deleteAccount, liveDeleteDeps, type DeleteAccountDeps } from '../../lib
 import { liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
 import { resumeAfterFailedDelete } from '../../lib/webApp/reliability.js';
 import { alertIfLegacyCustomer } from '../../lib/webApp/legacyDeleteAlert.js';
+import { liveUserOf } from '../../lib/ios/publishFlow.js';
+import { webAccountOnIosRoute } from '../../lib/account/siteMode.js';
 
 // POST with `Authorization: Bearer <supabase access token>`. No body is read:
 // the token alone decides which account is deleted.
@@ -14,6 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const h = req.headers?.authorization;
     const auth = Array.isArray(h) ? h[0] : h;
+    // ACCOUNT_PLAN_V2 only: a web or mixed account never deletes through the Apple route (its card plan would keep billing); the app uses the account delete route.
+    const web = await webAccountOnIosRoute(req as any, liveUserOf, 'use-account-delete');
+    if (web) return res.status(web.status).json(web.body);
     if (process.env.APP_DELETE_CANCELS_WEB !== '1') {
       const r = await deleteAccount(auth, liveDeleteDeps());
       return res.status(r.status).json(r.body);
