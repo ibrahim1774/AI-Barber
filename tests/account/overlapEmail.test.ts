@@ -97,7 +97,7 @@ describe('sweepIosOverlap: when the new wording and the owner alert apply', () =
   it('the owner alert: once per account with the account email, the Apple subscription ids and "none yet"', async () => {
     on(); const d = deps(); await sweepIosOverlap(d); await sweepIosOverlap(d);
     expect(d.mailOwner).toHaveBeenCalledTimes(1);
-    expect(d.mailOwner.mock.calls[0][3]).toEqual(['account email: barber@gmail.com', 'Apple subscriptions: 2000000123', 'site address: none yet']);
+    expect((d.mailOwner as any).mock.calls[0][3]).toEqual(['account email: barber@gmail.com', 'Apple subscriptions: 2000000123', 'site address: none yet']);
   });
   it('the ledger already alerted (active state): no second owner alert, the customer email still goes', async () => {
     on(); const d = deps({ ledger: true }); await sweepIosOverlap(d);
