@@ -5,6 +5,8 @@ import { sbRest, stripeCall } from './webAppServer.js';
 import { alertOwner } from './emails.js';
 import { isEntitledStatus, rowFromSubscription } from './stripeCore.js';
 import { isFree, isFreeSubscriptionId } from './priceGroup.js';
+import { guardMode, releaseUnpublished } from '../account/sites.js';
+import { kindEnvOf } from '../account/kind.js';
 
 /** A failing job is retried with backoff, then parked (cancelled, with an alert in the logs) so it cannot be polled forever. */
 export const MAX_JOB_ATTEMPTS = 20;
@@ -22,6 +24,16 @@ export async function alertStopped(job: Intent, reason: 'publish_gave_up' | 'pub
       'The barber sees "Tap Publish to try again". If they do not, check the deploy logs and contact them.',
     ]);
   } catch (e: any) { console.error('[web publish worker] alert failed:', e?.message || e); }
+}
+/**
+ * ONE_SITE_GUARD: a first web publish that is given up on is not a web account: give back the address row it took (web rows that never
+ * published only; a published one stays). Best effort, never throws, nothing at all with the guard off. The daily clean-up (24 hours) is the
+ * backstop for every give-up path.
+ */
+export async function releaseGivenUpAddress(job: Pick<Intent, 'user_id' | 'environment'>): Promise<void> {
+  if (guardMode() === 'off') return;
+  try { await releaseUnpublished(job.user_id, kindEnvOf(job.environment as 'live' | 'test')); }
+  catch (e: any) { if (e?.status !== 404) console.error('[web publish worker] address release failed:', e?.status ?? e?.message ?? e); }
 }
 export interface JobDeps {
   claim(id: string, token: string): Promise<Intent | null>;
@@ -71,7 +83,7 @@ export function liveJobDeps(): JobDeps {
         console.error('[web publish worker] giving up after', job.attempts, 'attempts:', job.id);
         const parked = await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,running)`, { method: 'PATCH', body: { status: 'cancelled', result: { error: 'publish_gave_up' } }, prefer: 'return=representation' });
         await sbRest(`${draftPath(job.user_id)}&publish_lease=eq.${token}`, { method: 'PATCH', body: { publish_lease: null, lease_until: null } });
-        if (parked?.length) await alertStopped(job, 'publish_gave_up', { error: 'publish_gave_up' });
+        if (parked?.length) { await alertStopped(job, 'publish_gave_up', { error: 'publish_gave_up' }); await releaseGivenUpAddress(job); }
         return null;
       }
       try {
@@ -162,7 +174,7 @@ export function liveJobDeps(): JobDeps {
         next_attempt_at: new Date(Date.now() + Math.min(900_000, 10_000 * 2 ** Math.min(job.attempts, 6))).toISOString() }, prefer: 'return=representation' });
       if (rows?.length) {
         const code = Number((result as any)?.status);
-        if (status === 'cancelled') await alertStopped(job, 'publish_gave_up', result);
+        if (status === 'cancelled') { await alertStopped(job, 'publish_gave_up', result); await releaseGivenUpAddress(job); }
         else if (status === 'superseded' && job.requires_payment && code >= 400 && code < 500) await alertStopped(job, 'publish_refused', result);
       }
     },
@@ -189,7 +201,7 @@ export async function sweepJobs() {
     await sbRest(`web_app_publish_intents?id=eq.${j.id}&status=eq.awaiting_payment`, { method: 'PATCH', body: paid ? { status: 'queued' } : { status: 'cancelled' } }).catch(() => {});
   }
   const parkedRows: Intent[] = (await sbRest(`web_app_publish_intents?environment=eq.${env}&status=eq.failed&attempts=gte.${MAX_JOB_ATTEMPTS}`, { method: 'PATCH', body: { status: 'cancelled', result: { error: 'publish_gave_up' } }, prefer: 'return=representation' }).catch(() => null)) ?? [];
-  for (const r of parkedRows) await alertStopped(r, 'publish_gave_up', { error: 'publish_gave_up' });
+  for (const r of parkedRows) { await alertStopped(r, 'publish_gave_up', { error: 'publish_gave_up' }); await releaseGivenUpAddress(r); }
   const due = `environment=eq.${env}&next_attempt_at=lte.${enc(nowIso)}`;
   const LIMIT = 10, RESERVED_POLLS = 3;
   // Payment polling keeps a reserved slice of the batch, so stuck publish jobs can never starve it; real work uses the rest.
