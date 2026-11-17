@@ -23,6 +23,7 @@
 // its card; entries without a memberId are never touched; nothing is ever added. No shop row: the list is left alone (undefined).
 import type { TeamMember, WeeklyHours } from '../../types.js';
 import { isAiBarberBookingLink } from '../ios/tiers.js';
+import { sbRest } from '../webApp/webAppServer.js';
 
 export type BookingChoice = 'own' | 'aibarber' | 'call';
 export const BOOKING_CHOICES: readonly BookingChoice[] = ['own', 'aibarber', 'call'];
@@ -171,7 +172,7 @@ export async function nativePublication(uid: string, draft: { bookingUrl?: unkno
 
 const enc = encodeURIComponent;
 export function liveNativeFactsDeps(): NativeFactsDeps {
-  const rest = async (path: string): Promise<any[]> => (((await (await import('../webApp/webAppServer.js')).sbRest(path)) ?? []) as any[]);
+  const rest = async (path: string): Promise<any[]> => (((await sbRest(path)) ?? []) as any[]);
   return {
     async plan(uid) {
       const { accountPlan, defaultKindEnv } = await import('./plan.js');
