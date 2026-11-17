@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { iosBillingEmail, iosEmailOn, iosNotLiveEmail, iosWelcomeEmail } from '../../lib/ios/emails.js';
 import { billingKeyOf, onAccountCreated, onSubscriptionNotice, sweepIosNotLive, type AccountRow, type IosEmailDeps, type PurchaseLite } from '../../lib/ios/emailFlows.js';
+import { NUDGE_OPT_OUT, nudgeFrom, signupNudgeEmail } from '../../lib/webApp/emails.js';
 import { runSignup, type SignupDeps } from '../../lib/ios/signup.js';
 import { handleAppleNotification } from '../../lib/ios/notifications.js';
 
@@ -237,11 +238,17 @@ describe('billing', () => {
     expect(await onSubscriptionNotice(f.d, notice({ expiresAt: 2000 }))).toBe('sent'); // next period: new mail
     expect(f.sent).toHaveLength(2);
   });
-  it('expired: its own mail, once', async () => {
+  it('expired after a failed payment (BILLING_RETRY): its own mail, once', async () => {
     const f = withUser();
-    expect(await onSubscriptionNotice(f.d, notice({ type: 'EXPIRED' }))).toBe('sent');
+    expect(await onSubscriptionNotice(f.d, notice({ type: 'EXPIRED', subtype: 'BILLING_RETRY' }))).toBe('sent');
     expect(await onSubscriptionNotice(f.d, notice({ type: 'EXPIRED', subtype: 'BILLING_RETRY' }))).toBe('duplicate');
     expect(f.sent).toHaveLength(1); expect(f.sent[0].subject).toContain('has ended');
+  });
+  it.each(['VOLUNTARY', 'PRICE_INCREASE', 'PRODUCT_NOT_FOR_SALE', undefined])('expired with subtype %s is silent: nothing sent, nothing read or written', async (subtype) => {
+    const f = withUser();
+    expect(await onSubscriptionNotice(f.d, notice({ type: 'EXPIRED', subtype }))).toBe('silent');
+    expect(f.sent).toEqual([]);
+    expect(f.d.claimBilling).not.toHaveBeenCalled(); expect(f.d.purchase).not.toHaveBeenCalled(); expect(f.d.adminUser).not.toHaveBeenCalled();
   });
   it('sandbox (notification or purchase row), unlinked, refunded, suppressed and internal addresses get nothing', async () => {
     const cases: [any, any][] = [
@@ -313,11 +320,39 @@ describe('rendered text', () => {
     }
   });
   it('same footer and reply-to as the existing mail; plain subjects', () => {
-    for (const m of mails) { expect(m.text).toContain('You are getting this because you have a Prime Barber plan. Questions? Reply to this email.'); expect(m.replyTo).toBeTruthy(); expect((m as any).from).toBeUndefined(); }
+    const standard = mails.filter((m) => !m.tags?.some((t) => t.value.startsWith('ios_not_live')));
+    expect(standard).toHaveLength(5);
+    for (const m of standard) { expect(m.text).toContain('You are getting this because you have a Prime Barber plan. Questions? Reply to this email.'); expect(m.replyTo).toBeTruthy(); expect((m as any).from).toBeUndefined(); }
     expect(mails.map((m) => m.subject)).toEqual([
       'Welcome Sam! Barber plan active', 'Welcome! Barber plan active', "Sam, your website isn't live yet", 'Your website is still waiting',
       'Sam, about your Prime Barber plan', 'About your Prime Barber plan', 'Sam, your Prime Barber plan has ended',
     ]);
+  });
+});
+
+describe('not-live reminders use the web personal sender style', () => {
+  const reminders = [iosNotLiveEmail(1, { firstName: 'Sam' }), iosNotLiveEmail(2, { firstName: null })];
+  it('same From, reply-to, tags shape and grey reply-stop P.S. as signupNudgeEmail; no footer, no headers, no links', () => {
+    const web = signupNudgeEmail(1, { email: 'a@b.c', firstName: 'Sam', continueUrl: 'https://x.test/c' });
+    for (const m of reminders) {
+      expect(m.from).toBe(nudgeFrom()); expect(m.from).toMatch(/^Ibrahim from Prime Barber <[^>]+>$/);
+      expect(m.replyTo).toBe(web.replyTo);
+      expect(m.headers).toBeUndefined();
+      expect(m.text).toContain(NUDGE_OPT_OUT); expect(m.text.trimEnd().endsWith(NUDGE_OPT_OUT)).toBe(true);
+      expect(m.html).toContain('<p style="color:#777777;font-size:13px">');
+      expect(m.text).toContain('Ibrahim\nPrime Barber');
+      expect(m.text).not.toContain('You are getting this because');
+      expect(m.text + m.html).not.toMatch(/https?:\/\/|href=|unsubscribe/i);
+    }
+    expect(web.from).toBe(nudgeFrom());
+  });
+  it('From follows WEB_APP_NUDGE_FROM like the web reminders', () => {
+    const prev = process.env.WEB_APP_NUDGE_FROM; process.env.WEB_APP_NUDGE_FROM = 'Someone <hi@example.test>';
+    try { expect(iosNotLiveEmail(1, {}).from).toBe('Ibrahim from Prime Barber <hi@example.test>'); }
+    finally { if (prev === undefined) delete process.env.WEB_APP_NUDGE_FROM; else process.env.WEB_APP_NUDGE_FROM = prev; }
+  });
+  it('welcome and billing mails keep the standard sender', () => {
+    for (const m of [iosWelcomeEmail({}), iosBillingEmail('renewal_failed', {}), iosBillingEmail('expired', {})]) expect((m as any).from).toBeUndefined();
   });
 });
 

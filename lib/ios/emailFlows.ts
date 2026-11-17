@@ -186,7 +186,7 @@ export async function sweepIosNotLive(deps: IosEmailDeps, opts: { deadlineMs?: n
 // ---------- 3. Payment problem / subscription ended (App Store Server Notifications) ----------
 
 export interface SubscriptionNotice { otid: string; type: string; subtype?: string; environment: 'Production' | 'Sandbox'; expiresAt: number | null }
-export type BillingResult = 'off' | 'ignored' | 'sandbox' | 'no_purchase' | 'no_user' | 'suppressed' | 'no_table' | 'duplicate' | 'sent' | 'error';
+export type BillingResult = 'off' | 'ignored' | 'sandbox' | 'no_purchase' | 'no_user' | 'suppressed' | 'no_table' | 'duplicate' | 'sent' | 'error' | 'silent';
 
 /**
  * Once-only key: (original transaction id, kind, billing period) where kind is renewal_failed (DID_FAIL_TO_RENEW with or
@@ -201,7 +201,11 @@ export const billingKeyOf = (n: SubscriptionNotice): BillingKey | null => {
 /** Never throws. */
 export async function onSubscriptionNotice(deps: IosEmailDeps, n: SubscriptionNotice): Promise<BillingResult> {
   const key = billingKeyOf(n);
-  if (!key || !iosEmailOn('IOS_EMAIL_BILLING', deps.env)) return key ? 'off' : 'ignored';
+  if (!key) return 'ignored';
+  // "Plan has ended" goes out only when the plan expired after a failed payment (Apple's EXPIRED subtype BILLING_RETRY).
+  // VOLUNTARY (the barber cancelled), PRICE_INCREASE, PRODUCT_NOT_FOR_SALE and a missing subtype are silent: no read, no write.
+  if (key.kind === 'expired' && n.subtype !== 'BILLING_RETRY') return 'silent';
+  if (!iosEmailOn('IOS_EMAIL_BILLING', deps.env)) return 'off';
   if (n.environment !== 'Production') return 'sandbox';
   let claimed = false;
   try {

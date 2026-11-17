@@ -5,14 +5,13 @@
 // site is already published) and nothing else. Never /api/web-app/continue, never a sign-in link (it would send an iOS
 // customer into the web editor and its Stripe checkout). The app has no documented universal link in this repo, so the
 // text says "open the Prime Barber app" with no link.
-import { esc, firstOf, replyToAddress, type Mail } from '../webApp/emails.js';
+import { esc, firstOf, nudgeFrom, renderNudgeLetter, replyToAddress, type Mail } from '../webApp/emails.js';
 
 export type IosEmailSwitch = 'IOS_EMAIL_WELCOME' | 'IOS_EMAIL_NOT_LIVE' | 'IOS_EMAIL_BILLING';
 /** A switch is ON only when the variable is exactly "1". Read per call so tests and env changes apply. */
 export const iosEmailOn = (name: IosEmailSwitch, env: Record<string, string | undefined> = process.env): boolean => env[name] === '1';
 
 export const IOS_EMAIL_FOOTER = 'You are getting this because you have a Prime Barber plan. Questions? Reply to this email.';
-const OPT_OUT = 'If you would rather not get these reminders, reply "stop" and we will not send them again.';
 
 interface Letter { headline: string; paragraphs: string[]; link?: { label: string; href: string }; footer?: string[]; tag: string }
 
@@ -51,20 +50,18 @@ export function iosWelcomeEmail(i: IosMailInput): Mail {
   });
 }
 
+/**
+ * The two "website isn't live yet" reminders use the same personal sender style as the web's unpaid sign-up reminders
+ * (signupNudgeEmail): From "Ibrahim from Prime Barber <addr>" via nudgeFrom(), the same plain-letter body and grey
+ * reply-"stop" P.S. via renderNudgeLetter(), no footer, no List-Unsubscribe header, no link at all.
+ */
 export function iosNotLiveEmail(step: 1 | 2, i: IosMailInput): Mail {
   const first = firstOf(i.firstName);
-  if (step === 1) {
-    return letter(withName(first, "your website isn't live yet"), {
-      headline: "Your website isn't live yet", tag: 'ios_not_live_1',
-      paragraphs: [hi(first), 'Your Prime Barber account is ready, but your website has not gone live yet. Open the Prime Barber app and tap Publish website to put it online.', 'If something got in the way, reply to this email and tell us. We read every reply.'],
-      footer: [OPT_OUT],
-    });
-  }
-  return letter(withName(first, 'your website is still waiting'), {
-    headline: 'Your website is still not live', tag: 'ios_not_live_2',
-    paragraphs: [hi(first), 'Just checking in. Your Prime Barber website has not gone live yet, and it is quick to finish. Open the Prime Barber app and tap Publish website.', 'If you got stuck, reply to this email and we will help you get it online.'],
-    footer: [OPT_OUT],
-  });
+  const [subject, paragraphs, closing] = step === 1
+    ? [withName(first, "your website isn't live yet"), [hi(first), 'Your Prime Barber account is ready, but your website has not gone live yet. Open the Prime Barber app and tap Publish website to put it online.'], ['If something got in the way, just reply and let me know. I read every reply.']] as const
+    : [withName(first, 'your website is still waiting'), [hi(first), 'Just checking in. Your Prime Barber website has not gone live yet, and it is quick to finish. Open the Prime Barber app and tap Publish website.'], ['If you got stuck, reply and tell me, and I will help you get it online.']] as const;
+  const { html, text } = renderNudgeLetter({ paragraphs: [...paragraphs], closing: [...closing] });
+  return { subject, html, text, replyTo: replyToAddress(), from: nudgeFrom(), tags: [{ name: 'kind', value: `ios_not_live_${step}` }] };
 }
 
 export type BillingKind = 'renewal_failed' | 'expired';
