@@ -9,7 +9,7 @@ import { markSiteOffline, suspendWork } from './reliability.js';
 // An account with iOS purchases too is handled by the unchanged iOS parts. Flag: WEB_APP_ENTITLEMENTS.
 import { liveDeleteDeps, type DeleteAccountDeps } from '../ios/deleteAccount.js';
 import { liveRemoveDeps } from '../ios/removeSiteLive.js';
-import { purge, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
+import { purge, purgeOffline, safeTakeOfflineOn, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
 import { WEB_APP_TAG, isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { forgetSession, storedSessionId } from './checkoutSessions.js';
@@ -123,7 +123,8 @@ export async function removeWebSitesOf(userId: string): Promise<number> {
   const deps = liveWebDeleteDeps();
   const sites = (await deps.listSites(userId)).filter(isWebSite);
   for (const s of sites) await deps.takeDown(s);
-  for (const s of sites) await deps.purge(s);
+  if (safeTakeOfflineOn()) { const rm = liveRemoveDeps(); for (const s of sites) await purgeOffline(s, rm); } // keeps the stored copy
+  else for (const s of sites) await deps.purge(s);
   await markSiteOffline(userId);
   return sites.length;
 }
