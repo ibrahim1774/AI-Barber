@@ -329,7 +329,7 @@ describe('what the app is told about a refused tie (accountEmail, blockedPurchas
       vi.stubEnv('ONE_SITE_GUARD', '1');
       const on: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, mk());
       expect(on.status).toBe(200);
-      expect(on.body.blockedPurchase).toEqual({ reason: 'other-apple-id', accountEmail: 'me@example.com' });
+      expect(on.body.blockedPurchase).toEqual({ reason: 'other-apple-id', originalTransactionId: OTID, accountEmail: 'me@example.com' });
       for (const v of ['alert', '']) {
         vi.stubEnv('ONE_SITE_GUARD', v);
         const off: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, mk());
@@ -367,7 +367,7 @@ describe('what the app is told about a refused tie (accountEmail, blockedPurchas
     expect(r.body).toEqual({ error: 'account-has-site', slug: '', reason: 'web-account', accountEmail: 'me@example.com', planLive: false });
     vi.stubEnv('ONE_SITE_GUARD', '1');
     const pr: any = await refreshPlan('Bearer x', { transactionId: '2000000555' }, planDeps(true, t));
-    expect(pr.body.blockedPurchase).toEqual({ reason: 'web-account', accountEmail: 'me@example.com', planLive: false });
+    expect(pr.body.blockedPurchase).toEqual({ reason: 'web-account', originalTransactionId: OTID, accountEmail: 'me@example.com', planLive: false });
     const none: any = await pub(iosPublish([{ ...base }], tieOf(refuse())).deps);
     expect('planLive' in none.body).toBe(false);
   });
