@@ -4,8 +4,8 @@
 // LINKS: a port of the app's linksToSend -> resolveLinks -> stripLapsedLinks (~/abi-next/src/lib/bookingChoice.ts 122-198, src/lib/tierLinks.ts 13-31),
 // over what the server knows (plan, shop, store switch) instead of the phone's entitlements and shop context.
 //   - Choice inputs (bookingChoice.ts bookingPrefs 36-45): the 1.2 app sends `bookingChoice` ('own' | 'aibarber' | 'call', the app's BookingChoice type, line 16)
-//     and `ownBookingUrl` in the drafted publish body. Both are validated here (fixed list; http(s) only, at most 2048 characters, no spaces, not an
-//     aibarber.org or primebarber.org host). With them: own = the stored own link, else a non-AI-Barber link in the draft (deriveOwn 31-36);
+//     and `ownBookingUrl` in the drafted publish body. Both are validated here (fixed list, an invalid choice is a 400; an own link that is not http(s), has credentials, is over 2048 characters or has spaces, or is an
+//     aibarber.org or primebarber.org host, is dropped as if none and logged). With them: own = the stored own link, else a non-AI-Barber link in the draft (deriveOwn 31-36);
 //     choice = the sent one, else the app's default (an AI Barber link in the draft means aibarber, an own link means own, else aibarber); 'call' keeps
 //     no Book button; a choice other than call with no own link is aibarber (bookingPrefs 44).
 //   - With NEITHER field sent (a client that does not know them): today's derive-from-draft behaviour: no Book link in the draft = no button, the built-in
@@ -37,7 +37,18 @@ export interface BookingInputs { bookingChoice?: BookingChoice; ownBookingUrl?: 
 const APP_BOOKING = /^(https?:\/\/)?([a-z0-9-]+\.)*(?:aibarber|primebarber)\.org\/book(?=[/?#]|$)/i;
 export const isAiBarberBook = (url: unknown): boolean => typeof url === 'string' && (APP_BOOKING.test(url.trim()) || isAiBarberBookingLink(url));
 
-/** Validated booking inputs from a publish body. THROWS {status:400} on an invalid value; absent fields give an empty object. */
+/** http(s) only, at most 2048 characters, no spaces, no username or password, not an aibarber.org or primebarber.org host or booking page. Returns the normalised href, or null. */
+function cleanOwnUrl(v: unknown): string | null {
+  const u = typeof v === 'string' ? v.trim() : '';
+  if (!u || u.length > 2048 || /\s/.test(u) || !/^https?:\/\//i.test(u)) return null;
+  let url: URL;
+  try { url = new URL(u); } catch { return null; }
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password || !host || /(^|\.)(aibarber|primebarber)\.org$/.test(host) || isAiBarberBook(url.href)) return null;
+  return url.href;
+}
+
+/** Validated booking inputs from a publish body. An invalid `bookingChoice` THROWS {status:400}; an invalid `ownBookingUrl` is dropped; absent fields give an empty object. */
 export function bookingInputsFrom(body: unknown): BookingInputs {
   const o = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const out: BookingInputs = {};
@@ -46,13 +57,9 @@ export function bookingInputsFrom(body: unknown): BookingInputs {
     out.bookingChoice = o.bookingChoice as BookingChoice;
   }
   if (o.ownBookingUrl !== undefined && o.ownBookingUrl !== null && o.ownBookingUrl !== '') {
-    const u = typeof o.ownBookingUrl === 'string' ? o.ownBookingUrl.trim() : '';
-    let host = '';
-    try { host = new URL(u).hostname.toLowerCase().replace(/\.$/, ''); } catch { /* invalid below */ }
-    if (!u || u.length > 2048 || /\s/.test(u) || !/^https?:\/\//i.test(u) || !host || /(^|\.)(aibarber|primebarber)\.org$/.test(host) || isAiBarberBook(u)) {
-      throw Object.assign(new Error('invalid_booking_fields'), { status: 400 });
-    }
-    out.ownBookingUrl = u;
+    // An unusable own link is dropped (treated as none, logged); it never fails the whole publish. Stored as the normalised href.
+    const href = cleanOwnUrl(o.ownBookingUrl);
+    if (href) out.ownBookingUrl = href; else console.warn('[native publish] ownBookingUrl ignored: not a usable own booking link');
   }
   return out;
 }
@@ -86,7 +93,7 @@ export function linksForNative(data: { bookingUrl?: unknown; shopUrl?: unknown }
   let shop: string | null = null;
   if (!f.hosting) {
     // Not confirmable: the built-in link is dropped to the own link, the Shop link is dropped.
-    book = choice === 'call' ? null : choice === 'aibarber' ? own : own;
+    book = choice === 'call' ? null : own;
   } else {
     book = choice === 'call' ? null : choice === 'aibarber' && schedulerLive ? '/book' : own; // resolveLinks
     if (f.store && f.shop && f.shop.storeEnabled) shop = '/shop';
@@ -185,7 +192,9 @@ export function liveNativeFactsDeps(): NativeFactsDeps {
       return r ? { id: r.id, bookingsEnabled: !!r.bookings_enabled, storeEnabled: !!r.store_enabled } : null;
     },
     async profileLive() {
-      try { await rest('ab_members?select=title,booking_url&limit=1'); return true; } catch (e: any) { if (e?.status === 400 || e?.status === 404) return false; throw e; }
+      // The same check the app and setup use (migration 015 live): lib/bookings/repo.ts memberProfileLive.
+      const { serviceClient, supabaseBookingRepo } = await import('../bookings/repo.js');
+      return supabaseBookingRepo(serviceClient()).memberProfileLive();
     },
     async members(shopId, profileLive) {
       const cols = `id,display_name,photo_url,bio,active${profileLive ? ',title,booking_url' : ''}`;

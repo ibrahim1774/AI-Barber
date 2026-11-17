@@ -22,7 +22,11 @@ export interface KeptStore {
   expire(nowIso: string, env?: string): Promise<void>;
 }
 
-/** Is the kept-copy feature in use at all? The endpoint's own gate (WEB_APP_CHECKOUT and WEB_APP_RELIABILITY) AND a rollout switch that is not off
+/**
+ * KNOWN LIMIT (deliberate): after a rollback that turns ACCOUNT_DRAFTS_IOS off, kept copies that already exist are no longer expired, so they MAY OUTLIVE 90
+ * DAYS until the switch is turned on again (or support deletes them). The alternative needs a probe of the table (a claim plus a read) every day even
+ * when the feature was never used, and "does nothing at all while unused" was the stronger requirement. Turning the switch back on resumes the expiry.
+ * Is the kept-copy feature in use at all? The endpoint's own gate (WEB_APP_CHECKOUT and WEB_APP_RELIABILITY) AND a rollout switch that is not off
  *  (ACCOUNT_DRAFTS_IOS allowlist or all, because only account-mode callers may store a copy). The daily expiry runs only then. */
 export function keptCopiesInUse(env: Record<string, string | undefined> = process.env): boolean {
   return env.WEB_APP_CHECKOUT === '1' && env.WEB_APP_RELIABILITY === '1' && (env.ACCOUNT_DRAFTS_IOS === 'all' || env.ACCOUNT_DRAFTS_IOS === 'allowlist');

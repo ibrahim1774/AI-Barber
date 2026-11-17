@@ -88,12 +88,14 @@ describe('native callers on the web publish', () => {
     await call(webPublish, {}, drafted);
     expect(st.prepare[0][5]).toEqual(drafted.siteData);
   });
-  it('a native call with no draft id never reaches runWebPublish: 409 use-drafted-publish (reliability on or off)', async () => {
-    for (const rel of ['1', '']) {
-      setEnv({ WEB_APP_RELIABILITY: rel, ACCOUNT_DRAFTS_IOS: 'all' });
-      const r = await call(webPublish, HDR, { siteData });
-      expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'use-drafted-publish' });
-    }
+  it('a native call with no draft id never reaches runWebPublish: 409 use-drafted-publish with the draft engine on, 503 with it off', async () => {
+    setEnv({ WEB_APP_RELIABILITY: '1', ACCOUNT_DRAFTS_IOS: 'all' });
+    const r = await call(webPublish, HDR, { siteData });
+    expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'use-drafted-publish' });
+    setEnv({ WEB_APP_RELIABILITY: '', ACCOUNT_DRAFTS_IOS: 'all' });
+    const off = await call(webPublish, HDR, { siteData });
+    expect(off.code).toBe(503); expect(off.body).toEqual({ error: 'temporarily-unavailable' });
+    expect((await call(webPublish, HDR, drafted)).code).toBe(503);
     expect(st.runWeb).toHaveLength(0);
   });
   it('a stale revision is 409 and nothing is prepared', async () => {

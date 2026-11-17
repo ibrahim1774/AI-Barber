@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { reportBlocked, type BlockedDeps, type BlockedInfo, type Stamp } from '../../lib/account/blocked.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { reportBlocked, resetFallbackAlerts, type BlockedDeps, type BlockedInfo, type Stamp } from '../../lib/account/blocked.js';
 import { blockedPurchaseEmail, OTHER_APPLE_ID_TEXT, WEB_ACCOUNT_TEXT } from '../../lib/account/blockedEmails.js';
 
 const UID = '11111111-1111-4111-8111-111111111111';
@@ -26,6 +26,7 @@ function fakeDeps(o: { missing?: boolean; sendFails?: number; alertFails?: numbe
 }
 
 describe('reportBlocked', () => {
+  beforeEach(() => resetFallbackAlerts());
   it('records, alerts once and emails once per (purchase, account), however many times it is reported', async () => {
     const f = fakeDeps();
     for (let i = 0; i < 4; i++) await reportBlocked(info(), f.deps);
@@ -97,6 +98,14 @@ describe('reportBlocked', () => {
     expect(f.sent).toHaveLength(0);
     expect(f.alerts).toHaveLength(1); // the owner is still told, best effort
     expect(f.alerts[0].lines.join('\n')).toMatch(/no email was sent/);
+  });
+  it('the no-ledger fallback alert is limited to one per account per hour (in memory)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const f = fakeDeps({ missing: true });
+    await reportBlocked(info(), f.deps); await reportBlocked(info({ otid: 'other' }), f.deps);
+    expect(f.alerts).toHaveLength(1);
+    await reportBlocked(info({ uid: '22222222-2222-4222-8222-222222222222' }), f.deps);
+    expect(f.alerts).toHaveLength(2);
   });
   it('an unwritable ledger (not just a missing table) also alerts and never emails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

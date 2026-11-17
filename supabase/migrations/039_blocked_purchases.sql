@@ -5,7 +5,7 @@
 -- (purchase, account) pair even when two requests race; a failed send resets the stamp.
 -- reason: 'web-account' (the account holds a web address), 'other-apple-id' (its address sits on a different purchase),
 -- 'mixed' (it would hold two addresses). A web publish that is refused an address has no purchase: it is recorded with the
--- original_transaction_id 'web-publish'.
+-- original_transaction_id 'web-publish:<the address the account already holds>'.
 -- Additive only: one NEW table. user_id references auth.users on delete cascade. Service role only (RLS on, no policies).
 -- Code behaves as "no ledger" while this table is missing: a refusal still refuses, nothing is emailed, the alert goes to the log.
 begin;

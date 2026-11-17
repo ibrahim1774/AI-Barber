@@ -30,6 +30,7 @@ export function fakeSites(seed: AddressRow[] = [], opts: { missing?: boolean; fa
         if (r.user_id === uid && r.environment === env && !r.published_once && (slug ? r.slug === slug : r.holder === 'web')) rows.splice(i, 1);
       }
     },
+    async touch(uid, env, slug) { guard('touch'); for (const r of rows) if (r.user_id === uid && r.environment === env && r.slug === slug && !r.published_once) r.taken_at = new Date().toISOString(); },
     async held(slug) { guard('held'); return rows.some((r) => r.slug === slug); },
     async cleanup(beforeIso, env) {
       guard('cleanup');

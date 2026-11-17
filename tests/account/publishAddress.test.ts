@@ -42,7 +42,7 @@ function ios(rows: any[], mode: GuardMode, sites: SitesDeps | undefined, over: P
     verify: vi.fn(async () => TX), repo, isTaken: vi.fn(async () => false), writePending: vi.fn(async () => {}),
     publish: vi.fn(async (slug: string) => ({ ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false }) as any),
     readPending: vi.fn(async () => null), userOf: vi.fn(async (t: string) => (t === 'tok' ? { id: USER } : null)),
-    now: () => NOW, guardMode: () => mode, sites, ...over,
+    now: () => NOW, guardMode: () => mode, sites, webPublishInProgress: async () => false, ...over,
   };
   return { db, deps, run: () => runIosPublish({ transactionId: '2000000555', siteData: siteData() } as any, deps, { authorization: 'Bearer tok' }) };
 }
@@ -200,7 +200,7 @@ describe('web publish takes the address', () => {
     expect(t.sites.size).toBe(0);
     expect(t.deps.writePending).not.toHaveBeenCalled();
     expect(f.rows).toHaveLength(1);
-    expect(reportBlocked).toHaveBeenCalledWith(expect.objectContaining({ otid: 'web-publish', reason: 'mixed', email: false }));
+    expect(reportBlocked).toHaveBeenCalledWith(expect.objectContaining({ otid: expect.stringMatching(/^web-publish:/), reason: 'mixed', email: false }));
   });
   it('alert: the same account publishes as today and the row table is unchanged', async () => {
     const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'apple-site', holder: 'apple', published_once: true }]);
@@ -306,5 +306,79 @@ describe('B2: a bound but never published web site still takes its row', () => {
     const t = web({ mode: 'enforce', sites: f.deps, webSites: [unpublished], owners: [owner] });
     expect((await t.run()).status).toBe(200);
     expect(f.rows).toMatchObject([{ slug: 'fresh-cuts', holder: 'web', published_once: true }]);
+  });
+});
+
+// ---------- final pass ----------
+import { tryMarkPublishedOnce } from '../../lib/account/sites.js';
+
+describe('B1 race: an Apple first publish while a web first publish is in progress', () => {
+  const webRow: AddressRow = { user_id: USER, environment: 'Production', slug: 'web-slug', holder: 'web', published_once: false };
+  it('1: refused 409 account-has-site (web-account), the row stays web; the web publish then goes live: one site, one row', async () => {
+    vi.mocked(reportBlocked).mockClear();
+    const f = fakeSites([webRow]);
+    const t = ios([{ ...base }], 'enforce', f.deps, { webPublishInProgress: async () => true });
+    expect(await t.run()).toEqual({ status: 409, body: { error: 'account-has-site', slug: 'web-slug', reason: 'web-account' } });
+    expect(t.db.row(OTID)!.site_slug).toBeNull();
+    await tryMarkPublishedOnce(USER, 'Production', 'web-slug', 'enforce', f.deps, 'web');
+    expect(f.rows).toMatchObject([{ slug: 'web-slug', holder: 'web', published_once: true }]);
+    expect(reportBlocked).not.toHaveBeenCalledWith(expect.objectContaining({ reason: 'mixed' }));
+  });
+  it('alert: the Apple publish goes on as today but the refusal is recorded, so two live sites are never unrecorded', async () => {
+    vi.mocked(reportBlocked).mockClear();
+    const f = fakeSites([webRow]);
+    const t = ios([{ ...base }], 'alert', f.deps, { webPublishInProgress: async () => true });
+    expect((await t.run()).status).toBe(200);
+    await tryMarkPublishedOnce(USER, 'Production', 'web-slug', 'alert', f.deps, 'web');
+    expect(reportBlocked).toHaveBeenCalledWith(expect.objectContaining({ reason: 'web-account', email: false }));
+  });
+  it('the lookup said nothing was in progress, the row was adopted, and the web job still finished: its ensure-take is refused and ALERTS (mixed), in both modes', async () => {
+    for (const mode of ['alert', 'enforce'] as const) {
+      vi.mocked(reportBlocked).mockClear();
+      const f = fakeSites([{ ...webRow }]);
+      const t = ios([{ ...base }], mode, f.deps, { webPublishInProgress: async () => false });
+      expect((await t.run()).status).toBe(200);
+      expect(f.rows).toMatchObject([{ holder: 'apple' }]);
+      await tryMarkPublishedOnce(USER, 'Production', 'web-slug', mode, f.deps, 'web');
+      expect(reportBlocked).toHaveBeenCalledWith(expect.objectContaining({ reason: 'mixed', email: false, uid: USER }));
+      expect(f.rows).toHaveLength(1);
+    }
+  });
+  it('an unreadable in-progress lookup counts as in progress (nothing released)', async () => {
+    const f = fakeSites([webRow]);
+    const t = ios([{ ...base }], 'enforce', f.deps, { webPublishInProgress: undefined });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await t.run()).status).toBe(409); // the live lookup cannot reach a database here
+    expect(f.rows).toMatchObject([{ holder: 'web' }]);
+  });
+});
+
+describe('B3b age and lookup failure', () => {
+  it('a FRESH unbound Apple row (under 5 minutes) is not adopted: two simultaneous requests cannot release each other\'s row', async () => {
+    const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'fresh-row', holder: 'apple', published_once: false, taken_at: new Date().toISOString() }]);
+    expect((await ios([{ ...base }], 'enforce', f.deps).run()).status).toBe(409);
+    expect(f.rows[0].slug).toBe('fresh-row');
+  });
+  it('a failed purchase lookup is 503 in 1 (not a 409 other-apple-id record) and not adoptable in alert', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(reportBlocked).mockClear();
+    const seed = { user_id: USER, environment: 'Production' as const, slug: 'stale', holder: 'apple' as const, published_once: false };
+    const e = ios([{ ...base }], 'enforce', fakeSites([seed]).deps);
+    e.deps.repo.findBySlug = async () => { throw new Error('db'); };
+    expect((await e.run()).status).toBe(503);
+    expect(reportBlocked).not.toHaveBeenCalled();
+    const a = ios([{ ...base }], 'alert', fakeSites([seed]).deps);
+    a.deps.repo.findBySlug = async () => { throw new Error('db'); };
+    expect((await a.run()).status).toBe(200);
+  });
+});
+
+describe('B2 re-take refreshes taken_at', () => {
+  it('a retried first web publish keeps its row young', async () => {
+    const old = new Date(Date.now() - 23 * 3600_000).toISOString();
+    const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'fresh-cuts', holder: 'web', published_once: false, taken_at: old }]);
+    const t = web({ mode: 'enforce', sites: f.deps, webSites: [{ slug: 'fresh-cuts', stripe_subscription_id: 'sub_1', user_id: USER, environment: 'live', published_at: null, taken_down_at: null, removed_at: null }], owners: [{ slug: 'fresh-cuts', user_id: USER, claim_email: null, owner_email: 'o@e.co', source: 'checkout', checkout_session_id: 'webapp:sub_1' }], outcome: { ok: false, siteId: 'x', reason: 'deploy-failed' } });
+    expect((await t.run()).status).toBe(502);
+    expect(Date.parse(f.rows[0].taken_at!)).toBeGreaterThan(Date.parse(old) + 3600_000);
   });
 });

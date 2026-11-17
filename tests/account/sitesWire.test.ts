@@ -60,3 +60,68 @@ describe('liveSitesDeps wire behaviour', () => {
     ]);
   });
 });
+
+// A small PostgREST over arrays: eq., lt., not.is.null filters, order, limit, offset, GET/PATCH/DELETE. Records every request.
+function pg(tables: Record<string, any[]>) {
+  const log: { method: string; table: string; query: string }[] = [];
+  vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+    const u = new URL(url); const table = u.pathname.split('/rest/v1/')[1]; const method = init?.method ?? 'GET';
+    log.push({ method, table, query: decodeURIComponent(u.search.slice(1)) });
+    const body = init?.body ? JSON.parse(init.body) : undefined;
+    let rows = tables[table] ?? [];
+    const keep = (r: any) => [...u.searchParams.entries()].every(([k, v]) => {
+      if (['select', 'order', 'limit', 'offset'].includes(k)) return true;
+      if (v.startsWith('eq.')) return String(r[k]) === v.slice(3) || (v === 'eq.false' && r[k] === false);
+      if (v.startsWith('lt.')) return String(r[k]) < v.slice(3);
+      if (v === 'not.is.null') return r[k] != null;
+      return true;
+    });
+    let hit = rows.filter(keep);
+    if (method === 'DELETE') { tables[table] = rows.filter((r) => !keep(r)); return new Response('[]', { status: 200 }); }
+    if (method === 'PATCH') { for (const r of hit) Object.assign(r, body); return new Response('[]', { status: 200 }); }
+    const ord = u.searchParams.get('order'); if (ord) { const [c] = ord.split('.'); hit = [...hit].sort((a, b) => (a[c] < b[c] ? -1 : 1)); }
+    const off = Number(u.searchParams.get('offset') ?? 0); const lim = Number(u.searchParams.get('limit') ?? 1000);
+    return new Response(JSON.stringify(hit.slice(off, off + lim)), { status: 200 });
+  }));
+  return { tables, log };
+}
+const OLD = '2026-11-01T00:00:00.000Z';
+const BEFORE = '2026-11-17T00:00:00.000Z';
+const row = (slug: string, holder: 'web' | 'apple', over: any = {}) => ({ user_id: `u-${slug}`, environment: 'Production', slug, holder, published_once: false, taken_at: OLD, ...over });
+
+describe('liveSitesDeps().cleanup over the wire', () => {
+  it('reads each candidate, deletes only the stale ones with the published_once=false guard, heals a live web row, keeps a bound Apple row, and respects the environment', async () => {
+    const t = pg({
+      account_sites: [row('stale-web', 'web'), row('live-web', 'web'), row('bound-apple', 'apple'), row('stale-apple', 'apple'), row('sbx', 'web', { environment: 'Sandbox' }), row('fresh', 'web', { taken_at: '2026-11-17T12:00:00.000Z' }), row('done', 'web', { published_once: true })],
+      web_app_sites: [{ slug: 'live-web', published_at: '2026-11-02T00:00:00Z' }],
+      ios_purchases: [{ site_slug: 'bound-apple', original_transaction_id: 'o1' }],
+    });
+    const n = await liveSitesDeps().cleanup(BEFORE, 'Production');
+    expect(n).toBe(2);
+    expect(t.tables.account_sites.map((r) => r.slug).sort()).toEqual(['bound-apple', 'done', 'fresh', 'live-web', 'sbx']);
+    expect(t.tables.account_sites.find((r) => r.slug === 'live-web').published_once).toBe(true); // healed
+    const deletes = t.log.filter((l) => l.method === 'DELETE').map((l) => l.query);
+    expect(deletes).toHaveLength(2);
+    expect(deletes.every((q) => q.includes('published_once=eq.false'))).toBe(true);
+    expect(t.log.find((l) => l.method === 'GET' && l.table === 'account_sites')!.query).toMatch(/environment=eq\.Production.*order=taken_at\.asc.*limit=100/);
+    expect(t.log.some((l) => l.table === 'web_app_sites' && l.query.includes('slug=eq.stale-web') && l.query.includes('published_at=not.is.null'))).toBe(true);
+    expect(t.log.some((l) => l.table === 'ios_purchases' && l.query.includes('site_slug=eq.stale-apple'))).toBe(true);
+  });
+  it('kept rows do not starve the rest: with more than a page of bound Apple rows first, later stale rows are still cleaned', async () => {
+    const kept = Array.from({ length: 120 }, (_, i) => row(`bound-${i}`, 'apple', { taken_at: `2026-10-01T00:${String(i % 60).padStart(2, '0')}:00.000Z` }));
+    const t = pg({
+      account_sites: [...kept, row('late-stale', 'web', { taken_at: '2026-11-10T00:00:00.000Z' })],
+      web_app_sites: [], ios_purchases: kept.map((k) => ({ site_slug: k.slug, original_transaction_id: k.slug })),
+    });
+    expect(await liveSitesDeps().cleanup(BEFORE, 'Production')).toBe(1);
+    expect(t.tables.account_sites).toHaveLength(120);
+    const pages = t.log.filter((l) => l.method === 'GET' && l.table === 'account_sites').map((l) => /offset=(\d+)/.exec(l.query)![1]);
+    expect(pages).toEqual(['0', '100']); // the second page starts past the 100 kept rows
+  });
+  it('stops at its time budget', async () => {
+    const t = pg({ account_sites: Array.from({ length: 150 }, (_, i) => row(`s${i}`, 'web')), web_app_sites: [] });
+    expect(await liveSitesDeps().cleanup(BEFORE, 'Production', 0)).toBe(0);
+    expect(t.tables.account_sites).toHaveLength(150);
+  });
+});

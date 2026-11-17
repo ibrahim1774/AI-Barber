@@ -30,7 +30,7 @@ import { entitlementOrFree, isFreeSubscriptionId } from './priceGroup.js';
 import { savedPhoneState } from './contactPhoneLive.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
-import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
+import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, tryTouch, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
 import { kindEnvOf } from '../account/kind.js';
 import { reportBlocked } from '../account/blocked.js';
 
@@ -246,8 +246,9 @@ export async function runWebPublish(
       if (mode !== 'off' && !existing.published_at) {
         const again = await tryTake(caller.id, addrEnv, slug, 'web', mode, deps.siteAddresses);
         if (again.kind === 'unavailable') return unavailable;
+        if (again.kind === 'ok' && !again.created) await tryTouch(caller.id, addrEnv, slug, mode, deps.siteAddresses);
         if (again.kind === 'refused' && again.existing && again.existing.holder !== 'web') {
-          await reportBlocked({ otid: 'web-publish', uid: caller.id, reason: 'mixed', slug: again.existing.slug, environment: null, email: false, where: 'web-app/publish address (retry)' });
+          await reportBlocked({ otid: `web-publish:${again.existing.slug}`, uid: caller.id, reason: 'mixed', slug: again.existing.slug, environment: null, email: false, where: 'web-app/publish address (retry)' });
           if (mode === 'enforce') return { status: 409, body: { error: 'slug-owned', reason: 'account-has-site' } };
         }
       }
@@ -272,7 +273,7 @@ export async function runWebPublish(
             else if (!took.existing) { if (mode === 'enforce') { console.warn(`[web-app/publish] ${candidate} is held by another account's address row; choosing again`); continue; } }
             else {
               // The account holds an Apple address (or no address of this kind): never a second site. Recorded and alerted once; refused only when enforcing.
-              await reportBlocked({ otid: 'web-publish', uid: caller.id, reason: 'mixed', slug: took.existing.slug, environment: null, email: false, where: 'web-app/publish address' });
+              await reportBlocked({ otid: `web-publish:${took.existing.slug}`, uid: caller.id, reason: 'mixed', slug: took.existing.slug, environment: null, email: false, where: 'web-app/publish address' });
               // The web client does not know a new code for this 409 (only the iOS flows read account-has-site), so slug-owned stays and `reason` says why.
               if (mode === 'enforce') return { status: 409, body: { error: 'slug-owned', reason: 'account-has-site' } };
             }

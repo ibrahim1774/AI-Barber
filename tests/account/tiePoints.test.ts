@@ -288,4 +288,13 @@ describe('transfer (lib/ios/transfer.ts, the unlinked link and the confirmed mov
     expect(await go(deps)).toEqual({ status: 200, body: { moved: false, linked: true } });
     expect(db.row(OTID)!.user_id).toBe(A);
   });
+  it('GATE_ANY_SOURCE kind lookups use the purchase\'s own environment, never the Stripe key (B6)', async () => {
+    vi.stubEnv('GATE_ANY_SOURCE', '1');
+    const kindOf = vi.fn(async () => ({ kind: 'neither' as const, holdsWebAddress: false, holdsAppleAddress: false }));
+    const { db, deps } = setup([{ ...base }], tieOf({ action: 'allow' }));
+    expect(await go({ ...deps, kindOf })).toEqual({ status: 200, body: { moved: false, linked: true } });
+    expect(kindOf).toHaveBeenCalledWith(A, 'Production');
+    expect(db.row(OTID)!.user_id).toBe(A);
+    vi.unstubAllEnvs();
+  });
 });

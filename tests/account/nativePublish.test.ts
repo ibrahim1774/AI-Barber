@@ -11,12 +11,15 @@ describe('isAiBarberBook (the app\'s isAiBarberBookingUrl, web build)', () => {
 });
 
 describe('bookingInputsFrom', () => {
-  it('absent fields give nothing; valid ones pass; invalid ones are 400', () => {
+  it('absent fields give nothing; valid ones pass (normalised); an invalid choice is a 400', () => {
     expect(bookingInputsFrom({})).toEqual({});
     expect(bookingInputsFrom({ bookingChoice: 'aibarber', ownBookingUrl: ' https://booksy.com/x ' })).toEqual({ bookingChoice: 'aibarber', ownBookingUrl: 'https://booksy.com/x' });
-    for (const bad of [{ bookingChoice: 'built-in' }, { bookingChoice: 5 }, { ownBookingUrl: 'ftp://x.com' }, { ownBookingUrl: 'javascript:alert(1)' }, { ownBookingUrl: 'https://x.com/a b' },
-      { ownBookingUrl: 'https://www.primebarber.org/book' }, { ownBookingUrl: 'https://primebarber.org/x' }, { ownBookingUrl: 'https://www.aibarber.org/' }, { ownBookingUrl: `https://x.com/${'a'.repeat(2100)}` }]) {
-      expect(() => bookingInputsFrom(bad), JSON.stringify(bad)).toThrow();
+    expect(bookingInputsFrom({ ownBookingUrl: 'https://BOOKSY.com' }).ownBookingUrl).toBe('https://booksy.com/');
+    for (const bad of [{ bookingChoice: 'built-in' }, { bookingChoice: 5 }]) expect(() => bookingInputsFrom(bad), JSON.stringify(bad)).toThrow();
+  });
+  it('an unusable own link is dropped, never a 400: not http(s), credentials, spaces, brand hosts, too long', () => {
+    for (const bad of ['ftp://x.com', 'javascript:alert(1)', 'https://x.com/a b', 'https://user:pw@x.com/', 'https://u@x.com/', 'https://www.primebarber.org/book', 'https://primebarber.org/x', 'https://www.aibarber.org/', `https://x.com/${'a'.repeat(2100)}`, 'x']) {
+      expect(bookingInputsFrom({ bookingChoice: 'own', ownBookingUrl: bad }), bad).toEqual({ bookingChoice: 'own' });
     }
   });
 });

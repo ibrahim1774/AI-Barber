@@ -29,6 +29,7 @@ vi.mock('../../lib/account/plan.js', () => ({
   defaultKindEnv: () => 'Sandbox',
   accountPlan: async () => ({ active: true, tier: st.store ? 'store' : st.bookings ? 'bookings' : 'website' }),
 }));
+vi.mock('../../lib/bookings/repo.js', () => ({ serviceClient: () => ({}), supabaseBookingRepo: () => ({ memberProfileLive: async () => true }) }));
 vi.mock('../../lib/account/kind.js', async (orig) => ({ ...(await orig<typeof import('../../lib/account/kind.js')>()), accountKind: async () => 'web' }));
 
 import handler from '../../api/web-app/publish.js';
@@ -70,9 +71,16 @@ describe('native drafted publish, real nativePublication', () => {
   });
   it('invalid booking fields are 400 and nothing is prepared; no draft id is 409; a stale revision is 409', async () => {
     expect((await send({ draftId: 'd1', revision: 2, bookingChoice: 'built-in' })).code).toBe(400);
-    expect((await send({ draftId: 'd1', revision: 2, ownBookingUrl: 'https://www.primebarber.org/book' })).code).toBe(400);
     expect((await send({ siteData: { shopName: 'phone' } })).code).toBe(409);
     expect((await send({ draftId: 'd1', revision: 1 })).code).toBe(409);
     expect(st.prepare).toHaveLength(0);
+  });
+  it('an unusable own link is dropped (as none), the publish goes on', async () => {
+    st.bookings = false; st.store = false;
+    for (const bad of ['https://www.primebarber.org/book', 'https://user:pw@booksy.com/x', 'ftp://x.com', 'not a url']) {
+      st.prepare = [];
+      expect((await send({ draftId: 'd1', revision: 2, bookingChoice: 'aibarber', ownBookingUrl: bad })).code, bad).toBe(200);
+      expect(pub().bookingUrl, bad).toBeUndefined();
+    }
   });
 });

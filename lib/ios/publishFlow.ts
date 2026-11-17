@@ -28,6 +28,7 @@ import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from '.
 import { liveTie, type TieCheck } from '../account/mayTake.js';
 import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
 import { reportBlocked } from '../account/blocked.js';
+import { webPublishInProgress } from '../account/webInflight.js';
 import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
@@ -135,6 +136,8 @@ export interface PublishDeps {
   guardMode?: () => GuardMode;
   /** ONE_SITE_GUARD (tests): the address table. Absent: the live one. */
   sites?: SitesDeps;
+  /** ONE_SITE_GUARD (tests): is a web publish in progress for the account? Absent: the live lookup (lib/account/webInflight.ts). */
+  webPublishInProgress?(uid: string, env: 'Production' | 'Sandbox'): Promise<boolean>;
   /**
    * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
    * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
@@ -399,11 +402,27 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         if (caller && mode !== 'off') {
           let took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
           if (took.kind === 'refused' && took.existing && !took.existing.published_once) {
-            // This account's own UNPUBLISHED row never blocks its Apple first publish: a web row left by a failed first publish (B1), or an Apple row bound to
-            // no purchase (B3b). A concurrent request for THIS purchase (its slug is bound to this purchase) is handled just below, not here.
+            // This account's own UNPUBLISHED row. It is released and re-taken (adopted) only when that is safe:
+            //  - a WEB row (a failed first web publish, B1): only when no web publish is in progress that could still finish and claim it. In progress =
+            //    refused below like any other address (1: 409 account-has-site, reason web-account; the barber retries after the web publish settles, or it
+            //    gave up and released the row; alert: recorded, the publish goes on as today). An unreadable lookup counts as in progress.
+            //  - an APPLE row bound to no purchase (B3b): only when it is older than 5 minutes (two simultaneous requests for one purchase must not release
+            //    each other's fresh row). A failed purchase lookup is unavailable (503) in 1, not adoptable in alert.
             const ex = took.existing;
-            const bytes = ex.holder === 'apple' ? await deps.repo.findBySlug?.(ex.slug).catch(() => undefined) : null;
-            if (ex.holder === 'web' || (ex.holder === 'apple' && bytes === null)) {
+            let adopt = false;
+            if (ex.holder === 'web') {
+              adopt = !(await (deps.webPublishInProgress ?? webPublishInProgress)(caller, tx.environment));
+            } else {
+              let bound: unknown;
+              try { bound = await deps.repo.findBySlug?.(ex.slug); }
+              catch (e: any) {
+                console.error(`[ios/publish] ${otid}: purchase lookup for an unbound address row failed:`, e?.message || e);
+                if (mode === 'enforce') return unavailable;
+                bound = undefined;
+              }
+              adopt = bound === null && !!ex.taken_at && Date.now() - Date.parse(ex.taken_at) > 5 * 60_000;
+            }
+            if (adopt) {
               await tryRelease(caller, tx.environment, ex.slug, mode, deps.sites);
               took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
             }

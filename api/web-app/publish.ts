@@ -35,6 +35,8 @@ export default async function handler(req: any, res: any) {
     if (native) {
       const who = await callerFrom(req.headers?.authorization);
       if (who) { const gate = await nativeModeGate(req, who.id); if (gate) return res.status(gate.status).json(gate.body); }
+      // The draft engine is off: a native caller has nothing to publish through (503, explicitly), and never reaches runWebPublish with the phone's own siteData.
+      if (!reliabilityOn()) return res.status(503).json({ error: 'temporarily-unavailable' });
       // A native caller never publishes the phone's own siteData through the browser path: it must name a saved draft revision.
       if (!drafted) return res.status(409).json({ error: 'use-drafted-publish' });
     }

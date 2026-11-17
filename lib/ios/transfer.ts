@@ -47,7 +47,7 @@ export interface TransferDeps {
   /** The caller's own shop, if any (ab_shops has one row per owner). */
   shopOf?(userId: string): Promise<{ id: string; ios_otid: string | null } | null>;
   /** GATE_ANY_SOURCE only: an account's kind reading (lib/account/kind.ts). Absent: no kind refusal. Throws -> fail closed (503). */
-  kindOf?(userId: string): Promise<{ kind: 'web' | 'apple' | 'mixed' | 'neither'; holdsWebAddress: boolean; holdsAppleAddress: boolean }>;
+  kindOf?(userId: string, env: 'Production' | 'Sandbox'): Promise<{ kind: 'web' | 'apple' | 'mixed' | 'neither'; holdsWebAddress: boolean; holdsAppleAddress: boolean }>;
   /** ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the purchase is linked or moved to the caller. Absent or off: today's behaviour. */
   tie?: TieCheck;
   /** Move intents (ab_events): recorded BEFORE the CAS; a retry finishes a move only when one exists. */
@@ -193,7 +193,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   // checks below, exactly as before. Off: never called.
   const webBlock = async (account: string): Promise<boolean> => {
     if (process.env.GATE_ANY_SOURCE !== '1' || !deps.kindOf) return false;
-    const r = await deps.kindOf(account);
+    const r = await deps.kindOf(account, tx.environment); // the purchase's own environment (as mayTake and tryTake), never the Stripe key's
     return r.kind === 'web' || r.kind === 'mixed';
   };
   // ONE_SITE_GUARD. The plan gives no body for transfer, so the existing ones are reused (decision, flagged in the report): a web or mixed

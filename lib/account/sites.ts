@@ -17,6 +17,7 @@
 // `holder` 'web' rows are the only ones ever released or cleaned up: a bound iOS slug is permanent even if never published.
 import { sbRest } from '../webApp/webAppServer.js';
 import { alertOwner } from '../webApp/emails.js';
+import { reportBlocked } from './blocked.js';
 import { kindEnvOf, type KindEnv, type StripeMode } from './kind.js';
 
 export type GuardMode = 'off' | 'alert' | 'enforce';
@@ -52,7 +53,9 @@ export interface SitesDeps {
    * is published (web_app_sites.published_at; such a row is healed to published_once=true instead). An APPLE row goes only when its slug is bound to
    * no ios_purchases row. Returns how many were deleted.
    */
-  cleanup(beforeIso: string, env?: KindEnv): Promise<number>;
+  cleanup(beforeIso: string, env?: KindEnv, budgetMs?: number): Promise<number>;
+  /** Refresh taken_at (a retried first publish re-takes its row: the 24 hour clock starts again). */
+  touch(uid: string, env: KindEnv, slug: string): Promise<void>;
   /** Re-point the row of (from, slug, holder apple) to `to`. */
   move(from: string, to: string, slug: string): Promise<void>;
   /** Is this slug held by any account's row? */
@@ -104,8 +107,8 @@ export async function releaseUnpublished(uid: string, env: KindEnv, opts: { slug
 
 /** The daily clean-up: unpublished web rows older than 24 hours. */
 export const UNPUBLISHED_TTL_MS = 24 * 3600_000;
-export async function cleanupUnpublished(now: number, deps: SitesDeps = liveSitesDeps(), env?: KindEnv): Promise<number> {
-  return deps.cleanup(new Date(now - UNPUBLISHED_TTL_MS).toISOString(), env);
+export async function cleanupUnpublished(now: number, deps: SitesDeps = liveSitesDeps(), env?: KindEnv, budgetMs?: number): Promise<number> {
+  return deps.cleanup(new Date(now - UNPUBLISHED_TTL_MS).toISOString(), env, budgetMs);
 }
 
 /**
@@ -156,6 +159,12 @@ export async function tryRelease(uid: string, env: KindEnv, slug: string, mode: 
   try { await releaseUnpublished(uid, env, { slug }, deps); } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] release failed:', e?.status ?? e?.message ?? e); }
 }
 
+/** A retried first publish keeps its row: refresh taken_at so the 24 hour clean-up clock starts again. Best effort, never throws, no-op with the guard off. */
+export async function tryTouch(uid: string, env: KindEnv, slug: string, mode: GuardMode = guardMode(), deps: SitesDeps = liveSitesDeps()): Promise<void> {
+  if (mode === 'off') return;
+  try { await deps.touch(uid, env, slug); } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] touch failed:', e?.status ?? e?.message ?? e); }
+}
+
 /**
  * Best effort, never throws, no-op with the guard off. With `ensure` (web): the live site must have its row, so the row is taken first when
  * a concurrent request released it (a refusal there is ignored; the row of a live site is never removed by a cleaner).
@@ -169,6 +178,11 @@ export async function tryMarkPublishedOnce(uid: string, env: KindEnv, slug: stri
     if (ensure) {
       const again = await takeAddress(uid, env, slug, ensure, deps);
       if (again.status === 'ok' && again.created) await markPublishedOnce(uid, env, slug, deps);
+      // A site that just went live while the account's row belongs to the OTHER side (an Apple first publish got there first): two sites. Never silent:
+      // recorded as `mixed` and the owner is alerted (no barber email), whatever the mode.
+      if (again.status === 'refused' && again.existing && again.existing.holder !== ensure) {
+        await reportBlocked({ otid: `${ensure === 'web' ? 'web-publish' : 'apple-publish'}:${again.existing.slug}`, uid, reason: 'mixed', slug: again.existing.slug, environment: null, email: false, where: `${ensure} publish went live while the account's row is ${again.existing.holder}` });
+      }
     }
   } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] markPublishedOnce failed:', e?.status ?? e?.message ?? e); }
 }
@@ -191,6 +205,23 @@ export const envOfMode = (mode: StripeMode): KindEnv => kindEnvOf(mode);
 // ---------- live wiring ----------
 
 const enc = encodeURIComponent;
+const CLEANUP_BATCH = 100;
+type CleanRow = { user_id: string; environment: KindEnv; slug: string; holder: Holder };
+/** One candidate of the daily clean-up: 'healed' (a live web site: published_once set, row kept), 'kept' (a bound Apple slug), or 'deleted'. */
+async function cleanOne(r: CleanRow): Promise<'deleted' | 'healed' | 'kept'> {
+  if (r.holder === 'web') {
+    const pub = (await sbRest(`web_app_sites?slug=eq.${enc(r.slug)}&published_at=not.is.null&select=slug&limit=1`)) ?? [];
+    if (pub.length) {
+      await sbRest(`account_sites?user_id=eq.${enc(r.user_id)}&environment=eq.${r.environment}&slug=eq.${enc(r.slug)}`, { method: 'PATCH', prefer: 'return=minimal', body: { published_once: true, updated_at: new Date().toISOString() } });
+      return 'healed';
+    }
+  } else {
+    const bound = (await sbRest(`ios_purchases?site_slug=eq.${enc(r.slug)}&select=original_transaction_id&limit=1`)) ?? [];
+    if (bound.length) return 'kept'; // a bound iOS slug is permanent
+  }
+  await sbRest(`account_sites?user_id=eq.${enc(r.user_id)}&environment=eq.${r.environment}&slug=eq.${enc(r.slug)}&published_once=eq.false`, { method: 'DELETE', prefer: 'return=minimal' });
+  return 'deleted';
+}
 const COLS = 'user_id,environment,slug,holder,published_once,taken_at,updated_at';
 
 export function liveSitesDeps(): SitesDeps {
@@ -214,23 +245,26 @@ export function liveSitesDeps(): SitesDeps {
     async held(slug) {
       return ((await sbRest(`account_sites?slug=eq.${enc(slug)}&select=slug&limit=1`)) ?? []).length > 0;
     },
-    async cleanup(beforeIso, env) {
-      const rows: { user_id: string; environment: KindEnv; slug: string; holder: Holder }[] =
-        (await sbRest(`account_sites?published_once=eq.false&taken_at=lt.${enc(beforeIso)}${env ? `&environment=eq.${env}` : ''}&select=user_id,environment,slug,holder&limit=500`)) ?? [];
-      let n = 0;
-      for (const r of rows) {
-        if (r.holder === 'web') {
-          const pub = (await sbRest(`web_app_sites?slug=eq.${enc(r.slug)}&published_at=not.is.null&select=slug&limit=1`)) ?? [];
-          if (pub.length) { // a live site: never delete its row (markPublishedOnce failed earlier); heal it
-            await sbRest(`account_sites?user_id=eq.${enc(r.user_id)}&environment=eq.${r.environment}&slug=eq.${enc(r.slug)}`, { method: 'PATCH', prefer: 'return=minimal', body: { published_once: true, updated_at: new Date().toISOString() } });
-            continue;
-          }
-        } else {
-          const bound = (await sbRest(`ios_purchases?site_slug=eq.${enc(r.slug)}&select=original_transaction_id&limit=1`)) ?? [];
-          if (bound.length) continue; // a bound iOS slug is permanent
+    async touch(uid, env, slug) {
+      await sbRest(`account_sites?user_id=eq.${enc(uid)}&environment=eq.${env}&slug=eq.${enc(slug)}&published_once=eq.false`, { method: 'PATCH', prefer: 'return=minimal', body: { taken_at: new Date().toISOString(), updated_at: new Date().toISOString() } });
+    },
+    async cleanup(beforeIso, env, budgetMs = 60_000) {
+      // Batches of CLEANUP_BATCH, oldest first, within a time budget (the lapse function has 300 s and real work to do). A row that is KEPT (a bound,
+      // unpublished Apple row) stays in the filter, so the next page starts past the kept ones: they never starve the rest. Healed and deleted rows leave the filter.
+      const deadline = Date.now() + budgetMs;
+      let n = 0, skipped = 0;
+      while (Date.now() < deadline) {
+        const rows: { user_id: string; environment: KindEnv; slug: string; holder: Holder }[] =
+          (await sbRest(`account_sites?published_once=eq.false&taken_at=lt.${enc(beforeIso)}${env ? `&environment=eq.${env}` : ''}&select=user_id,environment,slug,holder&order=taken_at.asc&limit=${CLEANUP_BATCH}&offset=${skipped}`)) ?? [];
+        if (!rows.length) break;
+        const before = skipped;
+        for (const r of rows) {
+          if (Date.now() >= deadline) return n;
+          const out = await cleanOne(r);
+          if (out === 'deleted') n++; else if (out === 'kept') skipped++;
         }
-        await sbRest(`account_sites?user_id=eq.${enc(r.user_id)}&environment=eq.${r.environment}&slug=eq.${enc(r.slug)}&published_once=eq.false`, { method: 'DELETE', prefer: 'return=minimal' });
-        n++;
+        if (rows.length < CLEANUP_BATCH) break;
+        if (skipped === before && n === 0) break; // a full page of healed rows leaves the filter; nothing else to page past
       }
       return n;
     },

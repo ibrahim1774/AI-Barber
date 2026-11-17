@@ -18,7 +18,7 @@ export type BlockReason = 'web-account' | 'other-apple-id' | 'mixed';
 export type Stamp = 'alerted_at' | 'emailed_at';
 
 export interface BlockedInfo {
-  /** The purchase, or 'web-publish' for a web publish that was refused an address. */
+  /** The purchase, or 'web-publish:<the other address>' for a web publish that was refused an address (a different refusal alerts again). */
   otid: string;
   uid: string;
   reason: BlockReason;
@@ -48,6 +48,20 @@ export interface BlockedDeps {
 
 const short = (id: string) => id.slice(-4);
 
+// The fallback alert used when the ledger is missing or unwritable has no once-only record, so it is limited to one per account per hour. In memory only
+// (per function instance): a cold instance may alert again, which is acceptable for a fallback.
+const FALLBACK_ALERT_MS = 3600_000;
+const lastFallback = new Map<string, number>();
+const fallbackDue = (uid: string, now: number): boolean => {
+  const last = lastFallback.get(uid);
+  if (last !== undefined && now - last < FALLBACK_ALERT_MS) return false;
+  if (lastFallback.size > 2000) lastFallback.clear();
+  lastFallback.set(uid, now);
+  return true;
+};
+/** Tests only. */
+export const resetFallbackAlerts = () => lastFallback.clear();
+
 export async function reportBlocked(info: BlockedInfo, deps: BlockedDeps = liveBlockedDeps()): Promise<void> {
   try {
     try { await deps.record(info.otid, info.uid, info.reason); }
@@ -55,6 +69,7 @@ export async function reportBlocked(info: BlockedInfo, deps: BlockedDeps = liveB
       // No ledger (migration 039 missing, or the table cannot be written): there is no once-only record, so the barber is NOT emailed. The owner is still told,
       // best effort (it may repeat on a retry, which is better than silence).
       console.error(`[one-site] ALERT (no ledger: ${e?.status === 404 ? 'migration 039 missing' : 'write failed'}) ${info.where}: ${info.reason} otid=...${short(info.otid)} user=${info.uid}`);
+      if (!fallbackDue(info.uid, deps.now())) return;
       try {
         await deps.alert('Prime Barber: one-site guard refusal (no blocked_purchases ledger)', [
           `reason: ${info.reason}`, `where: ${info.where}`, `purchase: ${info.otid}`, `user: ${info.uid}`, `environment: ${info.environment ?? '(unknown)'}`,
