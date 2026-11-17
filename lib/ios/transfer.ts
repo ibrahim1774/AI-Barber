@@ -186,11 +186,12 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   };
 
   // GATE_ANY_SOURCE: a web or mixed account never gives or receives a purchase (a web account's site is not a purchase's business).
-  // `moving` also refuses a receiver that holds any address; a plain first link refuses only the kind. Off: never called.
-  const webBlock = async (account: string, moving: boolean): Promise<boolean> => {
+  // Only kinds web and mixed are refused here. An Apple receiver that holds a site or a shop gets today's account-has-site from the
+  // checks below, exactly as before. Off: never called.
+  const webBlock = async (account: string): Promise<boolean> => {
     if (process.env.GATE_ANY_SOURCE !== '1' || !deps.kindOf) return false;
     const r = await deps.kindOf(account);
-    return r.kind === 'web' || r.kind === 'mixed' || (moving && account === caller && (r.holdsWebAddress || r.holdsAppleAddress));
+    return r.kind === 'web' || r.kind === 'mixed';
   };
   const blocked: TransferResult = { status: 409, body: { error: 'move-blocked-web-account', message: 'This subscription cannot be moved to or from an account that has a website made on the web. Contact support and we will sort it out.' } };
 
@@ -238,7 +239,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
           return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row) };
         }
       }
-      if (await webBlock(caller, false)) return blocked;
+      if (await webBlock(caller)) return blocked;
       const has = await mine();
       if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
       if (await repo.setUserIfUnlinked(otid, caller)) {
@@ -271,7 +272,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       return { status: 409, body: { error: 'purchase-changed' } };
     }
 
-    if ((await webBlock(caller, true)) || (await webBlock(ownerId, false))) return blocked;
+    if ((await webBlock(caller)) || (await webBlock(ownerId))) return blocked;
 
     // a. One business per account: a caller with a live site under another purchase, or a shop of their own, is refused.
     const has = await mine();

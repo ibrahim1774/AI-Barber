@@ -106,9 +106,20 @@ describe('Move with GATE_ANY_SOURCE', () => {
     const s = setup(owned, withKinds({ [O]: reading('mixed') }));
     expect((await call(s, CONF)).body).toMatchObject(BLOCK);
   });
-  it('refuses a receiver that holds any address, even a lapsed Apple one', async () => {
+  it('an Apple receiver with a live site under another purchase still gets account-has-site (today)', async () => {
+    const other = { ...base, original_transaction_id: '3000000999', user_id: A, site_slug: 'a-site', published_at: '2026-10-01T00:00:00Z' };
+    const s = setup([...owned, other], withKinds({ [A]: reading('apple') }));
+    const r = await call(s, CONF);
+    expect(r.status).toBe(409); expect(r.body).toMatchObject({ error: 'account-has-site', slug: 'a-site', reason: 'site' });
+  });
+  it('an Apple receiver with a shop of its own still gets account-has-site (shop)', async () => {
     const s = setup(owned, withKinds({ [A]: reading('apple') }));
-    expect((await call(s, CONF)).body).toMatchObject(BLOCK);
+    s.state.shops[A] = { id: 'shop-a', ios_otid: 'other' };
+    expect((await call(s, CONF)).body).toMatchObject({ error: 'account-has-site', reason: 'shop' });
+  });
+  it('an Apple receiver holding only a lapsed address moves exactly as today', async () => {
+    const s = setup(owned, withKinds({ [A]: reading('apple') }));
+    expect((await call(s, CONF)).status).toBe(200);
   });
   it('a Free account that never published (neither) may receive', async () => {
     const s = setup(owned, withKinds({ [A]: reading('neither') }));
