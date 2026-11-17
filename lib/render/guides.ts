@@ -197,7 +197,7 @@ export function thinServiceIndexes(d: WebsiteData, pagedIndexes: readonly number
   return out;
 }
 
-/** Do the sites' service pages carry the Phase 1 library text? Web-created (isWebCreated), pages v2 (an `extraPages` object), service guides on. */
+/** Do the sites' service pages carry the Phase 1 library text? Web-created or marked (searchPagesOn), pages v2 (an `extraPages` object), service guides on. */
 export const serviceTextOn = (d: Pick<WebsiteData, 'extraPages' | 'source'>): boolean => hasPagesV2(d) && d.extraPages?.serviceGuides === true && searchPagesOn(d);
 
 /**

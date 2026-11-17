@@ -169,8 +169,8 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     return headerHtml('euphoria', { name: shopShown, ...headerBrand(d), cta: href ? { href, label: bookingUrl ? L('euNavBook') : L('euNavCall'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
   // Thin service pages (guides.ts thinServiceIndexes) stay on the site but are `noindex,follow` and not in the sitemap; robots.txt goes with the sitemap.
-  // Gated on pages v2 (an `extraPages` object) AND on a web-created site (isWebCreated), like the library text: a multi-page site
-  // from before pages v2, and every site made in the iOS app, keeps its output as it was.
+  // Gated on pages v2 (an `extraPages` object) AND on searchPagesOn (a web-created site, or one carrying the extraPages.searchPages mark), like the library text: a multi-page site
+  // from before pages v2, and every iOS site without the mark, keeps its output as it was.
   const seoV2 = hasFilePages(set) && hasPagesV2(d) && searchPagesOn(d);
   // Guide pages (guidePages.ts): filler for visitors that brings a sparse site up to 21 pages. Same web-origin gate as above plus the barber niche.
   // They are not part of the page set: they are appended below, `noindex`, and never reach the sitemap, the JSON-LD or the menu.
