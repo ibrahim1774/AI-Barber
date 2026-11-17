@@ -10,6 +10,7 @@ import { entitlementOrFree, isFreeSubscriptionId } from '../../lib/webApp/priceG
 import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
 import { nativeBuild, nativeModeGate } from '../../lib/account/siteMode.js';
 import { bookingInputsFrom, nativePublication } from '../../lib/account/nativePublish.js';
+import { webSiteOffline } from '../../lib/account/siteOffline.js';
 
 export const config = { maxDuration: 300 };
 
@@ -75,7 +76,9 @@ export default async function handler(req: any, res: any) {
           return res.status(503).json({ error: 'temporarily-unavailable' });
         }
       }
-      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, input?.republish === true, nativeDraft);
+      // A native publish of a site that is offline is always a republish: it is never answered from an old live record (the draft's deployed_url may be stale).
+      const republish = input?.republish === true || (native && (await webSiteOffline(caller.id)));
+      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, republish, nativeDraft);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);
       const finished = (await sbRest(`web_app_publish_intents?id=eq.${job.id}&select=status,result&limit=1`))?.[0];

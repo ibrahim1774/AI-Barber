@@ -133,7 +133,9 @@ export async function removeWebSitesOf(userId: string, opts: { keepContent?: boo
   else for (const s of sites) await deps.purge(s);
   await markSiteOffline(userId);
   // The keep-content take offline forgets the draft's live address itself, whatever WEB_APP_RELIABILITY says (best effort: no draft row or table means nothing to forget).
-  if (opts.keepContent && !reliabilityOn()) await forgetLiveAddress(userId).catch(() => {});
+  // A failure is logged; native draft GET/PUT and publish also treat a site whose web_app_sites row is removed or taken down as not live (lib/account/siteOffline.ts), so a stale
+  // address cannot come back if the draft engine is turned on later.
+  if (opts.keepContent && !reliabilityOn()) await forgetLiveAddress(userId).catch((e: any) => console.error('[take offline] could not forget the draft live address:', e?.status ?? e?.message ?? e));
   return sites.length;
 }
 

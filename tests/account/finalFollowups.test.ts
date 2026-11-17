@@ -71,6 +71,15 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
     await removeWebSitesOf('u1'); // the web's own take offline: unchanged
     expect(order).not.toContain('forget');
   });
+  it('a failed clear of the draft address is logged, never fatal (native draft GET and publish then hide the stale address: nativeStaleOffline.test.ts)', async () => {
+    const { forgetLiveAddress } = await import('../../lib/webApp/reliability.js');
+    (forgetLiveAddress as any).mockRejectedValueOnce(Object.assign(new Error('supabase 500'), { status: 500 }));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('WEB_APP_RELIABILITY', '');
+    expect(await removeWebSitesOf('u1', { keepContent: true })).toBe(1);
+    expect(log.mock.calls.some((c) => String(c[0]).includes('could not forget the draft live address'))).toBe(true);
+    log.mockRestore();
+  });
   it('keep-content keeps the saved contact phone number; the other take offline still drops it', async () => {
     const { sbRest } = await import('../../lib/webApp/webAppServer.js');
     const phonePatches = () => (sbRest as any).mock.calls.filter((c: any[]) => c[1]?.method === 'PATCH' && 'contact_phone' in (c[1]?.body ?? {}));

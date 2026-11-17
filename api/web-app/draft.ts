@@ -10,6 +10,7 @@ import { draftRef, signingSecret, siteRef } from '../../lib/serviceCopy/approval
 import { serviceCopyEnabled } from '../../lib/serviceCopy/handler.js';
 import { tableCopyStore } from '../../lib/serviceCopy/store.js';
 import { nativeBuild, nativeModeGate } from '../../lib/account/siteMode.js';
+import { webSiteOffline } from '../../lib/account/siteOffline.js';
 
 /** Simple per-user, per-instance cap on draft writes (autosave is debounced well below this). */
 export const DRAFT_WRITES_PER_MINUTE = 120;
@@ -39,7 +40,10 @@ export default async function handler(req: any, res: any) {
     if (gate) return res.status(gate.status).json(gate.body);
     if (req.method === 'PUT' && jsonBytes(req.body) > MAX_DRAFT_BYTES) return res.status(413).json({ error: 'draft_too_large', maxBytes: MAX_DRAFT_BYTES });
     const previous = await readDraft(user.id);
-    if (req.method === 'GET') return res.status(200).json({ draft: previous ? accountRow(previous) : null });
+    // A NATIVE caller never sees a stale live address: when the account's web site is offline the draft is reported with no live address or binding, whatever the draft row still holds.
+    const offline = nativeBuild(req) ? await webSiteOffline(user.id) : false;
+    const view = (d: any) => (offline ? { ...accountRow(d), deployed_url: null, webBinding: null } : accountRow(d));
+    if (req.method === 'GET') return res.status(200).json({ draft: previous ? view(previous) : null });
     const { id, site_data, expectedRevision } = req.body ?? {};
     if (typeof id !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(id) || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0 ||
       Buffer.byteLength(JSON.stringify(req.body)) > MAX_BODY_BYTES || !validSiteData(site_data) || hasDataUrl(site_data)) {
@@ -63,9 +67,9 @@ export default async function handler(req: any, res: any) {
     const liveForText = hasModelText ? await publishedBinding(user.id).catch(() => null) : null;
     const { siteData: pruned } = svcCopySanitize(cleaned, { autoPublish: serviceCopyAutoPublish(), secret: signingSecret(), userId: user.id, refs: [draftRef(id), ...(liveForText ? [siteRef(liveForText.binding.slug)] : [])] });
     const content = { ...pruned, source: 'web-app' };
-    if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: accountRow(previous), seoProblems });
+    if (previous && previous.draft_id === id && digest(previous.site_data) === digest(content)) return res.status(200).json({ draft: view(previous), seoProblems });
     if ((previous?.revision ?? 0) !== expectedRevision) {
-      return res.status(409).json({ error: 'draft_changed', draft: previous ? accountRow(previous) : null });
+      return res.status(409).json({ error: 'draft_changed', draft: previous ? view(previous) : null });
     }
     const row = { user_id: user.id, environment: modeOf(), draft_id: id, site_data: content, revision: expectedRevision + 1,
       updated_at: new Date().toISOString(),
@@ -89,8 +93,8 @@ export default async function handler(req: any, res: any) {
       const gone = Array.from(serviceKeys(previous.site_data)).filter((k) => !now.has(k));
       if (gone.length) await tableCopyStore.removeMany(user.id, id, gone).catch((e: any) => console.error('[web draft] ai cache cleanup failed:', e?.message || e));
     }
-    if (!written?.length) { const current = await readDraft(user.id); return res.status(409).json({ error: 'draft_changed', draft: current ? accountRow(current) : null }); }
-    return res.status(200).json({ draft: accountRow(written[0]), seoProblems });
+    if (!written?.length) { const current = await readDraft(user.id); return res.status(409).json({ error: 'draft_changed', draft: current ? view(current) : null }); }
+    return res.status(200).json({ draft: view(written[0]), seoProblems });
   } catch (e: any) {
     if (authOutage(res, e)) return;
     console.error('[web draft]', e?.message);

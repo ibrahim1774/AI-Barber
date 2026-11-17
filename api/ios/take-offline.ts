@@ -47,7 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'bad-request' });
       }
     }
-    // ACCOUNT_PLAN_V2 only: a web or mixed account takes its site offline through the account route (409 use-account-take-offline here). Off: nothing is read.
+    // ACCOUNT_PLAN_V2 + X-PB-Build only: a web account takes its site offline through the account route (409 use-account-take-offline here), or right here with no Apple transaction while that
+    // route does not exist; a two-site account takes down only its Apple site. Off: nothing is read.
     const route = await iosDestructiveRoute(req as any, liveUserOf, 'take-offline');
     if (route.action === 'respond') return res.status(route.status).json(route.body);
     if (route.action === 'webTakeOffline') {
