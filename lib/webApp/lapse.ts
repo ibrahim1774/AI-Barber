@@ -222,9 +222,10 @@ export async function sweepIosOverlap(deps: IosOverlapDeps, limit = 50): Promise
       if (holder || live >= 2) {
         if (!(await deps.claim(row.stripe_subscription_id).catch(() => false))) continue;
         const lines = [`user: ${row.user_id}`, `web subscription: ${row.stripe_subscription_id} (${row.tier})`, `live Apple purchases: ${live}`];
+        // One alert for both reasons: a failure releases the claim and the next run sends it again, never half of it twice.
         try {
-          if (holder) await deps.alert('Prime Barber web: an Apple account also pays a card plan', [...lines, 'The customer was NOT emailed and nothing was cancelled. Settle it by hand.']);
-          if (live >= 2) await deps.alert('Prime Barber web: one account has two live Apple purchases', [...lines, 'Nothing was changed. Settle it by hand.']);
+          await deps.alert(holder ? 'Prime Barber web: an Apple account also pays a card plan' : 'Prime Barber web: one account has two live Apple purchases',
+            [...lines, ...(holder && live >= 2 ? ['This account also has two live Apple purchases.'] : []), ...(holder ? ['The customer was NOT emailed and nothing was cancelled. Settle it by hand.'] : ['Nothing was changed. Settle it by hand.'])]);
         } catch (e: any) {
           console.error('[web-app ios-overlap] apple alert failed; releasing the claim:', e?.message || e);
           await deps.release(row.stripe_subscription_id).catch(() => {});
@@ -275,7 +276,8 @@ export function liveIosOverlapDeps(mode: 'live' | 'test'): IosOverlapDeps {
       await sendMail(email, iosOverlapEmail({ email, firstName, siteUrl: row.site_slug ? await stampedSiteUrl(row.site_slug) : null, tier: row.tier }));
       return true;
     },
-    async holdsAppleAddress(uid) { return ((await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&site_slug=not.is.null&select=original_transaction_id&limit=1`)) ?? []).length > 0; },
+    // live mode counts Production rows only, test mode Sandbox only (a Sandbox row must never suppress a live customer's email).
+    async holdsAppleAddress(uid) { return ((await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&site_slug=not.is.null&environment=eq.${mode === 'live' ? 'Production' : 'Sandbox'}&select=original_transaction_id&limit=1`)) ?? []).length > 0; },
     async liveApplePurchases(uid) {
       const rows: any[] = (await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,site_slug,published_at&limit=20`)) ?? [];
       return rows.filter((p) => (mode === 'live' ? p.environment === 'Production' : p.environment === 'Production' || p.environment === 'Sandbox') && purchaseLive(p)).length;

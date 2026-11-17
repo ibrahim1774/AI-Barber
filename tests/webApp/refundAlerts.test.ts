@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const st = vi.hoisted(() => ({ body: '', alert: vi.fn(async (..._a: any[]) => {}), send: vi.fn(async () => 'id'), stripe: vi.fn(), sb: vi.fn(async () => []) }));
+const st = vi.hoisted(() => ({ body: '', alert: vi.fn(async (..._a: any[]) => {}), send: vi.fn(async () => 'id'), stripe: vi.fn(), sb: vi.fn(async (..._a: any[]): Promise<any> => []) }));
 vi.mock('../../lib/webApp/emails.js', () => ({ sendMail: st.send, welcomeEmail: vi.fn(), alertOwner: st.alert }));
 vi.mock('../../lib/webApp/duplicates.js', () => ({ handleDuplicates: vi.fn(), liveDupDeps: () => ({}) }));
 vi.mock('../../lib/webApp/stripeCore.js', async (orig) => ({ ...(await orig<any>()), verifyStripeSignature: () => true }));
@@ -22,37 +22,69 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
+const plan = (app: string | undefined, over: any = {}) => async (path: string) => {
+  if (path.startsWith('invoices/')) return { id: 'in_1', subscription: 'sub_9', subscription_details: app === undefined ? {} : { metadata: { app } }, ...over };
+  if (path.startsWith('subscriptions/')) return { id: 'sub_9', metadata: app === undefined ? {} : { app } };
+  if (path.startsWith('charges/')) return { id: 'ch_1', customer: 'cus_1', invoice: 'in_1', amount_refunded: 0 };
+  throw new Error(`unexpected ${path}`);
+};
+
 describe('webhook refunds and disputes', () => {
-  it('switch on: a refund gives one alert and 200, no email, no Stripe call, no DB write', async () => {
+  beforeEach(() => { st.stripe.mockImplementation(plan('aibarber-app')); });
+  it('switch on: a web-plan refund gives one alert and 200, no email, no DB write; says (none) when absent', async () => {
     vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
-    st.body = ev('charge.refunded', { id: 'ch_1', customer: 'cus_1', amount_refunded: 1999, currency: 'usd' });
+    st.stripe.mockImplementation(plan('aibarber-app', { subscription: null }));
+    st.body = ev('charge.refunded', { id: 'ch_1', customer: 'cus_1', invoice: 'in_1', amount_refunded: 1999, currency: 'usd' });
     const r = await post();
     expect(r.code).toBe(200);
     expect(st.alert).toHaveBeenCalledTimes(1);
-    expect((st.alert.mock.calls[0] as any)[1].join('\n')).toMatch(/cus_1[\s\S]*19\.99 USD/);
-    expect(st.send).not.toHaveBeenCalled(); expect(st.stripe).not.toHaveBeenCalled(); expect(st.sb).not.toHaveBeenCalled();
+    const text = (st.alert.mock.calls[0] as any)[1].join('\n');
+    expect(text).toMatch(/cus_1[\s\S]*19\.99 USD/);
+    expect(text).toMatch(/subscription: \(none\)/);
+    expect(st.send).not.toHaveBeenCalled(); expect(st.sb).not.toHaveBeenCalled();
   });
-  it('switch on: a dispute gives one alert and 200', async () => {
+  it('switch on: a dispute on a web-plan charge gives one alert (charge is looked up)', async () => {
     vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
     st.body = ev('charge.dispute.created', { id: 'dp_1', charge: 'ch_1', amount: 2000, currency: 'usd', reason: 'fraudulent' });
     const r = await post();
     expect(r.code).toBe(200);
     expect(st.alert).toHaveBeenCalledTimes(1);
+    expect(st.stripe.mock.calls.some((c: any[]) => String(c[0]).startsWith('charges/ch_1'))).toBe(true);
     expect(st.send).not.toHaveBeenCalled();
+  });
+  it('switch on: a NON-web-app refund (other plan, or no invoice such as a booking/Connect charge) gives no alert', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    st.stripe.mockImplementation(plan('somethingelse'));
+    st.body = ev('charge.refunded', { id: 'ch_1', invoice: 'in_1', amount_refunded: 100, currency: 'usd' });
+    expect((await post()).body).toEqual({ ignored: true });
+    st.body = ev('charge.refunded', { id: 'ch_2', invoice: null, amount_refunded: 100, currency: 'usd' });
+    expect((await post()).body).toEqual({ ignored: true });
+    st.stripe.mockImplementation(plan(undefined, { subscription: null }));
+    st.body = ev('charge.refunded', { id: 'ch_3', invoice: 'in_1', amount_refunded: 100, currency: 'usd' });
+    expect((await post()).body).toEqual({ ignored: true });
+    expect(st.alert).not.toHaveBeenCalled();
+  });
+  it('switch on: Stripe lookup failure over-alerts and says it could not check', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    st.stripe.mockRejectedValue(new Error('stripe down'));
+    st.body = ev('charge.refunded', { id: 'ch_1', invoice: 'in_1', amount_refunded: 100, currency: 'usd' });
+    expect((await post()).code).toBe(200);
+    expect(st.alert).toHaveBeenCalledTimes(1);
+    expect((st.alert.mock.calls[0] as any)[1].join('\n')).toMatch(/could not be asked/);
   });
   it('switch on: an alert failure still answers 200', async () => {
     vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
     st.alert.mockRejectedValueOnce(new Error('mail down'));
-    st.body = ev('charge.refunded', { id: 'ch_1', amount_refunded: 100, currency: 'usd' });
+    st.body = ev('charge.refunded', { id: 'ch_1', invoice: 'in_1', amount_refunded: 100, currency: 'usd' });
     expect((await post()).code).toBe(200);
   });
-  it('switch OFF: both stay { ignored: true }, no alert', async () => {
+  it('switch OFF: both stay { ignored: true }, no alert, no Stripe call', async () => {
     for (const t of ['charge.refunded', 'charge.dispute.created']) {
-      st.body = ev(t, { id: 'x', amount: 1 });
+      st.body = ev(t, { id: 'x', amount: 1, invoice: 'in_1' });
       const r = await post();
       expect(r.code).toBe(200); expect(r.body).toEqual({ ignored: true });
     }
-    expect(st.alert).not.toHaveBeenCalled();
+    expect(st.alert).not.toHaveBeenCalled(); expect(st.stripe).not.toHaveBeenCalled();
   });
 });
 
@@ -99,5 +131,36 @@ describe('sweepIosOverlap Apple holder alerts', () => {
     await sweepIosOverlap(d);
     expect(d.holdsAppleAddress).not.toHaveBeenCalled(); expect(d.alert).not.toHaveBeenCalled();
     expect(d.mailCustomer).toHaveBeenCalledTimes(1);
+  });
+  it('switch on: holder with two live purchases is ONE alert; if it fails the claim is released and nothing was sent', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    const d = fakes({ holder: true, live: 2 });
+    d.alert.mockRejectedValueOnce(new Error('mail down'));
+    const r = await sweepIosOverlap(d);
+    expect(d.alert).toHaveBeenCalledTimes(1);
+    expect(d.release).toHaveBeenCalledTimes(1);
+    expect(r.mailFailed).toEqual(['sub_1']);
+  });
+  it('switch on: holder with two live purchases sends exactly one combined alert when it works', async () => {
+    vi.stubEnv('STRIPE_REFUND_ALERTS', '1');
+    const d = fakes({ holder: true, live: 2 });
+    await sweepIosOverlap(d); await sweepIosOverlap(d);
+    expect(d.alert).toHaveBeenCalledTimes(1);
+    expect((d.alert.mock.calls[0] as any)[1].join('\n')).toMatch(/two live Apple purchases/);
+  });
+});
+
+describe('liveIosOverlapDeps.holdsAppleAddress counts only this mode\'s environment', () => {
+  it('a Sandbox Apple row does not count in live mode (so the live customer is still emailed), Production does', async () => {
+    const { liveIosOverlapDeps } = await import('../../lib/webApp/lapse.js');
+    const rows = [{ environment: 'Sandbox' }];
+    st.sb.mockImplementation((async (p: string) => {
+      const m = /environment=eq\.(\w+)/.exec(p);
+      return m ? rows.filter((r) => r.environment === m[1]) : rows;
+    }) as any);
+    expect(await liveIosOverlapDeps('live').holdsAppleAddress!('u1')).toBe(false);
+    expect(await liveIosOverlapDeps('test').holdsAppleAddress!('u1')).toBe(true);
+    rows.push({ environment: 'Production' });
+    expect(await liveIosOverlapDeps('live').holdsAppleAddress!('u1')).toBe(true);
   });
 });

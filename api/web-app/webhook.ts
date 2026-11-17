@@ -211,24 +211,48 @@ async function syncDescription(sub: any, tier: any, userId: string, mode: 'live'
 }
 
 /**
- * Behind STRIPE_REFUND_ALERTS: a refund or a dispute only alerts the owner. No customer email, no cancel, no Stripe call.
+ * Behind STRIPE_REFUND_ALERTS: a refund or a dispute on one of OUR web-app plans only alerts the owner. No customer email, no cancel.
+ * DEPLOY NOTE: the Stripe webhook endpoint for this app must be subscribed to `charge.refunded` and `charge.dispute.created`.
+ * Only charges of web-app plans alert: the charge must carry an invoice whose subscription has metadata.app = 'aibarber-app' (the same
+ * marker the subscription events above use). Booking, store and Connect charges have no such invoice and are ignored.
+ * Stripe redelivers events, and there is no processed-events store (no migration this wave), so a redelivery can repeat an alert.
  * Always 200: a failed alert is logged and must not make Stripe retry (and eventually disable) this endpoint.
  */
 async function handleMoneyBackAlert(event: any, mode: 'live' | 'test', res: any) {
   if ((mode === 'live') !== !!event.livemode) return res.status(200).json({ ignored: true });
   const o = event.data?.object ?? {};
   const isDispute = event.type === 'charge.dispute.created';
-  const cents = isDispute ? o.amount : o.amount_refunded ?? o.amount;
-  const customer = typeof o.customer === 'string' ? o.customer : o.customer?.id;
-  const sub = o.subscription ?? o.metadata?.subscription_id ?? o.metadata?.stripe_subscription_id;
-  const lines = [
-    `customer: ${customer ?? '(none on the event)'}`,
-    `amount: ${typeof cents === 'number' ? `${(cents / 100).toFixed(2)} ${String(o.currency ?? '').toUpperCase()}`.trim() : '(unknown)'}`,
-    `subscription: ${typeof sub === 'string' ? sub : '(none on the event)'}`,
-    `${isDispute ? 'dispute' : 'charge'}: ${o.id}${isDispute && o.charge ? ` (charge ${o.charge})` : ''}${isDispute && o.reason ? `, reason ${o.reason}` : ''}`,
-    'Nothing was cancelled and the customer was not emailed.',
-  ];
-  try { await alertOwner(isDispute ? 'Prime Barber web: a payment was disputed' : 'Prime Barber web: a payment was refunded', lines); }
-  catch (e: any) { console.error('[web-app webhook refund/dispute alert]', e?.message || e); }
+  try {
+    let charge: any = o;
+    if (isDispute) {
+      const chId = typeof o.charge === 'string' ? o.charge : o.charge?.id;
+      if (!chId) return res.status(200).json({ ignored: true });
+      charge = typeof o.charge === 'object' && o.charge ? o.charge : await stripeCall(`charges/${encodeURIComponent(chId)}`, null, 'GET');
+    }
+    const invoiceId = typeof charge?.invoice === 'string' ? charge.invoice : charge?.invoice?.id;
+    if (!invoiceId) return res.status(200).json({ ignored: true });
+    let ours: boolean | null = null; let subId: string | null = null;
+    try {
+      const inv = await stripeCall(`invoices/${encodeURIComponent(invoiceId)}`, null, 'GET');
+      subId = typeof inv?.subscription === 'string' ? inv.subscription : inv?.subscription?.id ?? null;
+      const app = inv?.subscription_details?.metadata?.app;
+      if (app !== undefined) ours = app === 'aibarber-app';
+      else if (subId) ours = (await stripeCall(`subscriptions/${encodeURIComponent(subId)}`, null, 'GET'))?.metadata?.app === 'aibarber-app';
+      else ours = false;
+    } catch (e: any) { console.error('[web-app webhook refund/dispute] plan lookup failed; alerting anyway:', e?.message || e); }
+    if (ours === false) return res.status(200).json({ ignored: true });
+    const cents = isDispute ? o.amount : charge.amount_refunded ?? charge.amount;
+    const customer = typeof charge.customer === 'string' ? charge.customer : charge.customer?.id;
+    const lines = [
+      `customer: ${customer ?? '(none on the event)'}`,
+      `amount: ${typeof cents === 'number' ? `${(cents / 100).toFixed(2)} ${String(o.currency ?? charge.currency ?? '').toUpperCase()}`.trim() : '(unknown)'}`,
+      `subscription: ${subId ?? '(none)'}`,
+      `invoice: ${invoiceId}`,
+      `${isDispute ? 'dispute' : 'charge'}: ${o.id}${isDispute && o.reason ? `, reason ${o.reason}` : ''}`,
+      ...(ours === null ? ['(Stripe could not be asked whether this is a web-app plan; check it.)'] : []),
+      'Nothing was cancelled and the customer was not emailed.',
+    ];
+    await alertOwner(isDispute ? 'Prime Barber web: a payment was disputed' : 'Prime Barber web: a payment was refunded', lines);
+  } catch (e: any) { console.error('[web-app webhook refund/dispute alert]', e?.message || e); }
   return res.status(200).json({ alerted: true });
 }
