@@ -57,8 +57,8 @@ describe('runAccountMaintenance', () => {
   it('guard OFF: the address clean-up does not run and the address table is never read; only the kept-copy expiry runs', async () => {
     const c = fakeClaims();
     const f = fakeSites();
-    const kept = { has: async () => false, trim: async () => {}, insert: async () => {}, expire: vi.fn(async () => 0) };
-    const r = await runAccountMaintenance(T0, { mode: 'off', sites: f.deps, maintenance: c.deps, kept });
+    const kept = { has: async () => false, trim: async () => {}, insert: async () => {}, renew: async () => {}, expire: vi.fn(async () => {}) };
+    const r = await runAccountMaintenance(T0, { mode: 'off', sites: f.deps, maintenance: c.deps, kept, env: 'Production' });
     expect(Object.keys(r!)).toEqual(['expiredKeptCopies']);
     expect(f.calls).toEqual([]);
   });
@@ -69,11 +69,12 @@ describe('runAccountMaintenance', () => {
       { user_id: '22222222-2222-4222-8222-222222222222', environment: 'Production', slug: 'bound-apple', holder: 'apple', published_once: false, taken_at: old },
     ]);
     const c = fakeClaims();
-    const kept = { has: async () => false, trim: async () => {}, insert: async () => {}, expire: async () => 0 };
-    const first = await runAccountMaintenance(T0, { mode: 'alert', sites: f.deps, maintenance: c.deps, kept });
+    f.state.boundSlugs = ['bound-apple'];
+    const kept = { has: async () => false, trim: async () => {}, insert: async () => {}, renew: async () => {}, expire: async () => {} };
+    const first = await runAccountMaintenance(T0, { mode: 'alert', sites: f.deps, maintenance: c.deps, kept, env: 'Production' });
     expect(first).toMatchObject({ unpublishedAddresses: { ran: true, result: 1 } });
     expect(f.rows.map((r) => r.slug)).toEqual(['bound-apple']);
-    const second = await runAccountMaintenance(T0 + 600_000, { mode: 'enforce', sites: f.deps, maintenance: c.deps, kept });
+    const second = await runAccountMaintenance(T0 + 600_000, { mode: 'enforce', sites: f.deps, maintenance: c.deps, kept, env: 'Production' });
     expect(second).toEqual({ unpublishedAddresses: { ran: false, reason: 'not-due' }, expiredKeptCopies: { ran: false, reason: 'not-due' } });
   });
 });

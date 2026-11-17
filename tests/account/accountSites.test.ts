@@ -79,7 +79,7 @@ describe('release and mark', () => {
     await releaseUnpublished(U1, 'Production', { slug: 'a' }, f.deps); // the request's own exact row
     expect(f.rows).toHaveLength(0);
   });
-  it('the daily clean-up drops only unpublished WEB rows older than 24 hours', async () => {
+  it('the daily clean-up drops old unpublished rows of this environment: stale web, unbound Apple; never a live web site or a bound Apple slug', async () => {
     const now = Date.parse('2026-11-18T12:00:00Z');
     const old = new Date(now - 25 * 3600_000).toISOString();
     const fresh = new Date(now - 3600_000).toISOString();
@@ -87,10 +87,15 @@ describe('release and mark', () => {
       { user_id: U1, environment: 'Production', slug: 'old-web', holder: 'web', published_once: false, taken_at: old },
       { user_id: U2, environment: 'Production', slug: 'fresh-web', holder: 'web', published_once: false, taken_at: fresh },
       { user_id: '33333333-3333-4333-8333-333333333333', environment: 'Production', slug: 'old-apple', holder: 'apple', published_once: false, taken_at: old },
+      { user_id: '55555555-5555-4555-8555-555555555555', environment: 'Production', slug: 'bound-apple', holder: 'apple', published_once: false, taken_at: old },
+      { user_id: '66666666-6666-4666-8666-666666666666', environment: 'Production', slug: 'live-web', holder: 'web', published_once: false, taken_at: old },
+      { user_id: '77777777-7777-4777-8777-777777777777', environment: 'Sandbox', slug: 'other-env', holder: 'web', published_once: false, taken_at: old },
       { user_id: '44444444-4444-4444-8444-444444444444', environment: 'Production', slug: 'old-pub', holder: 'web', published_once: true, taken_at: old },
-    ]);
-    expect(await cleanupUnpublished(now, f.deps)).toBe(1);
-    expect(f.rows.map((r) => r.slug).sort()).toEqual(['fresh-web', 'old-apple', 'old-pub']);
+    ], { boundSlugs: ['bound-apple'], webPublished: ['live-web'] });
+    // Production only; old unbound apple and the stale web row go; a bound Apple row, a live web site (healed) and a fresh row stay
+    expect(await cleanupUnpublished(now, f.deps, 'Production')).toBe(2);
+    expect(f.rows.map((r) => r.slug).sort()).toEqual(['bound-apple', 'fresh-web', 'live-web', 'old-pub', 'other-env']);
+    expect(f.rows.find((r) => r.slug === 'live-web')!.published_once).toBe(true);
   });
 });
 

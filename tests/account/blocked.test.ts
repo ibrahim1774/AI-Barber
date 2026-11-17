@@ -95,11 +95,22 @@ describe('reportBlocked', () => {
     const f = fakeDeps({ missing: true });
     await expect(reportBlocked(info(), f.deps)).resolves.toBeUndefined();
     expect(f.sent).toHaveLength(0);
+    expect(f.alerts).toHaveLength(1); // the owner is still told, best effort
+    expect(f.alerts[0].lines.join('\n')).toMatch(/no email was sent/);
+  });
+  it('an unwritable ledger (not just a missing table) also alerts and never emails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const f = fakeDeps();
+    f.deps.record = async () => { throw Object.assign(new Error('500'), { status: 500 }); };
+    await reportBlocked(info(), f.deps);
+    expect(f.alerts).toHaveLength(1);
+    expect(f.sent).toHaveLength(0);
   });
   it('never throws, whatever fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const f = fakeDeps();
     f.deps.record = async () => { throw new Error('db down'); };
+    f.deps.alert = async () => { throw new Error('mail down'); };
     await expect(reportBlocked(info(), f.deps)).resolves.toBeUndefined();
   });
 });

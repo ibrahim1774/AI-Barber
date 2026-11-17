@@ -60,7 +60,8 @@ describe('the daily expiry', () => {
     const seen: any[] = [];
     vi.stubGlobal('fetch', vi.fn(async (u: string, init: any) => { seen.push({ u, init }); return new Response(null, { status: 200 }); }));
     on();
-    await liveKeptStore().expire('2026-11-18T00:00:00.000Z');
+    await liveKeptStore().expire('2026-11-18T00:00:00.000Z', 'Sandbox');
+    expect(seen[0].u).toMatch(/environment=eq.Sandbox/);
     expect(seen[0].init.method).toBe('DELETE');
     expect(seen[0].init.headers.Prefer).toBe('return=minimal');
     expect(seen[0].u).not.toMatch(/select=/);
@@ -75,6 +76,6 @@ describe('the daily expiry', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const m = claims();
     const kept = { has: vi.fn(), trim: vi.fn(), insert: vi.fn(), renew: vi.fn(), expire: vi.fn(async () => { throw new Error('boom'); }) };
-    await expect(runAccountMaintenance(Date.now(), { mode: 'off', maintenance: m, kept: kept as any })).resolves.toMatchObject({ expiredKeptCopies: { ran: false, reason: 'error' } });
+    await expect(runAccountMaintenance(Date.now(), { mode: 'off', maintenance: m, kept: kept as any, env: 'Production' })).resolves.toMatchObject({ expiredKeptCopies: { ran: false, reason: 'error' } });
   });
 });

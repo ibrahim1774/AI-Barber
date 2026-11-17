@@ -9,9 +9,14 @@
 //   - '1' mode: a MISSING table behaves as off; any other read error answers 503 (temporarily-unavailable) BEFORE anything is written.
 //     Reason: an unreadable table cannot prove the account has no other address, and a first publish that goes through blind is the
 //     exact state this guard exists to prevent. A retry is cheap (the barber taps Publish again).
+// DEPLOY ORDER (read before switching ONE_SITE_GUARD to 'alert' or '1'): apply migrations 038 (account_sites), 039 (blocked_purchases) and 041
+// (maintenance_runs) FIRST, then run scripts/one-account-backfill.ts (dry run, then --apply --yes-production) and the re-count script, THEN set the
+// switch. Without 039 a refusal is still decided but nothing is emailed (the alert goes out best effort); without 038 the guard behaves as off;
+// without the backfill, accounts that already hold a site have no row (the purchase facts still decide, but two first publishes can race).
 // Environment vocabulary: 'Production' | 'Sandbox' everywhere here. web_app_* rows carry 'live' | 'test' (kindEnvOf maps).
 // `holder` 'web' rows are the only ones ever released or cleaned up: a bound iOS slug is permanent even if never published.
 import { sbRest } from '../webApp/webAppServer.js';
+import { alertOwner } from '../webApp/emails.js';
 import { kindEnvOf, type KindEnv, type StripeMode } from './kind.js';
 
 export type GuardMode = 'off' | 'alert' | 'enforce';
@@ -42,10 +47,16 @@ export interface SitesDeps {
   markPublishedOnce(uid: string, env: KindEnv, slug: string): Promise<void>;
   /** Delete the account's row when it never published. With `slug`: only that exact row (any holder, the request's own row). Without: holder 'web' only. */
   release(uid: string, env: KindEnv, slug?: string): Promise<void>;
-  /** Delete unpublished WEB rows taken before `beforeIso`. Returns how many went. */
-  cleanup(beforeIso: string): Promise<number>;
+  /**
+   * The daily clean-up: rows with published_once=false taken before `beforeIso` (this environment only, when given). A WEB row goes unless its site
+   * is published (web_app_sites.published_at; such a row is healed to published_once=true instead). An APPLE row goes only when its slug is bound to
+   * no ios_purchases row. Returns how many were deleted.
+   */
+  cleanup(beforeIso: string, env?: KindEnv): Promise<number>;
   /** Re-point the row of (from, slug, holder apple) to `to`. */
   move(from: string, to: string, slug: string): Promise<void>;
+  /** Is this slug held by any account's row? */
+  held(slug: string): Promise<boolean>;
 }
 
 export type TakeResult =
@@ -93,8 +104,8 @@ export async function releaseUnpublished(uid: string, env: KindEnv, opts: { slug
 
 /** The daily clean-up: unpublished web rows older than 24 hours. */
 export const UNPUBLISHED_TTL_MS = 24 * 3600_000;
-export async function cleanupUnpublished(now: number, deps: SitesDeps = liveSitesDeps()): Promise<number> {
-  return deps.cleanup(new Date(now - UNPUBLISHED_TTL_MS).toISOString());
+export async function cleanupUnpublished(now: number, deps: SitesDeps = liveSitesDeps(), env?: KindEnv): Promise<number> {
+  return deps.cleanup(new Date(now - UNPUBLISHED_TTL_MS).toISOString(), env);
 }
 
 /**
@@ -110,6 +121,8 @@ export async function moveAddress(from: string, to: string, slug: string | null,
   } catch (e: any) {
     if (tableMissing(e)) return 'skipped';
     console.error('[account sites] move: address row not re-pointed (the Move itself went on):', e?.status ?? e?.message ?? e);
+    // The owner is told (best effort; never fails the Move): the guard would now be wrong for this slug until it is fixed by hand.
+    try { await alertOwner('Prime Barber: Move could not carry the address row', [`from: ${from}`, `to: ${to}`, `slug: ${slug}`, `error: ${e?.status ?? e?.message ?? e}`]); } catch { /* best effort */ }
     return 'error';
   }
 }
@@ -160,6 +173,19 @@ export async function tryMarkPublishedOnce(uid: string, env: KindEnv, slug: stri
   } catch (e: any) { if (!tableMissing(e)) console.error('[account sites] markPublishedOnce failed:', e?.status ?? e?.message ?? e); }
 }
 
+/**
+ * isTaken for chooseSlug with the guard on: a slug held by any account_sites row counts as taken, so a candidate that another account's row holds is never
+ * chosen again (chooseSlug is deterministic). Off: the function itself. A missing table, or any read error in alert mode: not held (as today).
+ */
+export function withAddressTaken(isTaken: (slug: string) => Promise<boolean>, mode: GuardMode = guardMode(), deps?: SitesDeps): (slug: string) => Promise<boolean> {
+  if (mode === 'off') return isTaken;
+  return async (slug) => {
+    if (await isTaken(slug)) return true;
+    try { return await (deps ?? liveSitesDeps()).held(slug); }
+    catch (e: any) { if (tableMissing(e) || mode === 'alert') return false; throw e; }
+  };
+}
+
 export const envOfMode = (mode: StripeMode): KindEnv => kindEnvOf(mode);
 
 // ---------- live wiring ----------
@@ -185,9 +211,28 @@ export function liveSitesDeps(): SitesDeps {
       const where = slug ? `&slug=eq.${enc(slug)}` : '&holder=eq.web';
       await sbRest(`account_sites?user_id=eq.${enc(uid)}&environment=eq.${env}&published_once=eq.false${where}`, { method: 'DELETE', prefer: 'return=minimal' });
     },
-    async cleanup(beforeIso) {
-      const got = await sbRest(`account_sites?holder=eq.web&published_once=eq.false&taken_at=lt.${enc(beforeIso)}`, { method: 'DELETE', prefer: 'return=representation' });
-      return Array.isArray(got) ? got.length : 0;
+    async held(slug) {
+      return ((await sbRest(`account_sites?slug=eq.${enc(slug)}&select=slug&limit=1`)) ?? []).length > 0;
+    },
+    async cleanup(beforeIso, env) {
+      const rows: { user_id: string; environment: KindEnv; slug: string; holder: Holder }[] =
+        (await sbRest(`account_sites?published_once=eq.false&taken_at=lt.${enc(beforeIso)}${env ? `&environment=eq.${env}` : ''}&select=user_id,environment,slug,holder&limit=500`)) ?? [];
+      let n = 0;
+      for (const r of rows) {
+        if (r.holder === 'web') {
+          const pub = (await sbRest(`web_app_sites?slug=eq.${enc(r.slug)}&published_at=not.is.null&select=slug&limit=1`)) ?? [];
+          if (pub.length) { // a live site: never delete its row (markPublishedOnce failed earlier); heal it
+            await sbRest(`account_sites?user_id=eq.${enc(r.user_id)}&environment=eq.${r.environment}&slug=eq.${enc(r.slug)}`, { method: 'PATCH', prefer: 'return=minimal', body: { published_once: true, updated_at: new Date().toISOString() } });
+            continue;
+          }
+        } else {
+          const bound = (await sbRest(`ios_purchases?site_slug=eq.${enc(r.slug)}&select=original_transaction_id&limit=1`)) ?? [];
+          if (bound.length) continue; // a bound iOS slug is permanent
+        }
+        await sbRest(`account_sites?user_id=eq.${enc(r.user_id)}&environment=eq.${r.environment}&slug=eq.${enc(r.slug)}&published_once=eq.false`, { method: 'DELETE', prefer: 'return=minimal' });
+        n++;
+      }
+      return n;
     },
     async move(from, to, slug) {
       await sbRest(`account_sites?user_id=eq.${enc(from)}&slug=eq.${enc(slug)}&holder=eq.apple`, {

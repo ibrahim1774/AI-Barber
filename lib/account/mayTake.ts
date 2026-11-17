@@ -27,20 +27,23 @@ export type MayTake =
 
 export interface MayTakeDeps {
   kindDeps: KindDeps;
+  /** Only a fallback for a purchase with no row: the purchase's own environment decides (B6), so a missing Stripe key never matters for a known purchase. */
   env(): KindEnv;
   /** The account's address row; null when none or when the table is missing. */
   address(uid: string, env: KindEnv): Promise<AddressRow | null>;
   /** The purchase by original transaction id. */
   purchase(otid: string): Promise<{ original_transaction_id: string; user_id: string | null; environment: string | null } | null>;
   /** The purchase holding a slug. */
-  purchaseOfSlug(slug: string): Promise<{ original_transaction_id: string } | null>;
+  purchaseOfSlug(slug: string): Promise<{ original_transaction_id: string; user_id: string | null } | null>;
 }
 
 export async function mayTakePurchase(uid: string, otid: string, deps: MayTakeDeps = liveMayTakeDeps()): Promise<MayTake> {
-  const env = deps.env();
   const purchase = await deps.purchase(otid);
   if (purchase?.user_id === uid) return { may: true };
   const environment = purchase?.environment === 'Production' || purchase?.environment === 'Sandbox' ? purchase.environment : null;
+  // The SAME environment tryTake uses for this purchase (tx.environment): a Sandbox purchase is judged against Sandbox rows, a Production one against
+  // Production rows. Web tables map Production -> live, Sandbox -> test inside loadKindFacts. No dependence on the deployment's Stripe key.
+  const env: KindEnv = environment ?? deps.env();
   const facts = await loadKindFacts(uid, env, deps.kindDeps);
   const reading = readKind(facts);
   const row = await deps.address(uid, env);
@@ -53,9 +56,12 @@ export async function mayTakePurchase(uid: string, otid: string, deps: MayTakeDe
   if (reading.kind === 'web' || (row?.holder === 'web' && row.published_once)) return { may: false, reason: 'web-account', kind: reading.kind, slug: webSlug, environment };
   // The Apple address sits on another purchase.
   if (row?.holder === 'apple') {
-    const holder = own.find((p) => p.site_slug === row.slug)?.original_transaction_id ?? (await deps.purchaseOfSlug(row.slug))?.original_transaction_id ?? null;
+    // The purchase holding the slug counts only when it is THIS account's: a stale row (a failed Move hand-over) never refuses the old account.
+    let holder: string | null = own.find((p) => p.site_slug === row.slug)?.original_transaction_id ?? null;
+    if (!holder) { const p = await deps.purchaseOfSlug(row.slug); if (p && p.user_id === uid) holder = p.original_transaction_id; }
     if (holder && holder !== otid) return { may: false, reason: 'other-apple-id', kind: reading.kind, slug: row.slug, environment };
-    return { may: true };
+    if (holder) return { may: true };
+    // A stale row: fall through to what the account's own purchases say.
   }
   const other = own.find((p) => p.original_transaction_id !== otid);
   if (other) return { may: false, reason: 'other-apple-id', kind: reading.kind, slug: other.site_slug, environment };
@@ -85,7 +91,8 @@ export async function checkTie(uid: string, otid: string, where: string, deps: T
     return mode === 'enforce' ? { action: 'unavailable' } : { action: 'allow' };
   }
   if (d.may === true) return { action: 'allow' };
-  await deps.report({ otid, uid, reason: d.reason, slug: d.slug, environment: d.environment, email: mode === 'enforce', where });
+  // A refused Move or transfer link records and alerts only: the barber is not emailed about it (the Move screen already answers them).
+  await deps.report({ otid, uid, reason: d.reason, slug: d.slug, environment: d.environment, email: mode === 'enforce' && !/^ios\/transfer/.test(where), where });
   return mode === 'enforce' ? { action: 'refuse', reason: d.reason, slug: d.slug ?? '' } : { action: 'allow' };
 }
 
@@ -100,7 +107,7 @@ export function liveMayTakeDeps(): MayTakeDeps {
       catch (e: any) { if (tableMissing(e)) return null; throw e; }
     },
     async purchase(otid) { return (await rest(`ios_purchases?original_transaction_id=eq.${enc(otid)}&select=original_transaction_id,user_id,environment&limit=1`))[0] ?? null; },
-    async purchaseOfSlug(slug) { return (await rest(`ios_purchases?site_slug=eq.${enc(slug)}&select=original_transaction_id&limit=1`))[0] ?? null; },
+    async purchaseOfSlug(slug) { return (await rest(`ios_purchases?site_slug=eq.${enc(slug)}&select=original_transaction_id,user_id&limit=1`))[0] ?? null; },
   };
 }
 export function liveTieDeps(): TieDeps {

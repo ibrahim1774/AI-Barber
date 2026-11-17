@@ -19,7 +19,7 @@ export interface KeptStore {
   /** A copy kept again (same digest) lives another 90 days: expires_at = now + 90 days. */
   renew(uid: string, digest: string, nowMs: number): Promise<void>;
   /** Delete copies with expires_at before `nowIso`. Never reads site_data back (return=minimal). */
-  expire(nowIso: string): Promise<void>;
+  expire(nowIso: string, env?: string): Promise<void>;
 }
 
 /** Is the kept-copy feature in use at all? The endpoint's own gate (WEB_APP_CHECKOUT and WEB_APP_RELIABILITY) AND a rollout switch that is not off
@@ -68,8 +68,8 @@ export function liveKeptStore(): KeptStore {
     async renew(uid, d, nowMs) {
       await sbRest(`site_kept_copies?user_id=eq.${enc(uid)}&digest=eq.${enc(d)}`, { method: 'PATCH', prefer: 'return=minimal', body: { expires_at: new Date(nowMs + KEPT_TTL_MS).toISOString() } });
     },
-    async expire(nowIso) {
-      await sbRest(`site_kept_copies?expires_at=lt.${enc(nowIso)}`, { method: 'DELETE', prefer: 'return=minimal' });
+    async expire(nowIso, env) {
+      await sbRest(`site_kept_copies?expires_at=lt.${enc(nowIso)}${env ? `&environment=eq.${enc(env)}` : ''}`, { method: 'DELETE', prefer: 'return=minimal' });
     },
   };
 }

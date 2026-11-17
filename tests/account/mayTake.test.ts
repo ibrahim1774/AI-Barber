@@ -24,7 +24,7 @@ function world(o: { web?: WebSiteFact[]; purchases?: ApplePurchaseFact[]; ents?:
     env: () => o.env ?? 'Production',
     address: async () => o.row ?? null,
     purchase: async (otid) => (otid === 'NEW' ? incoming : (o.purchases ?? []).find((p) => p.original_transaction_id === otid) ?? null) as any,
-    purchaseOfSlug: async (slug) => { const p = (o.purchases ?? []).find((x) => x.site_slug === slug); return p ? { original_transaction_id: p.original_transaction_id! } : null; },
+    purchaseOfSlug: async (slug) => { const p = (o.purchases ?? []).find((x) => x.site_slug === slug); return p ? { original_transaction_id: p.original_transaction_id!, user_id: p.user_id ?? null } : null; },
   };
   return deps;
 }
@@ -72,10 +72,27 @@ describe('mayTakePurchase', () => {
     const mine = apple({ original_transaction_id: 'NEW', site_slug: null });
     expect(await mayTakePurchase(UID, 'NEW', world({ web: [web('cuts')], purchases: [mine], incoming: { user_id: UID } }))).toEqual({ may: true });
   });
-  it('an Apple address from Sandbox does not count in a Production deployment (decision reading), but does in Sandbox', async () => {
+  it('the purchase\'s own environment decides (B6): a Production purchase ignores a Sandbox Apple address, a Sandbox purchase counts it; env() is not consulted', async () => {
     const p = apple({ original_transaction_id: 'OLD', site_slug: 'sbx', environment: 'Sandbox' });
-    expect(await mayTakePurchase(UID, 'NEW', world({ purchases: [p], env: 'Production' }))).toEqual({ may: true });
-    expect(await mayTakePurchase(UID, 'NEW', world({ purchases: [p], env: 'Sandbox' }))).toMatchObject({ may: false, reason: 'other-apple-id' });
+    const noEnv = (d: MayTakeDeps): MayTakeDeps => ({ ...d, env: () => { throw new Error('STRIPE_WEBAPP_SECRET_KEY missing'); } });
+    expect(await mayTakePurchase(UID, 'NEW', noEnv(world({ purchases: [p], incoming: { user_id: null, environment: 'Production' } })))).toEqual({ may: true });
+    expect(await mayTakePurchase(UID, 'NEW', noEnv(world({ purchases: [p], incoming: { user_id: null, environment: 'Sandbox' } })))).toMatchObject({ may: false, reason: 'other-apple-id' });
+  });
+  it('a Sandbox purchase on a Production deployment for an account with only Sandbox history is judged against Sandbox rows (same environment as tryTake)', async () => {
+    const row: AddressRow = { user_id: UID, environment: 'Sandbox', slug: 'sbx', holder: 'apple', published_once: true };
+    const asked: string[] = [];
+    const d = world({ env: 'Production', row, purchases: [apple({ original_transaction_id: 'OLD', site_slug: 'sbx', environment: 'Sandbox' })], incoming: { user_id: null, environment: 'Sandbox' } });
+    const addr = d.address; d.address = async (u, e) => { asked.push(e); return addr(u, e); };
+    expect(await mayTakePurchase(UID, 'NEW', d)).toMatchObject({ may: false, reason: 'other-apple-id' });
+    expect(asked).toEqual(['Sandbox']);
+  });
+  it('a stale address row (its purchase now belongs to another account) never refuses the old account (B3a)', async () => {
+    const row: AddressRow = { user_id: UID, environment: 'Production', slug: 'moved-away', holder: 'apple', published_once: true };
+    const d = world({ row });
+    d.purchaseOfSlug = async () => ({ original_transaction_id: 'OLD', user_id: 'someone-else' });
+    expect(await mayTakePurchase(UID, 'NEW', d)).toEqual({ may: true });
+    d.purchaseOfSlug = async () => ({ original_transaction_id: 'OLD', user_id: UID });
+    expect(await mayTakePurchase(UID, 'NEW', d)).toMatchObject({ may: false, reason: 'other-apple-id' });
   });
   it('an account with an Apple address on a purchase and also a card plan: Apple holds it, another Apple ID is refused', async () => {
     const p = apple({ original_transaction_id: 'OLD', site_slug: 'apple-site' });
@@ -129,5 +146,16 @@ describe('checkTie modes', () => {
     expect(await checkTie(UID, 'NEW', 'x', e.deps)).toEqual({ action: 'unavailable' });
     expect(a.report).not.toHaveBeenCalled();
     expect(e.report).not.toHaveBeenCalled();
+  });
+});
+
+describe('no barber email for the transfer tie points (B4)', () => {
+  it('a refused Move or link records and alerts only', async () => {
+    const report = vi.fn(async () => {});
+    const deps: TieDeps = { mode: () => 'enforce', mayTake: async () => ({ may: false, reason: 'web-account', kind: 'web', slug: 'x', environment: 'Production' }), report };
+    await checkTie(UID, 'NEW', 'ios/transfer move', deps);
+    await checkTie(UID, 'NEW', 'ios/transfer link', deps);
+    await checkTie(UID, 'NEW', 'ios/publish', deps);
+    expect(report.mock.calls.map((c: any) => c[0].email)).toEqual([false, false, true]);
   });
 });

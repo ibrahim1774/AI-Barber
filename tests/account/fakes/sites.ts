@@ -3,7 +3,7 @@
 import type { AddressRow, SitesDeps } from '../../../lib/account/sites.js';
 import type { KindEnv } from '../../../lib/account/kind.js';
 
-export function fakeSites(seed: AddressRow[] = [], opts: { missing?: boolean; failGet?: boolean; failWrites?: boolean } = {}) {
+export function fakeSites(seed: AddressRow[] = [], opts: { missing?: boolean; failGet?: boolean; failWrites?: boolean; webPublished?: string[]; boundSlugs?: string[] } = {}) {
   const rows: AddressRow[] = seed.map((r) => ({ taken_at: new Date(0).toISOString(), ...r }));
   const calls: string[] = [];
   const state = { ...opts };
@@ -30,10 +30,17 @@ export function fakeSites(seed: AddressRow[] = [], opts: { missing?: boolean; fa
         if (r.user_id === uid && r.environment === env && !r.published_once && (slug ? r.slug === slug : r.holder === 'web')) rows.splice(i, 1);
       }
     },
-    async cleanup(beforeIso) {
+    async held(slug) { guard('held'); return rows.some((r) => r.slug === slug); },
+    async cleanup(beforeIso, env) {
       guard('cleanup');
       let n = 0;
-      for (let i = rows.length - 1; i >= 0; i--) if (rows[i].holder === 'web' && !rows[i].published_once && (rows[i].taken_at ?? '') < beforeIso) { rows.splice(i, 1); n++; }
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const r = rows[i];
+        if (r.published_once || (r.taken_at ?? '') >= beforeIso || (env && r.environment !== env)) continue;
+        if (r.holder === 'web' && (state.webPublished ?? []).includes(r.slug)) { r.published_once = true; continue; }
+        if (r.holder === 'apple' && (state.boundSlugs ?? []).includes(r.slug)) continue;
+        rows.splice(i, 1); n++;
+      }
       return n;
     },
     async move(from, to, slug) {
