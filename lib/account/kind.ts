@@ -7,6 +7,12 @@
 //  - neither : none of the above. Free alone never makes a web account (Free is never read here, and never counts as Stripe).
 // Never use entitlementOrFree for this test. Read-only: nothing here changes how a purchase is tied to an account.
 //
+// TWO READINGS, do not mix them up:
+//  - DECISION reading (this file: readKind, accountKind, accountKindReading): what the account IS, for checkout, Move, gates and owner
+//    emails. ios_purchases rows are filtered like appStoreGuard.counts(): a Production deployment sees Production rows only, a
+//    Sandbox (test) deployment sees both. So a Sandbox Apple row never changes the kind seen in production.
+//  - PAID reading (lib/account/plan.ts: source, status, active): Apple Sandbox counts as paid there (question 16: the App Store
+//    reviewer can publish). It never feeds the kind.
 // Environment vocabulary: callers pass 'Production' | 'Sandbox'. web_app_* tables use the Stripe mode ('live' | 'test'), so
 // 'Production' reads 'live' and 'Sandbox' reads 'test' (as liveWebDeleteDeps.listSites does). ios_purchases is read for every
 // environment: a Sandbox purchase counts as live here (purchaseLive has no environment check), like the plan answer.
@@ -49,6 +55,8 @@ export interface EntitlementFact {
 }
 
 export interface KindFacts {
+  /** The deployment's environment: decides which ios_purchases rows the DECISION reading sees (see countedApplePurchases). */
+  env: KindEnv;
   webSites: WebSiteFact[];
   applePurchases: ApplePurchaseFact[];
   entitlements: EntitlementFact[];
@@ -69,15 +77,22 @@ const isFreeId = (id: unknown) => typeof id === 'string' && id.startsWith('free:
 /** A real card plan: Stripe says active, trialing or past_due. An in-memory Free row (free:<uid>) never counts. */
 export const isCardPlan = (e: EntitlementFact): boolean => isEntitledStatus(e.status) && !isFreeId(e.stripe_subscription_id);
 
-/** Pure: rule R1 over the facts. */
+/** Same rule as appStoreGuard.counts(): Production sees Production rows only; Sandbox (test) sees Production and Sandbox rows. */
+export function countedApplePurchases(purchases: ApplePurchaseFact[], env: KindEnv): ApplePurchaseFact[] {
+  return env === 'Production' ? purchases.filter((p) => p.environment === 'Production') : purchases.filter((p) => p.environment === 'Production' || p.environment === 'Sandbox');
+}
+
+/** Pure: rule R1 over the facts (the DECISION reading: Apple rows are filtered by environment). */
 export function readKind(f: KindFacts): KindReading {
+  const apple = countedApplePurchases(f.applePurchases, f.env);
   const holdsWebAddress = f.webSites.some((s) => !!s.published_at);
-  const holdsAppleAddress = f.applePurchases.some((p) => !!p.site_slug);
-  const liveApplePurchase = f.applePurchases.some((p) => purchaseLive(p, f.now));
+  const holdsAppleAddress = apple.some((p) => !!p.site_slug);
+  const liveApplePurchase = apple.some((p) => purchaseLive(p, f.now));
   const cardPlan = f.entitlements.some(isCardPlan);
   let kind: AccountKind = 'neither';
   if (holdsWebAddress && holdsAppleAddress) kind = 'mixed';
-  else if (holdsAppleAddress || (liveApplePurchase && !holdsWebAddress)) kind = 'apple';
+  // A live Apple purchase with no address only decides when nothing else does: a card plan with no address on either side makes a web account.
+  else if (holdsAppleAddress || (liveApplePurchase && !holdsWebAddress && !cardPlan)) kind = 'apple';
   else if (holdsWebAddress || cardPlan) kind = 'web';
   return { kind, holdsWebAddress, holdsAppleAddress, liveApplePurchase, cardPlan, appleAlsoPaysCard: kind === 'apple' && cardPlan };
 }
@@ -93,7 +108,7 @@ export interface KindDeps {
 export async function loadKindFacts(uid: string, env: KindEnv, deps: KindDeps): Promise<KindFacts> {
   const mode = stripeModeOf(env);
   const [webSites, applePurchases, entitlements] = await Promise.all([deps.webSites(uid, mode), deps.applePurchases(uid), deps.entitlements(uid, mode)]);
-  return { webSites, applePurchases, entitlements, now: (deps.now ?? Date.now)() };
+  return { env, webSites, applePurchases, entitlements, now: (deps.now ?? Date.now)() };
 }
 
 export async function accountKindReading(uid: string, env: KindEnv, deps: KindDeps = liveKindDeps()): Promise<KindReading> {

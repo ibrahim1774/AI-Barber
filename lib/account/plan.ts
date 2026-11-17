@@ -6,6 +6,18 @@
 // Apple Sandbox counts as paid here (purchaseLive has no environment check); appStoreGuard.counts() is untouched and still
 // decides checkout.
 //
+// Two readings (see lib/account/kind.ts): `source` / `status` / `active` / `test` are the PAID reading (every ios_purchases row, so Apple
+// Sandbox counts as paid, question 16). `kind`, `site`, `webSite` and `holderPurchaseEnded` are the DECISION reading (Apple rows filtered
+// like appStoreGuard.counts()): a Sandbox row never changes them in production.
+//
+// Known limits (read before building on this):
+//  - appleGrace / appleRetry / paymentProblem for Apple are APPROXIMATIONS: ios_purchases.last_notification stores only the notification
+//    type, so grace is "live but the stored expiry has passed" and retry is "last type was DID_FAIL_TO_RENEW". The sweep and
+//    lib/ios/txStatus.ts are the authority. Tighten before any payment-problem copy is shown to a user.
+//  - kind 'web' can come with source 'apple' (a live Apple purchase with no address, plus a published web address). Never derive the
+//    kind from `source`, and later waves must not branch on `source` for kind.
+//  - For kind 'mixed', `site` is the Apple address and `webSite` the web one: check both.
+//
 // Legacy mark: the account owns a site_owners row (user_id = the account) whose checkout_session_id does NOT start with 'webapp:'
 // (null included: admin and backfill rows). New web-app publishes also write site_owners rows, with checkout_session_id
 // 'webapp:<subscription>' (lib/webApp/publishFlow.ts), so those do not mark a legacy customer.
@@ -16,8 +28,9 @@ import { webProductId } from '../webApp/entitlementGate.js';
 import { readStoredGroup } from '../webApp/priceGroup.js';
 import { sbRest } from '../webApp/webAppServer.js';
 import type { Interval, Tier as WebTier } from '../webApp/stripeCore.js';
+import { keyMode } from '../webApp/stripeCore.js';
 import {
-  isCardPlan, kindEnvOf, liveKindDeps, loadKindFacts, readKind, stripeModeOf,
+  countedApplePurchases, isCardPlan, liveKindDeps, loadKindFacts, readKind, stripeModeOf,
   type AccountKind, type ApplePurchaseFact, type EntitlementFact, type KindDeps, type KindEnv, type KindFacts, type KindReading, type WebSiteFact,
 } from './kind.js';
 
@@ -112,7 +125,7 @@ const stripeTier = (r: EntitlementFact, free: boolean): Tier | null => {
 export function planFromFacts(f: PlanFacts): AccountPlan {
   const reading: KindReading = readKind(f);
   const now = f.now;
-  const apple = pickApple(f.applePurchases, now);
+  const apple = pickApple(f.applePurchases, now); // PAID reading: all rows
   const appleLive = !!apple && purchaseLive(apple, now);
   const card = pickCard(f.entitlements, isCardPlan);
   const cardLive = !!card && isCardPlan(card);
@@ -148,7 +161,7 @@ export function planFromFacts(f: PlanFacts): AccountPlan {
   const appleRetry = source === 'apple' && apple?.last_notification === 'DID_FAIL_TO_RENEW';
   const paymentProblem = source === 'stripe' ? card?.status === 'past_due' : appleGrace || appleRetry;
 
-  const holder = pickAddress(f.applePurchases, (p) => p.site_slug);
+  const holder = pickAddress(countedApplePurchases(f.applePurchases, f.env), (p) => p.site_slug); // DECISION reading
   const webRow = pickAddress(f.webSites.filter((s) => !!s.published_at), (s) => s.slug);
   const appleSite: AccountSite | null = holder?.site_slug ? { slug: holder.site_slug, url: siteUrlOf(holder.site_slug), holder: 'apple' } : null;
   const webSite: AccountSite | null = webRow ? { slug: webRow.slug, url: siteUrlOf(webRow.slug), holder: 'web' } : null;
@@ -178,9 +191,31 @@ export async function accountPlan(uid: string, env: KindEnv = defaultKindEnv(), 
   return planFromFacts(await loadPlanFacts(uid, env, deps));
 }
 
+/**
+ * This deployment's environment from the Stripe key (keyMode). THROWS when the key is missing or unknown: callers must not assume
+ * Production. getPlan and /me catch it (old answer, logged); Move fails closed (503).
+ */
 export function defaultKindEnv(): KindEnv {
-  const k = process.env.STRIPE_WEBAPP_SECRET_KEY;
-  return kindEnvOf(k?.startsWith('sk_test_') || k?.startsWith('rk_test_') ? 'test' : 'live');
+  const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
+  if (!mode) throw new Error('STRIPE_WEBAPP_SECRET_KEY missing or unknown: environment cannot be decided');
+  return mode === 'live' ? 'Production' : 'Sandbox';
+}
+
+/**
+ * Lean "does this account have a live plan?" for owner emails: Apple live (PAID reading), a real card plan in this mode, or Free.
+ * Reads only those three things (never site_owners or the sites). One failing read never hides a plan another read found; it throws only
+ * when nothing is live AND something could not be read (the caller fails closed).
+ */
+export async function hasLivePlan(uid: string, env: KindEnv = defaultKindEnv(), deps: Pick<PlanDeps, 'applePurchases' | 'entitlements' | 'isFree' | 'now'> = livePlanKindDeps()): Promise<boolean> {
+  const mode = stripeModeOf(env);
+  const now = (deps.now ?? Date.now)();
+  const [a, c, f] = await Promise.allSettled([deps.applePurchases(uid), deps.entitlements(uid, mode), deps.isFree(uid)]);
+  if (a.status === 'fulfilled' && a.value.some((p) => purchaseLive(p, now))) return true;
+  if (c.status === 'fulfilled' && c.value.some(isCardPlan)) return true;
+  if (f.status === 'fulfilled' && f.value === true) return true;
+  const failed = [a, c, f].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+  if (failed) throw failed.reason;
+  return false;
 }
 
 export function livePlanKindDeps(): PlanDeps {
@@ -189,9 +224,15 @@ export function livePlanKindDeps(): PlanDeps {
   return {
     ...base,
     isFree: async (uid) => (await readStoredGroup(uid)) === 'free',
+    // Fails soft: a site_owners problem only means legacy=false (logged), never a failed plan answer.
     legacyOwner: async (uid) => {
-      const rows = await rest(`site_owners?user_id=eq.${encodeURIComponent(uid)}&select=slug,checkout_session_id&limit=50`);
-      return rows.some((r) => !(typeof r.checkout_session_id === 'string' && r.checkout_session_id.startsWith('webapp:')));
+      try {
+        const rows = await rest(`site_owners?user_id=eq.${encodeURIComponent(uid)}&select=slug,checkout_session_id&limit=50`);
+        return rows.some((r) => !(typeof r.checkout_session_id === 'string' && r.checkout_session_id.startsWith('webapp:')));
+      } catch (e: any) {
+        console.error('[account plan] legacy lookup failed, reading legacy=false:', e?.message || e);
+        return false;
+      }
     },
   };
 }

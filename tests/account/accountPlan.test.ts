@@ -30,7 +30,7 @@ const TABLE: Array<[Mix, Want]> = [
   [{ name: 'apple grace (watched, expiry passed, not taken down)', apple: [appleSite({ expires_at: iso(NOW - DAY) })] }, { kind: 'apple', source: 'apple', active: true, extra: { status: 'grace', appleGrace: true, paymentProblem: true } }],
   [{ name: 'apple retry (DID_FAIL_TO_RENEW, taken down)', apple: [appleSite({ taken_down_at: iso(NOW - DAY), expires_at: iso(NOW - 3 * DAY), last_notification: 'DID_FAIL_TO_RENEW' })] }, { kind: 'apple', source: 'apple', active: false, extra: { appleRetry: true, paymentProblem: true } }],
   [{ name: 'apple revoked', apple: [appleSite({ revoked_at: iso(NOW - DAY) })] }, { kind: 'apple', source: 'apple', active: false, extra: { status: 'revoked', holderPurchaseEnded: true } }],
-  [{ name: 'apple sandbox counts as paid', apple: [appleSite({ environment: 'Sandbox' })] }, { kind: 'apple', source: 'apple', active: true, extra: { test: true } }],
+  [{ name: 'apple sandbox counts as paid (source, active) but never decides the kind in production', apple: [appleSite({ environment: 'Sandbox' })] }, { kind: 'neither', source: 'apple', active: true, extra: { test: true, site: null, holderPurchaseEnded: false } }],
   [{ name: 'stripe live, published', cards: [card('active')], sites: [webSite()] }, { kind: 'web', source: 'stripe', active: true, extra: { status: 'active', paymentProblem: false, tier: 'bookings' } }],
   [{ name: 'stripe live, never published', cards: [card('trialing')] }, { kind: 'web', source: 'stripe', active: true, extra: { status: 'trialing' } }],
   [{ name: 'stripe past due', cards: [card('past_due')], sites: [webSite()] }, { kind: 'web', source: 'stripe', active: true, extra: { paymentProblem: true, status: 'past_due' } }],
@@ -46,14 +46,14 @@ const TABLE: Array<[Mix, Want]> = [
   [{ name: 'web address plus apple address is mixed', apple: [appleSite()], sites: [webSite()], cards: [card('active')] }, { kind: 'mixed', source: 'apple', active: true, extra: { site: { slug: 'fresh-cuts', url: 'https://fresh-cuts.vercel.app', holder: 'apple' }, webSite: { slug: 'web-cuts', url: 'https://web-cuts.vercel.app', holder: 'web' } } }],
   [{ name: 'web address only (a stray shop ios_otid is not a fact here)', sites: [webSite()], cards: [card('active')] }, { kind: 'web', source: 'stripe', active: true, extra: { site: { slug: 'web-cuts', url: 'https://web-cuts.vercel.app', holder: 'web' }, webSite: null } }],
   [{ name: 'live apple purchase without address plus published web address is web', apple: [apple()], sites: [webSite()] }, { kind: 'web', source: 'apple', active: true }],
-  [{ name: 'live apple purchase without address plus card plan, nothing published, reads apple', apple: [apple()], cards: [card('active')] }, { kind: 'apple', source: 'apple', active: true }],
+  [{ name: 'live apple purchase without address plus card plan, nothing published, reads web (the card plan decides)', apple: [apple()], cards: [card('active')] }, { kind: 'web', source: 'apple', active: true, extra: { appleAlsoPaysCard: false } }],
   [{ name: 'unpublished web slug alone is not an address', sites: [webSite({ published_at: null })] }, { kind: 'neither', source: null, active: false }],
   [{ name: 'removed web address still counts', sites: [webSite({ removed_at: iso(NOW - DAY) })] }, { kind: 'web', source: null, active: false }],
   [{ name: 'removed apple address still counts', apple: [appleSite({ removed_at: iso(NOW - DAY), taken_down_at: iso(NOW - DAY) })] }, { kind: 'apple', source: 'apple', active: false, extra: { holderPurchaseEnded: true } }],
   [{ name: 'free floor lifts a hosting-only card to bookings', free: true, cards: [card('active', { tier: 'website' })] }, { kind: 'web', source: 'stripe', active: true, extra: { tier: 'bookings' } }],
 ];
 
-const facts = (m: Mix): PlanFacts => ({ webSites: m.sites ?? [], applePurchases: m.apple ?? [], entitlements: m.cards ?? [], now: NOW, mode: 'live', free: !!m.free, legacy: !!m.legacy });
+const facts = (m: Mix): PlanFacts => ({ env: 'Production', webSites: m.sites ?? [], applePurchases: m.apple ?? [], entitlements: m.cards ?? [], now: NOW, mode: 'live', free: !!m.free, legacy: !!m.legacy });
 const deps = (m: Mix): PlanDeps => ({
   webSites: vi.fn(async () => m.sites ?? []), applePurchases: vi.fn(async () => m.apple ?? []), entitlements: vi.fn(async () => m.cards ?? []),
   isFree: vi.fn(async () => !!m.free), legacyOwner: vi.fn(async () => !!m.legacy), now: () => NOW,
