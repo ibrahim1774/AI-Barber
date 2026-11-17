@@ -2,7 +2,7 @@
 // maintenance_runs (migration 041) before it runs, so overlapping cron runs and the 144 runs a day do it once a day. Never throws.
 // Missing table (041 not applied): the task is skipped. Lane C3 adds its kept-copies clean-up the same way (runDaily with another name).
 import { sbRest } from '../webApp/webAppServer.js';
-import { liveKeptStore, type KeptStore } from './keptCopy.js';
+import { keptCopiesInUse, liveKeptStore, type KeptStore } from './keptCopy.js';
 import { cleanupUnpublished, guardMode, tableMissing, type SitesDeps } from './sites.js';
 
 export const DAY_MS = 24 * 3600_000;
@@ -28,6 +28,8 @@ export async function runDaily(name: string, task: () => Promise<unknown>, now: 
   try {
     return { ran: true, result: await task() };
   } catch (e: any) {
+    // The task's own table is missing (migration not applied): nothing to retry every tick; the claim stays, so it is tried again tomorrow.
+    if (tableMissing(e)) return { ran: false, reason: 'no-table' };
     // A failed run is retried by the next cron tick (the claim is given back), not tomorrow.
     console.error(`[maintenance] ${name}: failed:`, e?.status ?? e?.message ?? e);
     await deps.release?.(name, nowIso).catch(() => {});
@@ -37,11 +39,12 @@ export async function runDaily(name: string, task: () => Promise<unknown>, now: 
 
 /** The account clean-ups. With the guard off nothing runs and nothing is read. */
 export async function runAccountMaintenance(now: number = Date.now(), opts: { mode?: ReturnType<typeof guardMode>; sites?: SitesDeps; maintenance?: MaintenanceDeps; kept?: KeptStore } = {}): Promise<Record<string, DailyResult> | null> {
-  // Kept copies expire whatever the guard says (the endpoint has its own gate); the address clean-up needs the guard on.
+  // Address rows: needs ONE_SITE_GUARD on. Kept copies expire only while the feature is in use (the endpoint's gate plus a rollout switch that is
+  // not off): otherwise nothing is claimed, read or deleted.
   const out: Record<string, DailyResult> = {};
   if ((opts.mode ?? guardMode()) !== 'off') out.unpublishedAddresses = await runDaily('account_sites_unpublished', () => cleanupUnpublished(now, opts.sites), now, opts.maintenance);
-  out.expiredKeptCopies = await runDaily('site_kept_copies_expired', () => (opts.kept ?? liveKeptStore()).expire(new Date(now).toISOString()), now, opts.maintenance);
-  return out;
+  if (opts.kept || keptCopiesInUse()) out.expiredKeptCopies = await runDaily('site_kept_copies_expired', () => (opts.kept ?? liveKeptStore()).expire(new Date(now).toISOString()), now, opts.maintenance);
+  return Object.keys(out).length ? out : null;
 }
 
 const enc = encodeURIComponent;

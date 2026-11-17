@@ -16,9 +16,18 @@ export interface KeptStore {
   trim(uid: string, keep: number): Promise<void>;
   /** Insert-ignore on (user_id, digest). */
   insert(row: { user_id: string; environment: string; slug: string | null; kind: KeptKind; site_data: unknown; source_version: number | null; digest: string }): Promise<void>;
-  /** Delete copies with expires_at before `nowIso`; returns how many. */
-  expire(nowIso: string): Promise<number>;
+  /** A copy kept again (same digest) lives another 90 days: expires_at = now + 90 days. */
+  renew(uid: string, digest: string, nowMs: number): Promise<void>;
+  /** Delete copies with expires_at before `nowIso`. Never reads site_data back (return=minimal). */
+  expire(nowIso: string): Promise<void>;
 }
+
+/** Is the kept-copy feature in use at all? The endpoint's own gate (WEB_APP_CHECKOUT and WEB_APP_RELIABILITY) AND a rollout switch that is not off
+ *  (ACCOUNT_DRAFTS_IOS allowlist or all, because only account-mode callers may store a copy). The daily expiry runs only then. */
+export function keptCopiesInUse(env: Record<string, string | undefined> = process.env): boolean {
+  return env.WEB_APP_CHECKOUT === '1' && env.WEB_APP_RELIABILITY === '1' && (env.ACCOUNT_DRAFTS_IOS === 'all' || env.ACCOUNT_DRAFTS_IOS === 'allowlist');
+}
+export const KEPT_TTL_MS = 90 * 24 * 3600_000;
 
 export type KeptResult =
   | { status: 200; body: { ok: true; stored: boolean } }
@@ -37,7 +46,7 @@ export async function storeKeptCopy(uid: string, environment: string, body: any,
   }
   const d = digest(siteData);
   try {
-    if (await store.has(uid, d)) return { status: 200, body: { ok: true, stored: false } };
+    if (await store.has(uid, d)) { await store.renew(uid, d, Date.now()); return { status: 200, body: { ok: true, stored: false } }; }
     await store.trim(uid, KEPT_CAP - 1); // room for the new one: at most 50 after the insert, oldest out first
     await store.insert({ user_id: uid, environment, slug: slug ?? null, kind, site_data: siteData, source_version: sourceVersion ?? null, digest: d });
     return { status: 200, body: { ok: true, stored: true } };
@@ -56,9 +65,11 @@ export function liveKeptStore(): KeptStore {
       if (old.length) await sbRest(`site_kept_copies?id=in.(${old.map((r) => r.id).join(',')})`, { method: 'DELETE', prefer: 'return=minimal' });
     },
     async insert(row) { await sbRest('site_kept_copies?on_conflict=user_id,digest', { method: 'POST', body: row, prefer: 'resolution=ignore-duplicates,return=minimal' }); },
+    async renew(uid, d, nowMs) {
+      await sbRest(`site_kept_copies?user_id=eq.${enc(uid)}&digest=eq.${enc(d)}`, { method: 'PATCH', prefer: 'return=minimal', body: { expires_at: new Date(nowMs + KEPT_TTL_MS).toISOString() } });
+    },
     async expire(nowIso) {
-      const got = await sbRest(`site_kept_copies?expires_at=lt.${enc(nowIso)}`, { method: 'DELETE', prefer: 'return=representation' });
-      return Array.isArray(got) ? got.length : 0;
+      await sbRest(`site_kept_copies?expires_at=lt.${enc(nowIso)}`, { method: 'DELETE', prefer: 'return=minimal' });
     },
   };
 }

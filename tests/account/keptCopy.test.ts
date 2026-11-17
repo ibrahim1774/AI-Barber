@@ -13,7 +13,8 @@ function fake(o: { missing?: boolean } = {}) {
     async has(uid, d) { miss(); return rows.some((r) => r.user_id === uid && r.digest === d); },
     async trim(uid, keep) { miss(); const mine = rows.filter((r) => r.user_id === uid).sort((a, b) => b.n - a.n); for (const r of mine.slice(keep)) rows.splice(rows.indexOf(r), 1); },
     async insert(r) { miss(); if (!rows.some((x) => x.user_id === r.user_id && x.digest === r.digest)) rows.push({ user_id: r.user_id, digest: r.digest, n: ++n, expires_at: Date.now() + 90 * 86_400_000, site_data: r.site_data }); },
-    async expire(iso) { miss(); let c = 0; for (let i = rows.length - 1; i >= 0; i--) if (rows[i].expires_at < Date.parse(iso)) { rows.splice(i, 1); c++; } return c; },
+    async renew(uid, d, nowMs) { miss(); const r = rows.find((x) => x.user_id === uid && x.digest === d); if (r) r.expires_at = nowMs + 90 * 86_400_000; },
+    async expire(iso) { miss(); for (let i = rows.length - 1; i >= 0; i--) if (rows[i].expires_at < Date.parse(iso)) rows.splice(i, 1); },
   };
   return { store, rows };
 }
@@ -58,8 +59,18 @@ describe('kept copies', () => {
   it('expiry removes only expired rows', async () => {
     const f = fake();
     await storeKeptCopy(U, 'live', body(1), f.store);
-    expect(await f.store.expire(new Date(Date.now() + 89 * 86_400_000).toISOString())).toBe(0);
-    expect(await f.store.expire(new Date(Date.now() + 91 * 86_400_000).toISOString())).toBe(1);
+    await f.store.expire(new Date(Date.now() + 89 * 86_400_000).toISOString());
+    expect(f.rows).toHaveLength(1);
+    await f.store.expire(new Date(Date.now() + 91 * 86_400_000).toISOString());
+    expect(f.rows).toHaveLength(0);
+  });
+  it('a dedupe hit renews the copy for another 90 days', async () => {
+    const f = fake();
+    await storeKeptCopy(U, 'Production', body(1), f.store);
+    f.rows[0].expires_at = Date.now() + 86_400_000; // nearly expired
+    await storeKeptCopy(U, 'Production', body(1), f.store);
+    expect(f.rows).toHaveLength(1);
+    expect(f.rows[0].expires_at).toBeGreaterThan(Date.now() + 89 * 86_400_000);
   });
 });
 

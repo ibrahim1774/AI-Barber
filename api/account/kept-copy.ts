@@ -5,6 +5,8 @@ import { modeOf, reliabilityOn } from '../../lib/webApp/reliability.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 import { callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 import { storeKeptCopy } from '../../lib/account/keptCopy.js';
+import { siteModeOf } from '../../lib/account/siteMode.js';
+import { kindEnvOf } from '../../lib/account/kind.js';
 
 export const KEPT_WRITES_PER_MINUTE = 30;
 const store = memoryStore();
@@ -21,7 +23,11 @@ export default async function handler(req: any, res: any) {
       res.setHeader('Retry-After', '60');
       return res.status(429).json({ error: 'rate_limited' });
     }
-    const r = await storeKeptCopy(user.id, modeOf(), req.body);
+    // Only the rollout stores copies: the caller must be in account mode (403 otherwise, 503 when that cannot be decided).
+    let mode;
+    try { mode = await siteModeOf(user.id); } catch (e: any) { console.error('[kept copy] mode lookup failed:', e?.message || e); return res.status(503).json({ error: 'kept_copy_unavailable' }); }
+    if (mode !== 'account') return res.status(403).json({ error: 'not-account-mode' });
+    const r = await storeKeptCopy(user.id, kindEnvOf(modeOf()), req.body);
     return res.status(r.status).json(r.body);
   } catch (e: any) {
     console.error('[kept copy]', e?.message);
