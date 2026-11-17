@@ -356,6 +356,15 @@ describe('not-live reminders use the web personal sender style', () => {
   });
 });
 
+describe('plan-ended (billing retry) email text', () => {
+  it('says the website is offline, and keeps the website / resubscribe sentence', () => {
+    const m = iosBillingEmail('expired', { firstName: 'Sam' });
+    expect(m.text).toContain('Your Prime Barber plan has ended, so your website is offline. We keep your website, and you can bring it back by subscribing again in your Apple ID subscription settings.');
+    expect(m.text).not.toContain('will not stay online');
+    expect(m.html).toContain('so your website is offline.');
+  });
+});
+
 describe('migration 037', () => {
   const s = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/037_ios_emails.sql'), 'utf8');
   const code = s.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').replace(/\s+/g, ' ');
@@ -369,5 +378,10 @@ describe('migration 037', () => {
     }
     expect(code).not.toMatch(/create policy/i);
     expect(code).toMatch(/primary key \(original_transaction_id, kind, period_key\)/);
+  });
+  it('both user_id columns reference auth.users and cascade on delete (a deleted account leaves no row)', () => {
+    const billing = code.slice(code.indexOf('create table if not exists public.ios_billing_emails'));
+    expect(billing).toMatch(/user_id uuid references auth\.users\(id\) on delete cascade,/);
+    expect(code.match(/references auth\.users\(id\) on delete cascade/g)?.length).toBe(2);
   });
 });

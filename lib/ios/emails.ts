@@ -84,7 +84,7 @@ export function iosBillingEmail(kind: BillingKind, i: IosMailInput & { graceKept
     headline: 'Your plan has ended', tag: 'ios_billing_expired',
     paragraphs: [
       hi(first),
-      'Your Prime Barber plan has ended, so your website will not stay online. We keep your website, and you can bring it back by subscribing again in your Apple ID subscription settings.',
+      'Your Prime Barber plan has ended, so your website is offline. We keep your website, and you can bring it back by subscribing again in your Apple ID subscription settings.',
       APPLE_STEPS,
     ],
   });
