@@ -26,7 +26,7 @@ import {
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { liveTie, type TieCheck } from '../account/mayTake.js';
-import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, type GuardMode, type SitesDeps } from '../account/sites.js';
+import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
 import { reportBlocked } from '../account/blocked.js';
 import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
@@ -76,7 +76,7 @@ export type IosPublishResult =
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
   | { status: 409; body: OtherAccountBody }
-  | { status: 409; body: { error: 'account-has-site'; slug: string } }
+  | { status: 409; body: { error: 'account-has-site'; slug: string; reason?: 'web-account' | 'other-apple-id' | 'mixed' } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
@@ -349,7 +349,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       if (deps.tie) {
         const t = await deps.tie(caller, otid, 'ios/publish');
         if (t.action === 'unavailable') return unavailable;
-        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug } };
+        // 409 account-has-site is what builds handle. `reason` says why; the slug is the account's own address, '' when it has none (never an invented site).
+        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: t.reason } };
       }
       let linked = false;
       try {
@@ -388,7 +389,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       for (let attempt = 0; attempt < 2 && !bound; attempt++) {
         let candidate: string;
         try {
-          candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
+          candidate = await chooseSlug(sd.shopName, tx.environment, caller ? withAddressTaken(deps.isTaken, mode, deps.sites) : deps.isTaken);
         } catch (e) {
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
@@ -396,17 +397,28 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         // The account's one address, taken BEFORE the slug is bound to the purchase.
         let created = false;
         if (caller && mode !== 'off') {
-          const took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
+          let took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
+          if (took.kind === 'refused' && took.existing && !took.existing.published_once) {
+            // This account's own UNPUBLISHED row never blocks its Apple first publish: a web row left by a failed first publish (B1), or an Apple row bound to
+            // no purchase (B3b). A concurrent request for THIS purchase (its slug is bound to this purchase) is handled just below, not here.
+            const ex = took.existing;
+            const bytes = ex.holder === 'apple' ? await deps.repo.findBySlug?.(ex.slug).catch(() => undefined) : null;
+            if (ex.holder === 'web' || (ex.holder === 'apple' && bytes === null)) {
+              await tryRelease(caller, tx.environment, ex.slug, mode, deps.sites);
+              took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
+            }
+          }
           if (took.kind === 'unavailable') return unavailable;
           if (took.kind === 'ok') created = took.created;
           if (took.kind === 'refused') {
             // A concurrent request for THIS purchase took the row and bound its slug first: publish onto that slug.
             const raced = took.existing?.holder === 'apple' ? await deps.repo.get(otid) : null;
             if (raced?.site_slug && raced.site_slug === took.existing?.slug) { bound = raced.site_slug; break; }
-            if (!took.existing) { console.warn(`[ios/publish] ${otid}: ${candidate} is held by another account's address row; choosing again`); continue; }
+            // The slug is held by ANOTHER account's row. isTaken now knows that, so the next attempt picks another; in alert mode nothing changes from today.
+            if (!took.existing && mode === 'enforce') { console.warn(`[ios/publish] ${otid}: ${candidate} is held by another account's address row; choosing again`); continue; }
             // The account holds another address (a web site, or one on a different purchase). Recorded and alerted (never emailed: the purchase is already the account's).
-            await reportBlocked({ otid, uid: caller, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', slug: took.existing.slug, environment: tx.environment, email: false, where: 'ios/publish address' });
-            if (mode === 'enforce') return { status: 409, body: { error: 'account-has-site', slug: took.existing.slug } };
+            if (took.existing) await reportBlocked({ otid, uid: caller, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', slug: took.existing.slug, environment: tx.environment, email: false, where: 'ios/publish address' });
+            if (mode === 'enforce' && took.existing) return { status: 409, body: { error: 'account-has-site', slug: took.existing.slug, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id' } };
           }
         }
         if (await deps.repo.bindSlug(otid, candidate)) {

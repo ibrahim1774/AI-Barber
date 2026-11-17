@@ -39,6 +39,36 @@ describe('tie-point inventory', () => {
   });
 });
 
+// Call sites versus checks, per file: the minimum number of `tie(` asks each file must contain (one per tie point in it), counted from the source.
+const MIN_ASKS: Record<string, number> = { 'lib/ios/publishFlow.ts': 2, 'lib/ios/planFlow.ts': 2, 'lib/bookings/ownerFlow.ts': 1, 'lib/bookings/live.ts': 1, 'lib/ios/transfer.ts': 1 };
+describe('every tie point has its ask, counted', () => {
+  for (const [f, min] of Object.entries(MIN_ASKS)) {
+    it(`${f}: at least ${min} ask(s) of tie(`, () => {
+      const src = readFileSync(join(root, f), 'utf8');
+      expect([...src.matchAll(/\btie\(/g)].length).toBeGreaterThanOrEqual(min);
+    });
+  }
+  it('transfer.ts asks at BOTH writers (the unlinked link and the confirmed move)', () => {
+    const src = readFileSync(join(root, 'lib/ios/transfer.ts'), 'utf8');
+    expect([...src.matchAll(/tieRefusal\(caller, '/g)].map((m) => m[0]).length).toBe(2);
+  });
+});
+
+describe('no other raw writer of ios_purchases.user_id or ab_shops.ios_otid', () => {
+  // Repo implementations (the one place each column is written) and nothing else: raw supabase-js writes and PostgREST PATCH/POST strings.
+  const REPO = new Set(['lib/ios/purchases.ts', 'lib/bookings/repo.ts']);
+  const rel = (f: string) => f.slice(root.length + 1);
+  const scan = (re: RegExp) => files.filter((f) => !REPO.has(rel(f)) && re.test(readFileSync(f, 'utf8'))).map(rel);
+  it('supabase-js writes to ios_purchases', () => { expect(scan(/from\(['"]ios_purchases['"]\)\s*\.(update|upsert|insert|delete)\(/)).toEqual([]); });
+  it('supabase-js writes of ios_otid', () => { expect(scan(/\.update\(\{[^}]*\bios_otid\b/)).toEqual([]); });
+  it('PostgREST PATCH/POST/DELETE strings on ios_purchases or ab_shops', () => {
+    expect(scan(/(ios_purchases|ab_shops)\?[^`'"]*[`'"]\s*,\s*\{[^}]*method:\s*['"](PATCH|POST|DELETE)['"]/)).toEqual([]);
+  });
+  it('an `ios_otid` or `user_id` key inside an insert/upsert payload of those tables', () => {
+    expect(scan(/from\(['"](ios_purchases|ab_shops)['"]\)\s*\.(insert|upsert)\(\{[^}]*\b(ios_otid|user_id)\b/)).toEqual([]);
+  });
+});
+
 describe('liveTie with the guard off', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   it('allows and reads nothing (no fetch at all)', async () => {

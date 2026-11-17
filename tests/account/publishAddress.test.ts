@@ -72,7 +72,7 @@ describe('iOS publish takes the address', () => {
   it('1: the account already holds another address: 409 account-has-site with it, nothing bound, nothing deployed', async () => {
     const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'my-web-site', holder: 'web', published_once: true }]);
     const t = ios([{ ...base }], 'enforce', f.deps);
-    expect(await t.run()).toEqual({ status: 409, body: { error: 'account-has-site', slug: 'my-web-site' } });
+    expect(await t.run()).toEqual({ status: 409, body: { error: 'account-has-site', slug: 'my-web-site', reason: 'web-account' } });
     expect(t.db.row(OTID)!.site_slug).toBeNull();
     expect(t.deps.writePending).not.toHaveBeenCalled();
     expect(t.deps.publish).not.toHaveBeenCalled();
@@ -196,7 +196,7 @@ describe('web publish takes the address', () => {
   it('1: an account that holds an Apple address is refused: 409 slug-owned, no web site bound, nothing written', async () => {
     const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'apple-site', holder: 'apple', published_once: true }]);
     const t = web({ mode: 'enforce', sites: f.deps });
-    expect(await t.run()).toEqual({ status: 409, body: { error: 'slug-owned' } });
+    expect(await t.run()).toEqual({ status: 409, body: { error: 'slug-owned', reason: 'account-has-site' } });
     expect(t.sites.size).toBe(0);
     expect(t.deps.writePending).not.toHaveBeenCalled();
     expect(f.rows).toHaveLength(1);
@@ -230,5 +230,81 @@ describe('web publish takes the address', () => {
     expect(await t.run()).toEqual({ status: 409, body: { error: 'slug-owned' } });
     expect(t.sites.size).toBe(0);
     expect(f.rows).toHaveLength(0);
+  });
+});
+
+// ---------- C1 review fixes ----------
+describe('A1: a slug held by another account\'s row is never picked again', () => {
+  const OTHER_ROW = { user_id: OTHER, environment: 'Production' as const, slug: 'fresh-cuts', holder: 'web' as const, published_once: true };
+  it('iOS: enforce and alert both pick another name and publish (no 503 slug-bind-failed)', async () => {
+    for (const mode of ['enforce', 'alert'] as const) {
+      const f = fakeSites([OTHER_ROW]);
+      const r: any = await ios([{ ...base }], mode, f.deps).run();
+      expect(r.status, mode).toBe(200);
+      expect(r.body.siteId).not.toBe('fresh-cuts');
+    }
+  });
+  it('web: the same', async () => {
+    for (const mode of ['enforce', 'alert'] as const) {
+      const f = fakeSites([OTHER_ROW]);
+      const r: any = await web({ mode, sites: f.deps }).run();
+      expect(r.status, mode).toBe(200);
+      expect(r.body.siteId).not.toBe('fresh-cuts');
+    }
+  });
+  it('off: isTaken is today\'s function and the table is never asked', async () => {
+    const f = throwing();
+    expect((await ios([{ ...base }], 'off', f).run()).status).toBe(200);
+  });
+});
+
+describe('B1/B3b: this account\'s own unpublished rows never block its Apple first publish', () => {
+  it('web publish fails (502) -> Apple purchase -> iOS publish succeeds: one row, holder apple', async () => {
+    const f = fakeSites();
+    const w = web({ mode: 'enforce', sites: f.deps, outcome: { ok: false, siteId: 'x', reason: 'deploy-failed' } });
+    expect((await w.run()).status).toBe(502);
+    expect(f.rows).toMatchObject([{ holder: 'web', published_once: false }]);
+    const t = ios([{ ...base }], 'enforce', f.deps);
+    const r: any = await t.run();
+    expect(r.status).toBe(200);
+    expect(f.rows).toHaveLength(1);
+    expect(f.rows[0]).toMatchObject({ holder: 'apple', published_once: true, slug: r.body.siteId });
+  });
+  it('an unpublished Apple row bound to no purchase is adopted; one bound to another purchase refuses', async () => {
+    const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'stale', holder: 'apple', published_once: false }]);
+    const t = ios([{ ...base }], 'enforce', f.deps);
+    expect((await t.run()).status).toBe(200);
+    expect(f.rows).toHaveLength(1);
+    expect(f.rows[0].slug).not.toBe('stale');
+    const g = fakeSites([{ user_id: USER, environment: 'Production', slug: 'theirs', holder: 'apple', published_once: false }]);
+    const u = ios([{ ...base }, { ...base, original_transaction_id: '999', site_slug: 'theirs' }], 'enforce', g.deps);
+    expect((await u.run()).status).toBe(409);
+    expect(g.rows).toHaveLength(1);
+  });
+  it('a PUBLISHED web row is never released (the Apple publish is refused)', async () => {
+    const f = fakeSites([{ user_id: USER, environment: 'Production', slug: 'w', holder: 'web', published_once: true }]);
+    expect((await ios([{ ...base }], 'enforce', f.deps).run()).status).toBe(409);
+    expect(f.rows).toHaveLength(1);
+  });
+});
+
+describe('B2: a bound but never published web site still takes its row', () => {
+  const unpublished: WebSiteRow = { slug: 'fresh-cuts', stripe_subscription_id: 'sub_1', user_id: USER, environment: 'live', published_at: null, taken_down_at: null, removed_at: null };
+  const owner: SiteOwnerRow = { slug: 'fresh-cuts', user_id: USER, claim_email: null, owner_email: 'o@e.co', source: 'checkout', checkout_session_id: 'webapp:sub_1' };
+  it('1: an Apple address taken in between refuses it (409, reason account-has-site); alert records and goes on', async () => {
+    const mk = () => fakeSites([{ user_id: USER, environment: 'Production', slug: 'apple-site', holder: 'apple', published_once: true }]);
+    const e = web({ mode: 'enforce', sites: mk().deps, webSites: [unpublished], owners: [owner] });
+    expect(await e.run()).toEqual({ status: 409, body: { error: 'slug-owned', reason: 'account-has-site' } });
+    expect(e.deps.writePending).not.toHaveBeenCalled();
+    vi.mocked(reportBlocked).mockClear();
+    const a = web({ mode: 'alert', sites: mk().deps, webSites: [unpublished], owners: [owner] });
+    expect((await a.run()).status).toBe(200);
+    expect(reportBlocked).toHaveBeenCalled();
+  });
+  it('no row yet: it takes the row (and the first publish marks it)', async () => {
+    const f = fakeSites();
+    const t = web({ mode: 'enforce', sites: f.deps, webSites: [unpublished], owners: [owner] });
+    expect((await t.run()).status).toBe(200);
+    expect(f.rows).toMatchObject([{ slug: 'fresh-cuts', holder: 'web', published_once: true }]);
   });
 });

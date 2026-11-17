@@ -53,7 +53,7 @@ describe('iOS publish (lib/ios/publishFlow.ts, the unlinked + signed-in tie)', (
   it('a refusal answers 409 account-has-site with the account\'s address and ties nothing', async () => {
     const tie = tieOf(refuse());
     const { db, deps } = iosPublish([{ ...base }], tie);
-    expect(await pub(deps)).toEqual({ status: 409, body: { error: 'account-has-site', slug: 'web-site' } });
+    expect(await pub(deps)).toEqual({ status: 409, body: { error: 'account-has-site', slug: 'web-site', reason: 'web-account' } });
     expect(tie).toHaveBeenCalledWith(WEB_USER, OTID, 'ios/publish');
     expect(userWrites(db.log)).toEqual([]);
     expect(db.row(OTID)!.user_id).toBeNull();
@@ -161,9 +161,10 @@ describe('plan check (lib/ios/planFlow.ts refreshPlan)', () => {
     expect((await refreshPlan('Bearer x', { transactionId: '2000000555' }, deps)).status).toBe(200);
     expect(tie).not.toHaveBeenCalled();
   });
-  it('undecidable also ties nothing', async () => {
+  it('undecidable answers 503 (a new Apple payer is not shown "no plan") and ties nothing; no shop too', async () => {
     const { deps } = plan({ tie: tieOf({ action: 'unavailable' }) });
-    expect((await refreshPlan('Bearer x', { transactionId: '2000000555' }, deps)).status).toBe(200);
+    expect((await refreshPlan('Bearer x', { transactionId: '2000000555' }, deps)).status).toBe(503);
+    expect((await refreshPlan('Bearer x', { transactionId: '2000000555' }, plan({ hasShop: false, tie: tieOf({ action: 'unavailable' }) }).deps)).status).toBe(503);
     expect(deps.setShopOtid).not.toHaveBeenCalled();
     expect(deps.setUserIfUnlinked).not.toHaveBeenCalled();
   });
@@ -207,9 +208,19 @@ describe('shop setup (lib/bookings/ownerFlow.ts) and bookings/live', () => {
     expect(w.state.shops.some((s: any) => s.ios_otid === NEW_OTID)).toBe(false);
     expect(w.deps.purchases!.linkUserIfUnlinked).not.toHaveBeenCalled();
   });
-  it('undecidable answers 503 before any link', async () => {
+  it('undecidable answers 503 BEFORE any write: no shop, member or service is created either (B8)', async () => {
     const w = fresh(tieOf({ action: 'unavailable' }));
+    const shops = w.state.shops.length;
     expect((await setupShop('Bearer new-jwt', body, w.deps)).status).toBe(503);
+    expect(w.state.purchases[NEW_OTID].user_id).toBeNull();
+    expect(w.state.shops).toHaveLength(shops);
+  });
+  it('the verifier\'s second ask can never leave "shop linked, account not": the shop link is put back (B8)', async () => {
+    const w = fresh(tieOf({ action: 'allow' }));
+    (w.deps.purchases!.linkUserIfUnlinked as any).mockResolvedValueOnce(false); // declined by the verifier\'s own check
+    const r = await setupShop('Bearer new-jwt', body, w.deps);
+    expect(r.status).toBe(200);
+    expect(w.state.shops.some((s: any) => s.ios_otid === NEW_OTID)).toBe(false);
     expect(w.state.purchases[NEW_OTID].user_id).toBeNull();
   });
   it('allowed links both as before', async () => {

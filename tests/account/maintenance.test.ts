@@ -108,3 +108,23 @@ describe('a publish job that gives up', () => {
     await expect(releaseGivenUpAddress({ user_id: USER, environment: 'live' })).resolves.toBeUndefined();
   });
 });
+
+describe('environment scoping', () => {
+  it('claims and cleans per environment (staging and production share a database)', async () => {
+    const f = fakeSites();
+    const c = fakeClaims();
+    const names: string[] = [];
+    const claim = c.deps.claim; c.deps.claim = async (n, a, b) => { names.push(n); return claim(n, a, b); };
+    await runAccountMaintenance(T0, { mode: 'alert', sites: f.deps, maintenance: c.deps, env: 'Sandbox' });
+    expect(names).toEqual(['account_sites_unpublished:Sandbox']);
+  });
+  it('an unknown Stripe key skips the clean-ups instead of guessing an environment', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', '');
+    const c = fakeClaims();
+    const claim = vi.spyOn(c.deps, 'claim');
+    const r = await runAccountMaintenance(T0, { mode: 'alert', maintenance: c.deps });
+    expect(r).toEqual({ environment: { ran: false, reason: 'error' } });
+    expect(claim).not.toHaveBeenCalled();
+  });
+});

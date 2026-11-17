@@ -29,7 +29,7 @@ describe('POST /api/account/kept-copy outside the rollout', () => {
     for (const k of ['apple', 'mixed', 'neither']) { st.kind = k; const r = await post(); expect(r.code).toBe(403); expect(r.body).toEqual({ error: 'not-account-mode' }); }
     vi.spyOn(console, 'error').mockImplementation(() => {});
     st.kind = 'web'; st.kindFails = true; expect((await post()).code).toBe(503); st.kindFails = false;
-    expect(fetchSpy.mock.calls.filter(([u]) => String(u).includes('site_kept_copies'))).toHaveLength(0);
+    expect((fetchSpy.mock.calls as any[][]).filter((c) => String(c[0]).includes('site_kept_copies'))).toHaveLength(0);
   });
   it('an account-mode caller stores a copy with environment Production/Sandbox, never live/test', async () => {
     const sent: any[] = [];

@@ -249,6 +249,8 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   // account's current plan comes back, exactly as for a purchase that is not live. An already-linked purchase is always allowed.
   if (deps.tie && (shop.ios_otid !== otid || !row.user_id)) {
     const t = await deps.tie(user.id, otid, 'shop/plan');
+    // Undecidable (a blip): 503, so a new Apple payer is not shown "no plan" for a moment. A real refusal keeps the 200 with the current plan.
+    if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
     if (t.action !== 'allow') {
       const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
       return { status: 200, body: planView(shop, current, now(), user.id) };
@@ -301,6 +303,7 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
     }
     // ONE_SITE_GUARD: not allowed (or undecidable): nothing is linked, the answer is the one a purchase that is not theirs gets.
     const t = deps.tie ? await deps.tie(userId, row.original_transaction_id, 'shop/plan (no shop)') : null;
+    if (t?.action === 'unavailable') return err(503, 'temporarily-unavailable');
     try {
       if (t && t.action !== 'allow') { /* tie nothing */ }
       else if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };

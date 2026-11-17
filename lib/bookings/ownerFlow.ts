@@ -151,6 +151,7 @@ export async function setupShop(authorization: string | string[] | undefined, bo
 
   // Verify the purchase before creating anything.
   let otid: string | null = null;
+  let skipTie = false; // ONE_SITE_GUARD: the purchase may not be tied (decided below, before anything is written)
   if (input.transactionId) {
     if (!deps.purchases) return err(503, 'temporarily-unavailable');
     // Each verify costs App Store Server API calls: the same per-user write limit as /api/shop/plan.
@@ -189,6 +190,13 @@ export async function setupShop(authorization: string | string[] | undefined, bo
         return err(503, 'temporarily-unavailable');
       }
       if (owner && owner !== user.id) return refuse(owner === 'ambiguous' ? null : owner);
+    }
+    // ONE_SITE_GUARD: may this account take this purchase? Asked HERE, right after verify and before any write (no shop, member or service is created
+    // yet), so a 503 or a refusal leaves nothing behind. A refusal sets the shop up but ties nothing. An already-linked purchase is always allowed.
+    if (deps.tie) {
+      const t = await deps.tie(user.id, otid, 'shop/setup');
+      if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
+      if (t.action === 'refuse') skipTie = true;
     }
   }
 
@@ -236,14 +244,7 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     await repo.insertServices(input.services.map((s, i) => ({ ...s, shop_id: shop!.id, sort: i })));
   }
 
-  // ONE_SITE_GUARD: a purchase the account may not take is tied to nothing (no shop link, no account link). The shop itself is still set up.
-  // An already-linked purchase is always allowed, so a setup re-POST of the account's own purchase is unchanged.
-  if (otid && deps.tie) {
-    const t = await deps.tie(user.id, otid, 'shop/setup');
-    if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
-    if (t.action === 'refuse') otid = null;
-  }
-  if (otid) {
+  if (otid && !skipTie) {
     const before = shop.ios_otid;
     if (before !== otid) {
       const r = await repo.setShopOtid(shop.id, otid);
@@ -257,6 +258,8 @@ export async function setupShop(authorization: string | string[] | undefined, bo
       if (!(await deps.purchases!.linkUserIfUnlinked(otid, user.id))) {
         const again = await repo.purchase(otid);
         if (again?.user_id && again.user_id !== user.id) lostTo = again.user_id;
+        // The link was declined (the verifier asks the guard again) and nobody else holds it: never leave "shop linked, account not".
+        else if (deps.tie && !again?.user_id && before !== otid) await repo.setShopOtid(shop.id, before).catch((e: any) => console.error('[shop/setup] shop link revert failed:', e?.message || e));
       }
     } catch (e: any) {
       console.error('[shop/setup] linking purchase to account failed:', e?.message || e); // best effort

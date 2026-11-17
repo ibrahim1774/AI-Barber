@@ -30,7 +30,7 @@ import { entitlementOrFree, isFreeSubscriptionId } from './priceGroup.js';
 import { savedPhoneState } from './contactPhoneLive.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
-import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, type GuardMode, type SitesDeps } from '../account/sites.js';
+import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
 import { kindEnvOf } from '../account/kind.js';
 import { reportBlocked } from '../account/blocked.js';
 
@@ -241,12 +241,22 @@ export async function runWebPublish(
     let freshBind = false;
     if (existing) {
       slug = existing.slug;
+      // Bound but never published (a failed first publish, retried): still the account's address to take, so an Apple address taken in between cannot
+      // make it two-site. Same row = ok. In alert mode a refusal is recorded; in 1 it is refused.
+      if (mode !== 'off' && !existing.published_at) {
+        const again = await tryTake(caller.id, addrEnv, slug, 'web', mode, deps.siteAddresses);
+        if (again.kind === 'unavailable') return unavailable;
+        if (again.kind === 'refused' && again.existing && again.existing.holder !== 'web') {
+          await reportBlocked({ otid: 'web-publish', uid: caller.id, reason: 'mixed', slug: again.existing.slug, environment: null, email: false, where: 'web-app/publish address (retry)' });
+          if (mode === 'enforce') return { status: 409, body: { error: 'slug-owned', reason: 'account-has-site' } };
+        }
+      }
     } else {
       let bound: string | null = null;
       for (let attempt = 0; attempt < 2 && !bound; attempt++) {
         let candidate: string;
         try {
-          candidate = await chooseSlug(sd.shopName, deps.environment === 'live' ? 'Production' : 'Sandbox', deps.isTaken);
+          candidate = await chooseSlug(sd.shopName, deps.environment === 'live' ? 'Production' : 'Sandbox', withAddressTaken(deps.isTaken, mode, deps.siteAddresses));
         } catch (e) {
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
@@ -259,11 +269,12 @@ export async function runWebPublish(
           if (took.kind === 'refused') {
             // This account already holds a WEB address (a simultaneous first publish took the row first): that one is the address; no second.
             if (took.existing?.holder === 'web') candidate = took.existing.slug;
-            else if (!took.existing) { console.warn(`[web-app/publish] ${candidate} is held by another account's address row; choosing again`); continue; }
+            else if (!took.existing) { if (mode === 'enforce') { console.warn(`[web-app/publish] ${candidate} is held by another account's address row; choosing again`); continue; } }
             else {
               // The account holds an Apple address (or no address of this kind): never a second site. Recorded and alerted once; refused only when enforcing.
               await reportBlocked({ otid: 'web-publish', uid: caller.id, reason: 'mixed', slug: took.existing.slug, environment: null, email: false, where: 'web-app/publish address' });
-              if (mode === 'enforce') return { status: 409, body: { error: 'slug-owned' } };
+              // The web client does not know a new code for this 409 (only the iOS flows read account-has-site), so slug-owned stays and `reason` says why.
+              if (mode === 'enforce') return { status: 409, body: { error: 'slug-owned', reason: 'account-has-site' } };
             }
           }
         }
