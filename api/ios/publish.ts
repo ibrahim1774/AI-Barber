@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
-import { liveDeps, runIosPublish } from '../../lib/ios/publishFlow.js';
+import { liveDeps, liveUserOf, runIosPublish } from '../../lib/ios/publishFlow.js';
+import { oldRouteGate } from '../../lib/account/siteMode.js';
 
 // A publish can deploy twice (the I2 redeploy of a newer copy); vercel.json also sets 300 s.
 export const config = { maxDuration: 300 };
@@ -41,6 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'bad-request' });
       }
     }
+    // A native caller (X-PB-Build) in account mode must use the account publish. No header: nothing is read here.
+    const old = await oldRouteGate(req as any, liveUserOf);
+    if (old) return res.status(old.status).json(old.body);
     const r = await runIosPublish(body as any, liveDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);
   } catch (e: any) {
