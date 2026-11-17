@@ -476,6 +476,144 @@ export const GUIDE_LIBRARY: Record<GuidePageId, GuideDef> = {
       ]),
     ],
   },
+  // ── Added 2026-11-16 (every site reaches 20+ pages). Same rules as above: no token, no claim, no shop facts, general to every barber site. ──
+  'beard-trim-prep': {
+    title: 'Getting ready for a beard trim',
+    blurb: 'Read what to think about before a beard trim.',
+    allow: ['beard', 'beard-trim'],
+    blocks: [
+      intro([
+        ['A beard trim is a small cut that tidies the length and the outline.', 'Decide what you want from it before you sit down.'],
+        ['Before a beard trim, look at your beard in a mirror.', 'Note which parts look uneven and which parts you want left alone.'],
+        ['If you are planning a beard trim, find a photo of a beard you like.', 'Read the points below to prepare.'],
+      ]),
+      points('Before you go', [
+        ['Comb your beard before you arrive so its length is easy to see.', 'Decide how much length you want to keep.', 'Think about where the cheek line and the neckline should sit.', 'Mention any patches where the hair is thin or uneven.'],
+        ['Say whether you want the beard trimmed, shaped or only tidied.', 'Show with a photo how the outline should look.', 'Ask what happens to the hair under the chin.', 'Tell your barber if there is a mustache you want left as it is.'],
+        ['If you want the beard kept tight to the face, say so.', 'If you want a defined outline, ask for one.', 'When you describe the shape, point to the places on your own face.', 'Before the trim starts, confirm the plan in your own words.'],
+      ]),
+      tip([
+        ['Remember that hair cannot be put back once it is cut.', 'Ask your barber to go in small steps.'],
+        ['Take a photo of the beard once the trim is done.', 'Show it at your next visit.'],
+        ['If you are unsure about a change, ask for a small one first.', 'Say so before the trimming starts.'],
+      ]),
+    ],
+  },
+
+  'event-haircut': {
+    title: 'A haircut before a big event',
+    blurb: 'Read ideas for planning a haircut before a big event.',
+    allow: [],
+    blocks: [
+      intro([
+        ['A haircut for an event is a choice about timing and style.', 'Think about both before you make a plan.'],
+        ['Before a big event, decide what you want your hair to do.', 'Pick a style you already know you like.'],
+        ['If you have an event coming up, start with a photo of the look you want.', 'Show it to your barber as early as you can.'],
+      ]),
+      points('Planning ideas', [
+        ['Ask your barber when to get the cut so the shape has settled.', 'Choose a style you have worn before.', 'Think about how you want the hair styled at the event.', 'Mention any hat, veil or headwear you plan to wear.'],
+        ['If the event is a big one, avoid a style you have not tried before.', 'If you want a tidy neckline, ask your barber how to time it.', 'If you plan to wear a collar or a hat, mention that.', 'When you describe the occasion, say how formal it is.'],
+        ['Think about the photos taken at the event.', 'Ask for a cut that suits your hair from the front, the sides and the back.', 'Ask your barber how the cut looks as it settles.', 'Bring a photo of the style you want.'],
+      ]),
+      tip([
+        ['Remember that a cut can look different after a short while.', 'Ask your barber about timing.'],
+        ['Take a photo of the finished cut.', 'Keep it for the next big occasion.'],
+        ['Talk through the plan before the cutting starts.', 'Ask about styling for the event.'],
+      ]),
+    ],
+  },
+
+  'wavy-and-curly': {
+    title: 'Cuts for wavy and curly hair',
+    blurb: 'Read ideas for asking for a cut that suits waves and curls.',
+    allow: [],
+    blocks: [
+      intro([
+        ['A curl is a strand of hair that bends into a loop or a spiral.', 'Tell your barber how your hair behaves when it dries.'],
+        ['If your hair is wavy or curly, mention it at the start of the visit.', 'Describe how the hair looks when it is dry and when it is wet.'],
+        ['Before the cut starts, show your barber how your hair sits when you style it.', 'Say if you want to keep the curls or loosen them.'],
+      ]),
+      points('Things to mention', [
+        ['Say whether you want the cut done on wet hair or on dry hair.', 'Tell your barber that curly hair springs up once it dries.', 'Ask how much length to keep.', 'Show a photo of a cut on hair like yours.'],
+        ['If you want volume, say where you want it.', 'If you want the curls to lie flat, say so.', 'If your hair tangles, mention it.', 'Ask your barber how to shape the sides and the back to match the rest of the hair.'],
+        ['Bring a photo of the curl shape you like.', 'Describe how the hair behaves in damp weather.', 'Ask for a cut that follows the direction the curls fall.', 'Confirm the plan before the cutting starts.'],
+      ]),
+      tip([
+        ['Remember that curls bounce back as they dry, so a cut can look different at home.', 'Ask your barber to keep extra length if you are unsure.'],
+        ['Take a photo once your hair has dried.', 'Show it at your next visit.'],
+        ['Keep the habits that work for your hair, such as how you dry it.', 'Tell your barber about them.'],
+      ]),
+    ],
+  },
+
+  'long-hair-shape': {
+    title: 'Keeping your long hair in shape',
+    blurb: 'Read ideas for tidying long hair without losing its length.',
+    allow: [],
+    blocks: [
+      intro([
+        ['A trim for long hair is a small cut that tidies the ends and keeps the length.', 'Say how much length you want to keep.'],
+        ['If you wear your hair long, ask your barber about the shape of the ends.', 'Mention whether you tie it back.'],
+        ['Before a trim, look at the ends of your hair in a mirror.', 'Note whether they look uneven or thin.'],
+      ]),
+      points('Things to say', [
+        ['Say that you want to keep the length and only tidy the ends.', 'Show with your fingers how much to take off.', 'Ask whether layers would suit your hair.', 'Mention if you want the shape to hold when the hair is tied back.'],
+        ['If you want the ends even, say so.', 'If you want movement, ask about layers.', 'If you wear a part, show where it sits.', 'When the cutting starts, check the length with your barber.'],
+        ['Bring a photo of the length and shape you like.', 'Tell your barber how you style your hair when you are at home.', 'Ask what shape suits your hair type.', 'Confirm the amount to be taken off before the cutting starts.'],
+      ]),
+      tip([
+        ['Remember that length is easy to keep but hard to get back.', 'Ask for a small trim if you are unsure.'],
+        ['Take a photo of the back of your hair after the cut.', 'Show it at your next visit.'],
+        ['Ask your barber how to keep the ends tidy at home.', 'Write the answer down.'],
+      ]),
+    ],
+  },
+
+  'after-a-long-break': {
+    title: 'Getting a cut after a long break',
+    blurb: 'Read ideas for a first cut after a long gap.',
+    allow: [],
+    blocks: [
+      intro([
+        ['A long break is a chance to choose a new shape.', 'Think about what you want to keep.'],
+        ['If your hair has not been cut for a while, tell your barber at the start.', 'Say what you want to change first.'],
+        ['Before the cut, take a look at how your hair sits now.', 'Decide what you like and what you do not.'],
+      ]),
+      points('Things to think about', [
+        ['Describe how your hair was cut before.', 'Show a photo of the style you want to reach.', 'Ask whether to get there in one visit or in steps.', 'Mention any style you wore before that you liked.'],
+        ['If the hair has become hard to manage, say so.', 'If you want to keep some of the length, show how much.', 'If you are unsure, ask for a plan in stages.', 'When you decide, confirm the plan before the cutting starts.'],
+        ['Bring a photo of the length you have now and one of the length you want.', 'Ask what shape suits the hair you have.', 'Ask how the sides and the back should be handled.', 'Say if you want to keep the style you have.'],
+      ]),
+      tip([
+        ['Remember that a big change can be made in steps.', 'Ask your barber what to do first.'],
+        ['Take a photo before and after the cut.', 'Keep both photos to show at your next visit.'],
+        ['If you are unsure, start with a small change.', 'Think about the idea again at your next visit.'],
+      ]),
+    ],
+  },
+
+  'active-routine': {
+    title: 'Choosing a cut for an active routine',
+    blurb: 'Read ideas for a cut that suits sports and exercise.',
+    allow: [],
+    blocks: [
+      intro([
+        ['An active routine is something to mention, because it affects how a cut sits.', 'Tell your barber what you do and how you wear your hair.'],
+        ['If you play sports or exercise, think about how your hair behaves under a helmet or a cap.', 'Mention it at the start of the visit.'],
+        ['Before the cut, think about what your hair has to do.', 'Say how you move, run or work.'],
+      ]),
+      points('Things to mention', [
+        ['Say if you wear a helmet, a cap or a headband.', 'Ask for a cut that stays out of your eyes.', 'Ask how the cut behaves when it gets damp from sweat.', 'Mention if you want the sides kept short for easy handling.'],
+        ['If you swim, ask about a length that is easy to manage.', 'If you tie your hair back, say so.', 'If sweat makes the hair flatten, mention it.', 'Ask which styles keep their shape during a workout.'],
+        ['Choose a length you can handle without much styling.', 'Think about how the hair sits when it is wet.', 'Ask your barber about the shape around the ears and the neck.', 'Bring a photo of a style you like.'],
+      ]),
+      tip([
+        ['Remember that a simple cut is easy to keep up.', 'Ask your barber what to do with it after a workout.'],
+        ['Take a photo of the cut after it dries.', 'Show it at your next visit.'],
+        ['If a style does not hold up, tell your barber.', 'Ask about small changes that could help.'],
+      ]),
+    ],
+  },
 };
 
 /** The hub page (/guides/). */

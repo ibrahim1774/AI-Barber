@@ -47,9 +47,12 @@ const snap = (m: Mods, site: any, template: string, pending: boolean): Snap => {
   const out = bundle(m, site, template, pending);
   return { pages: Object.fromEntries(out.pages.map((p: { path: string; html: string }) => [p.path, sha(strip(p.html))])), sitemap: out.sitemap == null ? null : sha(out.sitemap), robots: out.robots == null ? null : sha(out.robots) };
 };
+// 'web-sparse' (a web-made site with 2 services, no hours, no phone, no booking link) was BELOW 21 pages on origin/main (19) and gains guide pages
+// from the 20+ pages change on purpose: it is compared with the baseline in tests/render/guideFloor21.test.ts (every non-guide file identical), not here.
+const GAINS_GUIDES = new Set(['web-sparse']);
 const keys = (): Array<[string, string, string, boolean]> => {
   const out: Array<[string, string, string, boolean]> = [];
-  for (const name of Object.keys(ALL)) for (const t of TEMPLATES) for (const pending of [false, true]) { if (pending && t !== 'luxe') continue; out.push([`${name}|${t}|${pending ? 'pending' : 'site'}`, name, t, pending]); }
+  for (const name of Object.keys(ALL)) if (!GAINS_GUIDES.has(name)) for (const t of TEMPLATES) for (const pending of [false, true]) { if (pending && t !== 'luxe') continue; out.push([`${name}|${t}|${pending ? 'pending' : 'site'}`, name, t, pending]); }
   return out;
 };
 const branch: Mods = { renderSiteBundle: branchSite.renderSiteBundle, renderPendingBundle: branchPublish.renderPendingBundle };
@@ -91,6 +94,7 @@ if (process.env.REGEN_MAIN_FIXTURE === '1') {
     it('the redirect gate agrees with the baseline for every unmarked and web-made site', async () => {
       const base = await loadMainBaseline();
       for (const [name, s] of Object.entries(ALL)) {
+        if (GAINS_GUIDES.has(name)) continue;
         const pages = branchSite.renderSiteBundle(clone(s), BASE).pages;
         expect(redirectsApply(s, pages), name).toBe(base.redirectsApply(s, pages));
       }

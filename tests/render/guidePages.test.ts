@@ -100,23 +100,23 @@ describe('countPages: real pages, worked out by hand', () => {
 });
 
 describe('the floor of 21', () => {
-  it('constants: floor 21, hub + guides at most 12, so 9 real pages is the least that can reach 21', () => {
+  it('constants: floor 21, hub + guides at most 19, so 2 real pages (Home and one more) is the least that can reach 21', () => {
     expect(PAGE_FLOOR).toBe(21);
-    expect(GUIDE_ADDED_CAP).toBe(12);
-    expect(PAGE_FLOOR - GUIDE_ADDED_CAP).toBe(9);
+    expect(GUIDE_ADDED_CAP).toBe(19);
+    expect(PAGE_FLOOR - GUIDE_ADDED_CAP).toBe(2);
   });
   const cases: [string, () => WebsiteData, number][] = [
     ['sparse 3 (9 real)', sparse3, 9], ['sparse 6 (12 real)', sparse6, 12], ['no address, 6 services (9 real)', noAddress6, 9],
     ['solo barber (11 real)', solo, 11], ['solo, name only (10 real)', soloNoBio, 10], ['bookings and store (11 real)', bookShop, 11],
   ];
   for (const [name, make, real] of cases) {
-    it(`${name}: exactly 21 pages, the hub plus ${20 - real} guide pages (never more than 11 guides)`, () => {
+    it(`${name}: exactly 21 pages, the hub plus ${20 - real} guide pages`, () => {
       const d = make();
       const b = bundle(d);
       expect(total(d)).toBe(21);
       expect(guidePaths(b)).toHaveLength(21 - real);
       expect(guidePaths(b)).toContain('guides/index.html');
-      expect(guidePaths(b).length - 1).toBeLessThanOrEqual(11);
+      expect(guidePaths(b).length - 1).toBeLessThanOrEqual(GUIDE_ADDED_CAP - 1);
     });
   }
   it('a rich shop that already has 21 or more real pages gets no guides at all (23 here)', () => {
@@ -141,17 +141,17 @@ describe('the floor of 21', () => {
     expect(countPages(d21)).toBe(21);
     expect(guidePaths(bundle(d21))).toEqual([]);
   });
-  it('9 real pages reach 21 with the hub and 11 guides; fewer than 9 end below 21 and are never padded (6 real -> 18, 4 real -> 16)', () => {
+  it('9 real pages reach 21 with the hub and 11 guides; fewer real pages now reach 21 too (6 real -> hub + 14, 4 real -> hub + 16; before 2026-11-16 they stopped at 18 and 16)', () => {
     const nine = noAddress6();
     expect(countPages(nine)).toBe(9); // Home, Services, 6 services, Contact
     expect(guidePaths(bundle(nine))).toHaveLength(12);
     expect(total(nine)).toBe(21);
     expect(countPages(noAddress3())).toBe(6);
-    expect(guidePaths(bundle(noAddress3()))).toHaveLength(12);
-    expect(total(noAddress3())).toBe(18);
+    expect(guidePaths(bundle(noAddress3()))).toHaveLength(15);
+    expect(total(noAddress3())).toBe(21);
     expect(countPages(tiny())).toBe(4);
-    expect(guidePaths(bundle(tiny()))).toHaveLength(12);
-    expect(total(tiny())).toBe(16);
+    expect(guidePaths(bundle(tiny()))).toHaveLength(17);
+    expect(total(tiny())).toBe(21);
   });
   it('the guide count flexes: more services, fewer guides; the same data always gives the same plan', () => {
     const a = guidePaths(bundle(sparse3())).length;

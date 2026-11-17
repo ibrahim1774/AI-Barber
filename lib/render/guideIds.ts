@@ -10,6 +10,8 @@ export const GUIDE_PAGE_IDS = [
   'ask-for-the-cut', 'hairstyle-ideas', 'fade-and-taper', 'barber-matters', 'gap-between-haircuts', 'prepare-your-visit',
   'child-first-haircut', 'face-shape', 'hair-types', 'hair-care-basics', 'beard-care-basics', 'shave-guide',
   'barber-words', 'choosing-a-length', 'styling-basics', 'between-visits', 'new-barber',
+  // Appended 2026-11-16 (20+ pages): ids are only ever added at the END, so a stored selection and the first N picks of every existing site stay as they were.
+  'beard-trim-prep', 'event-haircut', 'wavy-and-curly', 'long-hair-shape', 'after-a-long-break', 'active-routine',
 ] as const;
 export type GuidePageId = (typeof GUIDE_PAGE_IDS)[number];
 export const isGuidePageId = (v: unknown): v is GuidePageId => typeof v === 'string' && (GUIDE_PAGE_IDS as readonly string[]).includes(v);

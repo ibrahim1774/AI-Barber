@@ -27,10 +27,11 @@ for (const [k, v] of Object.entries(GUIDE_UI)) rows.push({ where: `ui ${k}`, tex
 rows.push({ where: 'hub services link label', text: GUIDE_HUB.servicesLinkLabel, allow: [], kind: 'heading' });
 
 describe('the guide library: shape', () => {
-  it('has the 17 guides in the fixed order, 14 of them general', () => {
-    expect(GUIDE_PAGE_IDS).toHaveLength(17);
+  it('has the 23 guides in the fixed order (the first 17 as published before 2026-11-16, 6 appended), 20 of them general', () => {
+    expect(GUIDE_PAGE_IDS).toHaveLength(23);
+    expect(GUIDE_PAGE_IDS.slice(0, 17)).toEqual(['ask-for-the-cut', 'hairstyle-ideas', 'fade-and-taper', 'barber-matters', 'gap-between-haircuts', 'prepare-your-visit', 'child-first-haircut', 'face-shape', 'hair-types', 'hair-care-basics', 'beard-care-basics', 'shave-guide', 'barber-words', 'choosing-a-length', 'styling-basics', 'between-visits', 'new-barber']);
     expect(Object.keys(GUIDE_LIBRARY)).toEqual([...GUIDE_PAGE_IDS]);
-    expect(GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when)).toHaveLength(14);
+    expect(GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when)).toHaveLength(20);
     expect(GUIDE_PAGE_IDS.filter((id) => GUIDE_LIBRARY[id].when).map((id) => GUIDE_LIBRARY[id].when).sort()).toEqual(['fade-or-taper', 'kids-cut', 'shave']);
   });
   it('every guide has intro, points and tip blocks with exactly three non-empty wordings', () => {
@@ -52,8 +53,8 @@ describe('the guide library: shape', () => {
     }
   });
   it('titles and blurbs are unique; ids are real slugs and real file paths', () => {
-    expect(new Set(GUIDE_PAGE_IDS.map((id) => GUIDE_LIBRARY[id].title)).size).toBe(17);
-    expect(new Set(GUIDE_PAGE_IDS.map((id) => GUIDE_LIBRARY[id].blurb)).size).toBe(17);
+    expect(new Set(GUIDE_PAGE_IDS.map((id) => GUIDE_LIBRARY[id].title)).size).toBe(23);
+    expect(new Set(GUIDE_PAGE_IDS.map((id) => GUIDE_LIBRARY[id].blurb)).size).toBe(23);
     for (const id of GUIDE_PAGE_IDS) { expect(isGuidePageId(id)).toBe(true); expect(isGuideHref(`/guides/${id}/`)).toBe(true); expect(isGuideFile(`guides/${id}/index.html`)).toBe(true); }
     expect(isGuideHref('/guides/')).toBe(true);
     for (const bad of ['/guides', '/guides/x/', '/guides/../', '/guides/ask-for-the-cut', '/Guides/', '/guides/ask-for-the-cut/extra/', '/services/ask-for-the-cut/']) expect(isGuideHref(bad), bad).toBe(false);
@@ -65,7 +66,7 @@ describe('the guide library: shape', () => {
   });
   it('only the fade, kids and shave guides are conditional; the others can be offered to every barber site', () => {
     const general = GUIDE_PAGE_IDS.filter((id) => !GUIDE_LIBRARY[id].when);
-    expect(general.length).toBeGreaterThanOrEqual(11); // 12 added pages = hub + 11 guides
+    expect(general.length).toBeGreaterThanOrEqual(20); // worst case: 2 real pages = hub + 18 guides, plus a margin of 2
   });
 });
 

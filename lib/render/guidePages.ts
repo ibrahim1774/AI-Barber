@@ -11,9 +11,13 @@
 //           Hours, Location, Contact, FAQ, First visit, Hair care, Beard care ...) plus /book when it is in the nav plus /shop only when it is the
 //           site's own proxied shop. A page the owner hid does not count; a thin (noindex) service page does.
 //   need  = PAGE_FLOOR - real. need <= 0: no guides at all.
-//   added = min(GUIDE_ADDED_CAP, need). The hub COUNTS INSIDE the cap: hub + guides <= 12, so a site gets at most 11 guides.
+//   added = min(GUIDE_ADDED_CAP, need). The hub COUNTS INSIDE the cap: hub + guides <= GUIDE_ADDED_CAP.
 //   guides = max(1, added - 1): a hub with no guide is pointless, so need = 1 gives hub + 1 guide (22 pages, the one case that overshoots).
-//   So the minimum real pages for 21 is 21 - 12 = 9. Below 9 real pages the site ends below 21 (hub + 11 guides): it is NEVER padded further.
+//   THE CAP (2026-11-16, "every site reaches 20+ pages"): it used to be 12, which left a shop with 0 to 2 services at 16 to 18 pages. A site that
+//   passes the gate has at least 2 real pages (Home plus one more: hasFilePages), so the most that can ever be needed is PAGE_FLOOR - 2 = 19 added
+//   pages (hub + 18 guides). The cap is exactly that, and the library holds 20 general guides (18 + a margin of 2), so every case reaches 21 and a
+//   site is never padded past it. A site that needed 12 or fewer added pages gets exactly the pages it always got (new ids are appended, never inserted).
+//   Not covered: a multi-page site with NOTHING but Home (no service, hours, phone, e-mail, address or booking link) has no file page, fails the gate and stays at 1.
 // The plan is computed from `real` only (guides are not counted in it), so there is no feedback loop and the same data always gives the same plan.
 //
 // THE GATE (decided and documented): web-created (source 'web-app') AND pages v2 (an `extraPages` object) AND multi-page AND the barber niche.
@@ -44,8 +48,8 @@ import { spliceable } from './spliceable.js';
 import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 
 export const PAGE_FLOOR = 21;
-/** The hub and the guides together never add more than this many pages. */
-export const GUIDE_ADDED_CAP = 12;
+/** The hub and the guides together never add more than this many pages (see THE CAP above). */
+export const GUIDE_ADDED_CAP = PAGE_FLOOR - 2;
 
 const own = (o: unknown, k: string): boolean => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -154,8 +158,8 @@ export const GUIDE_TITLE_MAX = 60;
 export const GUIDE_TEXT_MAX = 600;
 export const GUIDE_LINE_MAX = 300;
 /** The most `guides.*` keys a site may carry and the most characters they may hold in total. */
-export const MAX_GUIDE_KEYS = 80;
-export const GUIDE_COPY_TOTAL_MAX = 24000;
+export const MAX_GUIDE_KEYS = 100;
+export const GUIDE_COPY_TOTAL_MAX = 30000;
 const GUIDE_KEY_MAX = 60;
 
 type KeyKind = 'title' | 'block' | 'line';
