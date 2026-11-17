@@ -36,7 +36,8 @@ import {
 
 export type PlanSource = 'apple' | 'stripe' | 'free';
 export type SiteHolder = 'apple' | 'web';
-export type SiteMode = 'device' | 'account';
+import { siteModeFromKind, type SiteMode } from './siteMode.js';
+export type { SiteMode };
 
 export interface AccountSite { slug: string; url: string; holder: SiteHolder }
 
@@ -65,7 +66,7 @@ export interface AccountPlan {
   webSite: AccountSite | null;
   /** The purchase holding the Apple address has ended (not live). False when there is no Apple address. */
   holderPurchaseEnded: boolean;
-  /** `device` until Wave C's switch says otherwise. */
+  /** planFromFacts leaves `device`; accountPlan sets it from the kind and ACCOUNT_DRAFTS_IOS (lib/account/siteMode.ts): account / web-only / device. */
   siteMode: SiteMode;
   /** The alert case: an Apple account that also pays a card plan (A9). */
   appleAlsoPaysCard: boolean;
@@ -188,7 +189,8 @@ export async function loadPlanFacts(uid: string, env: KindEnv, deps: PlanDeps): 
 
 /** The account's plan answer. `env` defaults to this deployment's Stripe mode (live = Production). */
 export async function accountPlan(uid: string, env: KindEnv = defaultKindEnv(), deps: PlanDeps = livePlanKindDeps()): Promise<AccountPlan> {
-  return planFromFacts(await loadPlanFacts(uid, env, deps));
+  const p = planFromFacts(await loadPlanFacts(uid, env, deps));
+  return { ...p, siteMode: siteModeFromKind(p.kind, uid) };
 }
 
 /**
