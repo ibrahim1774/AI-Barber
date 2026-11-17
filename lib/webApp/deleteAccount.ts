@@ -16,6 +16,15 @@ import { forgetSession, storedSessionId } from './checkoutSessions.js';
 import { emailOfUser } from './userExists.js';
 import { alertOwner } from './emails.js';
 
+/**
+ * The hardened delete steps added after main (10e1d555): Checkout-session lookup by email (first-time payers whose webhook has not landed) and expiring open sessions, cancelling the domain subscription,
+ * wiping the saved contact phone when a site is removed, and deleting the price-group row. They run only for the 1.2 app's single route (ACCOUNT_PLAN_V2=1) and for the iOS delete with
+ * APP_DELETE_CANCELS_WEB=1. With both off, the browser's web delete and take offline do exactly what main does.
+ */
+export const deleteExtrasOn = (): boolean => process.env.ACCOUNT_PLAN_V2 === '1' || process.env.APP_DELETE_CANCELS_WEB === '1';
+const noSessions: typeof sessionsOfUser = async () => ({ customers: [], open: [] });
+const sessionsIfExtras: typeof sessionsOfUser = (uid, lookup) => (deleteExtrasOn() ? sessionsOfUser(uid, lookup) : noSessions(uid));
+
 const WEB = 'web:';
 const enc = encodeURIComponent;
 export const isWebSite = (s: Pick<RemovableSite, 'original_transaction_id'>) => String(s.original_transaction_id).startsWith(WEB);
@@ -59,7 +68,7 @@ export async function sessionsOfUser(userId: string, lookupEmail: (id: string) =
  * Also lists the tagged subscriptions of the stored Stripe customer(s) in this mode, so one that was paid but whose webhook has
  * not landed (no row yet) is cancelled too.
  */
-export async function planWebCancellations(userId: string, listForCustomer: (customerId: string) => Promise<any[]> = defaultList, discover: typeof sessionsOfUser = sessionsOfUser): Promise<string[]> {
+export async function planWebCancellations(userId: string, listForCustomer: (customerId: string) => Promise<any[]> = defaultList, discover: typeof sessionsOfUser = sessionsIfExtras): Promise<string[]> {
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
   if (!mode) throw new Error('STRIPE_WEBAPP_SECRET_KEY missing or unrecognised');
   const rows: EntRow[] = (await sbRest(`web_app_entitlements?user_id=eq.${enc(userId)}&select=stripe_subscription_id,stripe_customer_id,status,environment`)) ?? [];
@@ -74,7 +83,7 @@ export async function planWebCancellations(userId: string, listForCustomer: (cus
   for (const c of customers) {
     for (const sub of await listForCustomer(c)) {
       // The domain subscription sits on the same customer since one-click: it must stop billing with the account.
-      const isDomain = sub?.metadata?.type === 'domain_purchase' && sub?.metadata?.app === 'aibarber-domain';
+      const isDomain = deleteExtrasOn() && sub?.metadata?.type === 'domain_purchase' && sub?.metadata?.app === 'aibarber-domain';
       if ((sub?.metadata?.app === WEB_APP_TAG || isDomain) && typeof sub.id === 'string' && (isEntitledStatus(String(sub.status)) || sub.status === 'unpaid' || sub.status === 'paused' || sub.status === 'incomplete')) ids.add(sub.id);
     }
   }
@@ -91,7 +100,7 @@ export async function cancelWebSubscriptions(
   cancel: (subId: string) => Promise<void> = (id) => stripe(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
   statusOf: (subId: string) => Promise<string> = async (id) => String((await stripe(`subscriptions/${enc(id)}`, null, 'GET')).status),
   listForCustomer?: (customerId: string) => Promise<any[]>,
-  discover: typeof sessionsOfUser = sessionsOfUser,
+  discover: typeof sessionsOfUser = sessionsIfExtras,
   expire: (sessionId: string) => Promise<unknown> = (id) => stripe(`checkout/sessions/${enc(id)}/expire`, {}, 'POST'),
 ): Promise<string[]> {
   const ids = await planWebCancellations(userId, listForCustomer, discover); // refusal happens here, before anything is cancelled
@@ -117,7 +126,7 @@ export async function cancelWebSubscriptions(
 export async function cancelThenForgetCustomers(userId: string, cancel?: Parameters<typeof cancelWebSubscriptions>[1]): Promise<string[]> {
   const done = await cancelWebSubscriptions(userId, cancel);
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
-  if (mode) await forgetSession(userId, mode);
+  if (mode && deleteExtrasOn()) await forgetSession(userId, mode);
   await sbRest(`web_app_customers?user_id=eq.${enc(userId)}`, { method: 'DELETE' });
   return done;
 }
@@ -156,6 +165,19 @@ export async function hasStripeHistory(userId: string): Promise<boolean> {
 }
 
 const STRIPE_PLAN_TIMEOUT_MS = 8000;
+/**
+ * Native single delete only: before an Apple-only or empty account with no Stripe history is allowed to skip Stripe, ask Stripe for the user's Checkout sessions (a card payer whose
+ * webhook has not landed has no local row yet). true = a completed or open session exists (so there IS something to cancel), false = none, null = could not be asked (key missing,
+ * Stripe down or slow: the caller then takes the normal path, which fails closed unless its fallback rules allow it).
+ */
+export async function hasCheckoutSessions(userId: string): Promise<boolean | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const found = await Promise.race([sessionsOfUser(userId), new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), STRIPE_PLAN_TIMEOUT_MS); })]);
+    return found.customers.length > 0 || found.open.length > 0;
+  } catch (e: any) { console.error('[ios/delete-account] could not ask Stripe for checkout sessions:', e?.message || e); return null; }
+  finally { if (timer) clearTimeout(timer); }
+}
 /** Thrown for a failure of Stripe itself (down, slow, bad key, key missing). Anything else (a database read) stays a hard failure. */
 class StripeDown extends Error { constructor(public reason: string) { super(reason); } }
 const readRows = async (path: string) => { const r = await sbRest(path); return Array.isArray(r) && r.length > 0; };
@@ -210,7 +232,7 @@ export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: b
     markRemoved: (otid, at) => stamp(otid, { removed_at: new Date(at).toISOString(), taken_down_at: new Date(at).toISOString() })
       // Drop the stored mobile number too. Separate and best effort: the columns come with migration 032, and a missing column must never break account deletion.
       // (Not for keepPhone: the keep-content take offline keeps the number.)
-      .then(() => (opts.keepPhone ? undefined : stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {}))),
+        .then(() => (opts.keepPhone || !deleteExtrasOn() ? undefined : stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {}))),
     markTakenDown: (otid, at) => stamp(otid, { taken_down_at: new Date(at).toISOString() }),
   };
   return {
@@ -230,7 +252,7 @@ export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: b
     // The account's price-group row goes with the user (best effort: a leftover row is harmless and must never fail the delete).
     async deleteUser(userId) {
       await base.deleteUser(userId);
-      await sbRest(`web_app_price_groups?user_id=eq.${enc(userId)}`, { method: 'DELETE' }).catch((e: any) => console.error('[web-app delete] price group row left behind:', e?.message || e));
+      if (deleteExtrasOn()) await sbRest(`web_app_price_groups?user_id=eq.${enc(userId)}`, { method: 'DELETE' }).catch((e: any) => console.error('[web-app delete] price group row left behind:', e?.message || e));
     },
     takeDown: (s) => (isWebSite(s) ? takeDown(s, webRemove) : base.takeDown(s)),
     purge: (s) => (isWebSite(s) ? purge(s, webRemove) : base.purge(s)),

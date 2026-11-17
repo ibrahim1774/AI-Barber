@@ -79,11 +79,14 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
     expect(log.mock.calls.some((c) => String(c[0]).includes('could not forget the draft live address'))).toBe(true);
     log.mockRestore();
   });
-  it('keep-content keeps the saved contact phone number; the other take offline still drops it', async () => {
+  it('keep-content keeps the saved contact phone number; the other take offline drops it only with the hardened delete steps on', async () => {
     const { sbRest } = await import('../../lib/webApp/webAppServer.js');
     const phonePatches = () => (sbRest as any).mock.calls.filter((c: any[]) => c[1]?.method === 'PATCH' && 'contact_phone' in (c[1]?.body ?? {}));
     await removeWebSitesOf('u1', { keepContent: true });
     expect(phonePatches()).toHaveLength(0);
+    await removeWebSitesOf('u1'); // the browser's take offline, new switches off: exactly main (no phone wipe)
+    expect(phonePatches()).toHaveLength(0);
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1'); // the hardened delete steps (see deleteExtrasOn)
     await removeWebSitesOf('u1');
     expect(phonePatches()).toHaveLength(1);
     expect(phonePatches()[0][1].body).toMatchObject({ contact_phone: null, contact_phone_at: null });

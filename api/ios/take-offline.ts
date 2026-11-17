@@ -7,7 +7,7 @@ import { liveUserOf } from '../../lib/ios/publishFlow.js';
 import { liveDeleteAccountRows } from '../../lib/ios/removeSiteLive.js';
 import { resolveSiteToRemove, takeSiteOffline } from '../../lib/ios/takeOffline.js';
 import { nativeSingleRoute, oldRouteKind } from '../../lib/account/siteMode.js';
-import { applePurgesContent, expectOf, hasTransaction, memoVerify, otherSiteLive, takeOfflineSite } from '../../lib/account/nativeRoutes.js';
+import { applePurgesContent, domainFacts, expectOf, hasTransaction, memoVerify, otherSiteLive, takeOfflineSite, webSlugsOf } from '../../lib/account/nativeRoutes.js';
 import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 
 // POST { transactionId } (+ optional Authorization: Bearer <token>, required only when the
@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 /**
  * Body { transactionId?, expect?: 'keep' | 'purge' }. kind web (or mixed with no transaction): the web site goes offline, content and phone kept, live address forgotten, whatever the
  * draft engine switch says; any transaction is ignored. apple / neither / mixed with a transaction: today's Apple flow (content purged unless SAFE_TAKE_OFFLINE=1). expect 'keep' when
- * that would purge: 409 confirm-purge, nothing done. 200 adds outcome { site, contentKept, otherSiteLive }. 404 no-site, 409 publish-in-progress, 503 on a failed read (nothing done).
+ * that would purge: 409 confirm-purge, nothing done. 200 adds outcome { site, contentKept, otherSiteLive, domainDetached, domainReattachesOnPublish }. 404 no-site, 409 publish-in-progress, 503 on a failed read (nothing done).
  */
 async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: unknown) {
   const exp = expectOf(body);
@@ -99,10 +99,12 @@ async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: 
     }
   }
   // The Apple site's own preconditions (a transaction, a site bound to it, ownership) come BEFORE any question about purging: nobody is asked to confirm what would then be refused.
+  let appleSlug = '';
   if (site === 'apple') {
     try {
       const p = await resolveSiteToRemove(body, rdeps, ctx);
       if (p.result) return res.status(p.result.status).json(p.result.body);
+      appleSlug = p.row!.site_slug;
     } catch (e: any) { console.error('[ios/take-offline] precondition check failed (nothing done):', e?.message || e); return unavailable(); }
   }
   // Content: the web take offline always keeps it; the Apple one purges unless SAFE_TAKE_OFFLINE=1.
@@ -112,10 +114,13 @@ async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: 
     try { other = await otherSiteLive(uid, site); }
     catch (e: any) { console.error('[ios/take-offline] other-site lookup failed (nothing done):', e?.message || e); return unavailable(); }
   }
+  let domain = { domainDetached: false, domainReattachesOnPublish: false };
+  try { domain = await domainFacts(site === 'web' ? await webSlugsOf(uid!) : [appleSlug], site); }
+  catch (e: any) { console.error('[ios/take-offline] domain lookup failed (nothing done):', e?.message || e); return unavailable(); }
   if (site === 'web') {
     try {
       const n = await removeWebSitesOf(uid!, { keepContent: true });
-      return n ? res.status(200).json({ ok: true, outcome: { site: 'web', contentKept: true, otherSiteLive: other } }) : res.status(404).json({ error: 'no-site' });
+      return n ? res.status(200).json({ ok: true, outcome: { site: 'web', contentKept: true, otherSiteLive: other, ...domain } }) : res.status(404).json({ error: 'no-site' });
     } catch (e: any) {
       if (e?.message === 'publish-in-progress') return res.status(409).json({ error: 'publish-in-progress' });
       console.error('[ios/take-offline] web site take offline failed:', e?.message || e);
@@ -123,7 +128,7 @@ async function nativeTakeOffline(req: VercelRequest, res: VercelResponse, body: 
     }
   }
   const r = await takeSiteOffline(body, rdeps, ctx);
-  return res.status(r.status).json(r.status === 200 ? { ...r.body, outcome: { site: 'apple', contentKept: !purges, otherSiteLive: other } } : r.body);
+  return res.status(r.status).json(r.status === 200 ? { ...r.body, outcome: { site: 'apple', contentKept: !purges, otherSiteLive: other, ...domain } } : r.body);
 }
 
 function setCors(res: VercelResponse) {

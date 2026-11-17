@@ -80,6 +80,8 @@ describe('web delete-account helpers', () => {
       { id: 'sub_foreign', status: 'active', metadata: { type: 'domain_purchase', app: 'something-else' } },
     ]);
     const cancel = vi.fn(async () => {});
+    expect(await cancelWebSubscriptions('u1', cancel, undefined, list)).toEqual(['sub_plan']); // new switches off: exactly main (the domain subscription is left alone)
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1');
     expect(await cancelWebSubscriptions('u1', cancel, undefined, list)).toEqual(['sub_plan', 'sub_domain']);
   });
   it('S4: a test key still refuses before listing or cancelling anything when a live row is entitled', async () => {

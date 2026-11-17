@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { deleteAccount, liveDeleteDeps, type DeleteAccountDeps } from '../../lib/ios/deleteAccount.js';
-import { hasStripeHistory, liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
+import { hasCheckoutSessions, hasStripeHistory, liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
 import { resumeAfterFailedDelete } from '../../lib/webApp/reliability.js';
 import { alertIfLegacyCustomer } from '../../lib/webApp/legacyDeleteAlert.js';
 import { liveUserOf } from '../../lib/ios/publishFlow.js';
@@ -66,15 +66,18 @@ async function nativeDelete(auth: string | undefined, body: unknown, res: Vercel
     try {
       const u = await liveUserOf(token);
       if (u?.id) {
-        apple = await appleSubscriptionActive(u.id);
-        const kind = await oldRouteKind(u.id);
-        skipStripe = (kind === 'apple' || kind === 'neither') && !(await hasStripeHistory(u.id));
+        let verified = false;
         if (hasTransaction(body)) {
           // A purchase published signed-out (no account on it) is not in the account's list: when Apple confirms it, its site goes down and is purged with the account.
           const p = await resolveSiteToRemove(body, { verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf }, { authorization: auth });
-          if (!p.result && !p.row!.user_id) extra = { original_transaction_id: p.row!.original_transaction_id, site_slug: p.row!.site_slug, environment: p.row!.environment, published_at: p.row!.published_at ?? null } as RemovableSite;
-          else if (p.result && p.result.status === 503) return res.status(503).json({ error: 'temporarily-unavailable' });
+          if (!p.result) { verified = true; if (!p.row!.user_id) extra = { original_transaction_id: p.row!.original_transaction_id, site_slug: p.row!.site_slug, environment: p.row!.environment, published_at: p.row!.published_at ?? null } as RemovableSite; }
+          else if (p.result.status === 503) return res.status(503).json({ error: 'temporarily-unavailable' });
         }
+        apple = await appleSubscriptionActive(u.id, { transactionVerified: verified });
+        const kind = await oldRouteKind(u.id);
+        // Nothing to cancel: an Apple-only or empty account with no Stripe history AND no Checkout session at Stripe (a payer whose webhook has not landed has no local row yet).
+        // Stripe being unreachable here is not "nothing": the normal path decides (it fails closed unless its fallback rules allow it).
+        skipStripe = (kind === 'apple' || kind === 'neither') && !(await hasStripeHistory(u.id)) && (await hasCheckoutSessions(u.id)) === false;
       }
     } catch (e: any) {
       console.error('[ios/delete-account] pre-read failed (nothing done):', e?.message || e);
