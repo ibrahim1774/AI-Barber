@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { reportBlocked, resetFallbackAlerts, type BlockedDeps, type BlockedInfo, type Stamp } from '../../lib/account/blocked.js';
-import { blockedPurchaseEmail, OTHER_APPLE_ID_TEXT, WEB_ACCOUNT_TEXT } from '../../lib/account/blockedEmails.js';
+import { blockedPurchaseEmail, otherAppleIdParagraphs, SIGN_IN_CODE_BUTTON, webAccountParagraphs } from '../../lib/account/blockedEmails.js';
 
 const UID = '11111111-1111-4111-8111-111111111111';
 const info = (over: Partial<BlockedInfo> = {}): BlockedInfo => ({ otid: '2000000123', uid: UID, reason: 'web-account', slug: 'cuts', environment: 'Production', email: true, where: 'ios/publish', ...over });
@@ -125,18 +125,38 @@ describe('reportBlocked', () => {
 });
 
 describe('the barber email', () => {
-  it('web account text is the plan\'s, word for word', () => {
-    expect(WEB_ACCOUNT_TEXT).toBe("You bought a Prime Barber subscription in the iPhone app, but your account's website was made on primebarber.org, so the new subscription was not used. Nothing changed on your website. To stop being charged, cancel it on your iPhone: Settings, your name, Subscriptions. To ask for your money back, go to reportaproblem.apple.com. If your web plan has ended, renew it at primebarber.org.");
-    expect(OTHER_APPLE_ID_TEXT).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
+  const E = 'barber@gmail.com';
+  it('web account letter: the owner\'s text, word for word, with the account email', () => {
+    expect(webAccountParagraphs(E)).toEqual([
+      'You bought a Prime Barber subscription in the iPhone app, but your account (barber@gmail.com) already has a Prime Barber plan, so the new subscription was not used. Nothing changed on your website.',
+      'So that you are not charged twice, cancel the new subscription on your iPhone: Settings, your name, Subscriptions. To ask for your money back, go to reportaproblem.apple.com.',
+      'To use the app with the plan you already have, open the app and sign in with barber@gmail.com. If you do not remember your password, tap Email me a sign-in code and we will email you a code.',
+    ]);
+    const m = blockedPurchaseEmail('web-account', E);
+    expect(m.subject).toBe('Your Prime Barber plan is already active');
+    expect(m.text).toBe(webAccountParagraphs(E).join('\n\n'));
+    expect(SIGN_IN_CODE_BUTTON).toBe('Email me a sign-in code');
   });
-  it('is a plain letter on the standard sender: no em dash, no extra links, no From override', () => {
+  it('without a readable email the bracketed part and the address are dropped, the letter still reads', () => {
+    const p = webAccountParagraphs(null);
+    expect(p[0]).toBe('You bought a Prime Barber subscription in the iPhone app, but your account already has a Prime Barber plan, so the new subscription was not used. Nothing changed on your website.');
+    expect(p[2]).toBe('To use the app with the plan you already have, open the app and sign in. If you do not remember your password, tap Email me a sign-in code and we will email you a code.');
+  });
+  it('other-apple-id letter keeps its text and adds the account line', () => {
+    expect(otherAppleIdParagraphs(E)[0]).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. This is the account barber@gmail.com. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
+    expect(otherAppleIdParagraphs(null)[0]).toBe('Your website belongs to the subscription you first bought with a different Apple ID. This new subscription was not used. Resubscribe with that Apple ID, or reply to this email and we will move your website for you.');
+    expect(blockedPurchaseEmail('other-apple-id', E).subject).toBe('About your new Prime Barber subscription');
+  });
+  it('is a plain letter on the standard sender: no em dash, no links, no From override, and the sent mail carries the recipient\'s own address', async () => {
     for (const reason of ['web-account', 'other-apple-id'] as const) {
-      const m = blockedPurchaseEmail(reason);
+      const m = blockedPurchaseEmail(reason, E);
       expect(m.from).toBeUndefined();
       expect(m.headers).toBeUndefined();
-      expect(m.subject + m.text + m.html).not.toMatch(/[—–]/);
+      expect(m.subject + m.text + m.html).not.toMatch(/[\u2014\u2013]/);
       expect(m.html).not.toMatch(/<a /);
-      expect(m.text).toBe(reason === 'web-account' ? WEB_ACCOUNT_TEXT : OTHER_APPLE_ID_TEXT);
     }
+    const f = fakeDeps();
+    await reportBlocked(info(), f.deps);
+    expect(f.sent[0].text).toContain('(barber@gmail.com)');
   });
 });

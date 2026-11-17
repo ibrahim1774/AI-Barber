@@ -273,6 +273,25 @@ export function duplicateRefundEmail(i: EmailInput, origin = APP_ORIGIN()): Mail
 
 /** A web subscriber who also bought through the App Store now pays twice. We only tell them; we never cancel for them. */
 export function iosOverlapEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
+  // OVERLAP_EMAIL_BY_HOLDER=1 (default off: today's wording below, exactly): the web account is told which account its plan is on, how to sign in with it
+  // (password, or the emailed sign-in code the app offers), and how to cancel the Apple subscription so it is not charged twice. Web accounts only: an Apple
+  // address holder never gets this customer email (rule R1, the owner is alerted instead).
+  if (process.env.OVERLAP_EMAIL_BY_HOLDER === '1' && i.email) {
+    const e = i.email.trim();
+    return render({
+      subject: 'You now pay for Prime Barber twice',
+      preheader: `Your plan is on ${e}. Cancel the new App Store subscription so you are not charged twice.`,
+      headline: 'You now pay for Prime Barber twice',
+      lead: esc(`You have a Prime Barber plan on the web, on the account ${e}, and you also bought one in the iPhone app. The app subscription adds nothing, so you are paying twice.`),
+      facts: facts(i),
+      cta: { label: 'Manage web plan', href: signInLink(origin) },
+      note: [
+        'So that you are not charged twice, cancel the app subscription on your iPhone: Settings, your name, Subscriptions. To ask for your money back, go to reportaproblem.apple.com.',
+        `To use the app with the plan you already have, open the app and sign in with ${e}. If you do not remember your password, tap Email me a sign-in code and we will email you a code.`,
+      ].map(esc).join('<br><br>'),
+      origin,
+    });
+  }
   const site = i.siteUrl ? i.siteUrl.replace(/^https?:\/\//, '') : null;
   return render({
     subject: 'You now pay for Prime Barber twice',

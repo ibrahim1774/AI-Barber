@@ -99,7 +99,7 @@ export async function reportBlocked(info: BlockedInfo, deps: BlockedDeps = liveB
     const eStamp = new Date(deps.now()).toISOString();
     if (!(await deps.claim('emailed_at', info.otid, info.uid, eStamp))) return;
     try {
-      await deps.send(to, blockedPurchaseEmail(info.reason), `one-site:blocked:${info.otid}:${info.uid}`);
+      await deps.send(to, blockedPurchaseEmail(info.reason, to), `one-site:blocked:${info.otid}:${info.uid}`);
       console.info('[one-site] blocked-purchase email sent', { userId: info.uid, reason: info.reason });
     } catch (e: any) {
       await deps.release('emailed_at', info.otid, info.uid, eStamp).catch(() => {});
