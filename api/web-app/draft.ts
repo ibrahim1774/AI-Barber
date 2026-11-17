@@ -30,13 +30,13 @@ export default async function handler(req: any, res: any) {
     const user = await callerFrom(req.headers.authorization);
     if (!user) return res.status(401).json({ error: 'unauthorized' });
     res.setHeader('Cache-Control', 'no-store');
-    // A native caller (X-PB-Build) must be in account mode. A browser (no header) is not asked anything.
-    const gate = await nativeModeGate(req, user.id);
-    if (gate) return res.status(gate.status).json(gate.body);
     if (req.method === 'PUT' && !(await writeStore.hit(`draft-put:${user.id}`, DRAFT_WRITES_PER_MINUTE, 60_000, Date.now()))) {
       res.setHeader('Retry-After', '60');
       return res.status(429).json({ error: 'rate_limited' });
     }
+    // A native caller (X-PB-Build) must be in account mode. A browser (no header) is not asked anything.
+    const gate = await nativeModeGate(req, user.id);
+    if (gate) return res.status(gate.status).json(gate.body);
     if (req.method === 'PUT' && jsonBytes(req.body) > MAX_DRAFT_BYTES) return res.status(413).json({ error: 'draft_too_large', maxBytes: MAX_DRAFT_BYTES });
     const previous = await readDraft(user.id);
     if (req.method === 'GET') return res.status(200).json({ draft: previous ? accountRow(previous) : null });

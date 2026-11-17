@@ -55,7 +55,7 @@ export async function nativeModeGate(req: { headers?: Record<string, unknown> },
 
 export type OldRouteGate = { status: 409 | 503; body: { error: string } };
 /**
- * /api/ios/publish and /api/ios/site (Restore): a caller WITH X-PB-Build whose mode is 'account' must use the account publish (409
+ * /api/ios/publish and /api/ios/site (Restore): a caller WITH X-PB-Build whose mode is not 'device' (account or web-only) must use the account publish (409
  * use-account-publish). No header: null at once, nothing read (builds 55 and 1.1 send none). No or invalid token: null (the flow answers 401).
  * A lookup failure for a native caller: 503.
  */
@@ -68,7 +68,8 @@ export async function oldRouteGate(req: { headers?: Record<string, unknown> }, u
     if (!t) return null;
     const user = await userOf(t);
     if (!user?.id) return null;
-    return (await siteModeOf(user.id, deps)) === 'account' ? { status: 409, body: { error: 'use-account-publish' } } : null;
+    // Both 'account' and 'web-only' come from kind web: a web account never uses the old route.
+    return (await siteModeOf(user.id, deps)) !== 'device' ? { status: 409, body: { error: 'use-account-publish' } } : null;
   } catch (e: any) {
     console.error('[site mode] lookup failed for a native caller on the old route (refusing):', e?.message || e);
     return { status: 503, body: { error: 'temporarily-unavailable' } };

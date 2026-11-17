@@ -11,13 +11,13 @@ vi.mock('../../lib/bookings/rateLimit.js', () => ({ clientIp: () => '1.1.1.1', i
 vi.mock('../../lib/webApp/publishFlow.js', () => ({ liveWebPublishDeps: () => ({}), runWebPublish: async (...a: any[]) => { st.runWeb.push(a); return { status: 200, body: { siteId: 'web' } }; } }));
 vi.mock('../../lib/webApp/reliability.js', () => ({
   reliabilityOn: () => process.env.WEB_APP_RELIABILITY === '1', modeOf: () => 'test', enc: encodeURIComponent,
-  readDraft: async () => ({ site_data: { shopName: 'X', bookingUrl: '/book', staff: [] } }),
+  readDraft: async () => ({ draft_id: 'd1', revision: 2, site_data: { shopName: 'X', bookingUrl: '/book', staff: [] } }),
   prepareIntent: async (...a: any[]) => { st.prepare.push(a); return { id: 'job1' }; },
 }));
 vi.mock('../../lib/webApp/publishJobs.js', () => ({ runJob: async () => {}, dispatchJob: () => {} }));
 vi.mock('../../lib/webApp/priceGroup.js', () => ({ entitlementOrFree: async () => null, isFreeSubscriptionId: () => false }));
 vi.mock('../../lib/webApp/contactPhoneLive.js', () => ({ savedPhoneState: async () => ({ phone: '1', contactsOk: true }) }));
-vi.mock('../../lib/account/nativePublish.js', () => ({ nativePublication: async () => ({ bookingUrl: '/book', staff: [{ name: 'Server' }] }) }));
+vi.mock('../../lib/account/nativePublish.js', () => ({ bookingInputsFrom: () => ({}), nativePublication: async () => ({ bookingUrl: '/book', staff: [{ name: 'Server' }] }) }));
 vi.mock('../../lib/account/kind.js', async (orig) => ({
   ...(await orig<typeof import('../../lib/account/kind.js')>()),
   accountKind: async () => { st.kindCalls++; if (st.kindFails) throw new Error('db'); return st.kind; },
@@ -88,6 +88,20 @@ describe('native callers on the web publish', () => {
     await call(webPublish, {}, drafted);
     expect(st.prepare[0][5]).toEqual(drafted.siteData);
   });
+  it('a native call with no draft id never reaches runWebPublish: 409 use-drafted-publish (reliability on or off)', async () => {
+    for (const rel of ['1', '']) {
+      setEnv({ WEB_APP_RELIABILITY: rel, ACCOUNT_DRAFTS_IOS: 'all' });
+      const r = await call(webPublish, HDR, { siteData });
+      expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'use-drafted-publish' });
+    }
+    expect(st.runWeb).toHaveLength(0);
+  });
+  it('a stale revision is 409 and nothing is prepared', async () => {
+    setEnv({ WEB_APP_RELIABILITY: '1', ACCOUNT_DRAFTS_IOS: 'all' });
+    const r = await call(webPublish, HDR, { ...drafted, revision: 1 });
+    expect(r.code).toBe(409);
+    expect(st.prepare).toHaveLength(0);
+  });
   it('a lookup failure is 503', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     setEnv({ WEB_APP_RELIABILITY: '1', ACCOUNT_DRAFTS_IOS: 'all' }); st.kindFails = true;
@@ -105,11 +119,18 @@ describe('item 5: the old routes refuse a native account-mode caller only', () =
     }
     expect(st.iosPublish).toHaveLength(0); expect(st.iosSite).toHaveLength(0);
   });
-  it('native + apple/neither, or web-only: the old route answers as before', async () => {
+  it('native + apple/neither: the old route answers as before', async () => {
     setEnv({ ACCOUNT_DRAFTS_IOS: 'all' }); st.kind = 'apple';
     expect((await call(iosPublish, HDR, { transactionId: '1', siteData })).code).toBe(200);
-    setEnv({}); st.kind = 'web';
+    st.kind = 'neither';
     expect((await call(iosSite, HDR, { transactionId: '1' })).code).toBe(200);
+  });
+  it('native + web-only (switch off, kind web): the old routes answer 409 use-account-publish too', async () => {
+    setEnv({}); st.kind = 'web';
+    for (const [h, b] of [[iosPublish, { transactionId: '1', siteData }], [iosSite, { transactionId: '1' }]] as const) {
+      const r = await call(h as any, HDR, b);
+      expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'use-account-publish' });
+    }
   });
   it('a lookup failure for a native caller is 503', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

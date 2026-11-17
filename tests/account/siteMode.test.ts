@@ -75,12 +75,12 @@ describe('gates', () => {
     expect(await oldRouteGate({ headers: { authorization: 'Bearer t' } }, userOf, boom)).toBeNull();
     expect(userOf).not.toHaveBeenCalled();
   });
-  it('oldRouteGate: native in account mode is 409 use-account-publish; other modes, no token, a bad token pass through', async () => {
+  it('oldRouteGate: native in account or web-only mode is 409 use-account-publish; device, no token, a bad token pass through', async () => {
     const h = { 'x-pb-build': '57', authorization: 'Bearer t' };
     const userOf = async () => ({ id: U });
     expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'web', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
     expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'apple', env: { ACCOUNT_DRAFTS_IOS: 'all' } })).toBeNull();
-    expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'web', env: {} })).toBeNull(); // web-only: the old route's own answers apply
+    expect(await oldRouteGate({ headers: h }, userOf, { kind: async () => 'web', env: {} })).toEqual({ status: 409, body: { error: 'use-account-publish' } }); // web-only too
     expect(await oldRouteGate({ headers: { 'x-pb-build': '57' } }, userOf, boom)).toBeNull();
     expect(await oldRouteGate({ headers: h }, async () => null, boom)).toBeNull();
   });

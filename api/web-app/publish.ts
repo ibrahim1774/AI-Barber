@@ -9,7 +9,7 @@ import { webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { entitlementOrFree, isFreeSubscriptionId } from '../../lib/webApp/priceGroup.js';
 import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
 import { nativeBuild, nativeModeGate } from '../../lib/account/siteMode.js';
-import { nativePublication } from '../../lib/account/nativePublish.js';
+import { bookingInputsFrom, nativePublication } from '../../lib/account/nativePublish.js';
 
 export const config = { maxDuration: 300 };
 
@@ -35,6 +35,8 @@ export default async function handler(req: any, res: any) {
     if (native) {
       const who = await callerFrom(req.headers?.authorization);
       if (who) { const gate = await nativeModeGate(req, who.id); if (gate) return res.status(gate.status).json(gate.body); }
+      // A native caller never publishes the phone's own siteData through the browser path: it must name a saved draft revision.
+      if (!drafted) return res.status(409).json({ error: 'use-drafted-publish' });
     }
     if (reliabilityOn() && !drafted) {
       // An older web client (no draft engine): the pre-reliability browser publish, unchanged. Never deploy alongside this account's running server job.
@@ -57,16 +59,21 @@ export default async function handler(req: any, res: any) {
       }
       // Native account publish: the server decides the Book/Shop links and refreshes the team cards (lib/account/nativePublish.ts). A browser's own list stays as is.
       let publication = input?.siteData;
+      let nativeDraft: any;
       if (native) {
         try {
-          const d = await readDraft(caller.id);
-          publication = d ? await nativePublication(caller.id, d.site_data) : undefined;
+          const inputs = bookingInputsFrom(input);
+          // Links and team come from the SAME row the intent uses, and only for the revision the caller named (else the usual 409).
+          nativeDraft = await readDraft(caller.id);
+          if (!nativeDraft || nativeDraft.draft_id !== input.draftId || nativeDraft.revision !== input.revision) return res.status(409).json({ error: 'publish_in_progress_or_draft_changed' });
+          publication = await nativePublication(caller.id, nativeDraft.site_data, inputs);
         } catch (e: any) {
+          if (e?.status === 400) return res.status(400).json({ error: 'invalid_booking_fields' });
           console.error('[web-app/publish] native links/team lookup failed (refusing):', e?.message || e);
           return res.status(503).json({ error: 'temporarily-unavailable' });
         }
       }
-      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, input?.republish === true);
+      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, input?.republish === true, nativeDraft);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);
       const finished = (await sbRest(`web_app_publish_intents?id=eq.${job.id}&select=status,result&limit=1`))?.[0];
