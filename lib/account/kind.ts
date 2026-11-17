@@ -14,8 +14,8 @@
 //  - PAID reading (lib/account/plan.ts: source, status, active): Apple Sandbox counts as paid there (question 16: the App Store
 //    reviewer can publish). It never feeds the kind.
 // Environment vocabulary: callers pass 'Production' | 'Sandbox'. web_app_* tables use the Stripe mode ('live' | 'test'), so
-// 'Production' reads 'live' and 'Sandbox' reads 'test' (as liveWebDeleteDeps.listSites does). ios_purchases is read for every
-// environment: a Sandbox purchase counts as live here (purchaseLive has no environment check), like the plan answer.
+// 'Production' reads 'live' and 'Sandbox' reads 'test' (as liveWebDeleteDeps.listSites does). ios_purchases is fetched for every
+// environment by the loader, and the DECISION reading then keeps only the rows countedApplePurchases allows (see above).
 import { purchaseLive, type GateFields } from '../ios/lapse.js';
 import { isEntitledStatus } from '../webApp/stripeCore.js';
 import { sbRest } from '../webApp/webAppServer.js';

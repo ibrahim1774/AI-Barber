@@ -42,6 +42,26 @@ describe('checkout with the real kind over a fake data layer', () => {
   });
 });
 
+describe('checkout, Apple holder, real reader', () => {
+  beforeEach(() => vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x'));
+  it('a lapsed Apple purchase and no shop link: ios_linked_lapsed', async () => {
+    h.guard = null;
+    h.ios = [{ ...row('Production'), taken_down_at: '2026-11-01T00:00:00Z' }];
+    const r = await run();
+    expect(r.code).toBe(409); expect(r.body).toEqual({ error: 'ios_linked_lapsed' });
+  });
+  it('a removed Apple holder: ios_linked_lapsed', async () => {
+    h.guard = null;
+    h.ios = [{ ...row('Production'), removed_at: '2026-11-01T00:00:00Z', taken_down_at: '2026-11-01T00:00:00Z' }];
+    expect((await run()).body).toEqual({ error: 'ios_linked_lapsed' });
+  });
+  it('a live Apple purchase and no shop link: ios_subscription_active', async () => {
+    h.guard = null;
+    h.ios = [row('Production')];
+    expect((await run()).body).toEqual({ error: 'ios_subscription_active' });
+  });
+});
+
 describe('legacy lookup', () => {
   it('fails soft: legacy=false and logged', async () => {
     h.ownersFail = true;

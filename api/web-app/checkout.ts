@@ -34,9 +34,10 @@ export default async function handler(req: any, res: any) {
     if (process.env.GATE_ANY_SOURCE === '1') {
       // GATE_ANY_SOURCE: a stray lapsed shop link no longer locks the web. Refuse only an Apple or mixed account (rule R1), shop link or not.
       try {
-        const { accountKind } = await import('../../lib/account/kind.js');
-        const kind = await accountKind(caller.id, mode === 'live' ? 'Production' : 'Sandbox');
-        if (kind === 'apple' || kind === 'mixed') return res.status(409).json({ error: 'ios_subscription_active' });
+        const { accountKindReading } = await import('../../lib/account/kind.js');
+        const k = await accountKindReading(caller.id, mode === 'live' ? 'Production' : 'Sandbox');
+        // Apple or mixed: refuse. Only say "active" when a counted Apple purchase is live; a lapsed, refunded or removed holder gets today's lapsed code.
+        if (k.kind === 'apple' || k.kind === 'mixed') return res.status(409).json({ error: k.liveApplePurchase ? 'ios_subscription_active' : 'ios_linked_lapsed' });
       } catch (e: any) { console.error('[web-app checkout] account kind lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
     } else if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
 

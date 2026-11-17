@@ -6,6 +6,7 @@ import { fetchWebEntitlementOf, gateRow } from '../../lib/webApp/entitlementGate
 import { isWebShop, webReturnBaseOf } from '../../lib/webApp/ownerNotify.js';
 import { ownerBookingsAllowed } from '../../lib/bookings/core.js';
 import { entitlementActive } from '../../lib/ios/lapse.js';
+import { ownerHasWebPlan } from '../../lib/webApp/ownerNotify.js';
 
 const P = 'com.ibrahim1774.aibarber.';
 const NOW = Date.parse('2026-11-17T12:00:00Z');
@@ -55,6 +56,20 @@ describe('(c) isWebShop with the lean check', () => {
   it('is a superset of today: an entitled card plan on an unlinked shop is still true', async () => {
     expect(await isWebShop(shop, undefined, check(deps({ cards: [card()] })))).toBe(true);
     expect(await isWebShop(shop, undefined, check(deps({ cards: [card('past_due')] })))).toBe(true);
+  });
+  it('is a superset of the real ownerHasWebPlan over the same data (cards and Free)', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    const worlds: Array<{ cards: any[]; free: boolean }> = [
+      { cards: [card('active')], free: false }, { cards: [card('trialing')], free: false }, { cards: [card('past_due')], free: false },
+      { cards: [card('canceled')], free: false }, { cards: [], free: true }, { cards: [], free: false }, { cards: [card('canceled')], free: true },
+    ];
+    for (const w of worlds) {
+      const rest = async (path: string) => (path.startsWith('web_app_entitlements?') ? w.cards.map((c) => ({ environment: 'test', status: c.status })) : [{ price_group: w.free ? 'free' : 'base' }]);
+      const today = await ownerHasWebPlan('u1', rest as any);
+      const lean = await hasLivePlan('u1', 'Sandbox', deps({ cards: w.cards, free: w.free }));
+      if (today) expect(lean).toBe(true);
+      expect(lean).toBe(today); // with no Apple rows the two agree exactly
+    }
   });
   it('adds Apple live and Free; refuses ended and nothing', async () => {
     expect(await isWebShop({ ...shop, ios_otid: 'x' }, undefined, check(deps({ apple: [ap()] })))).toBe(true);
@@ -131,7 +146,18 @@ describe('webReturnBaseOf', () => {
   it('on: a web account returns to the web page even with a stray lapsed Apple link; others to the iOS page', async () => {
     vi.stubEnv('GATE_ANY_SOURCE', '1');
     expect(await webReturnBaseOf('u1', stray, async () => false, async () => 'web')).toMatch(/^https:/);
-    for (const k of ['apple', 'mixed', 'neither']) expect(await webReturnBaseOf('u1', noShop, async () => true, async () => k)).toBeNull();
+  });
+  it('on: neither and mixed keep today: a web plan on an unlinked shop returns to the web page, no plan does not', async () => {
+    vi.stubEnv('GATE_ANY_SOURCE', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    for (const k of ['neither', 'mixed']) {
+      expect(await webReturnBaseOf('u1', noShop, async () => true, async () => k)).toMatch(/^https:/);
+      expect(await webReturnBaseOf('u1', noShop, async () => false, async () => k)).toBeNull();
+      expect(await webReturnBaseOf('u1', stray, async () => true, async () => k)).toBeNull(); // a linked shop is not a web shop today
+    }
+  });
+  it('on: apple goes to the iOS page whatever the web plan says', async () => {
+    vi.stubEnv('GATE_ANY_SOURCE', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    expect(await webReturnBaseOf('u1', noShop, async () => true, async () => 'apple')).toBeNull();
   });
   it('on: a kind lookup error falls back to the iOS page', async () => {
     vi.stubEnv('GATE_ANY_SOURCE', '1');
