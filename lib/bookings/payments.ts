@@ -8,6 +8,7 @@ import type { OrderWebhookDeps } from '../store/webhook.js';
 import type { StoreNotifyEvent } from '../store/notify.js';
 import { hasCurrentWebPlan, webReturnBaseOf, type WebPlanRow } from '../webApp/ownerNotify.js';
 import { keyMode } from '../webApp/stripeCore.js';
+import { APP_ORIGIN } from '../webApp/webAppServer.js';
 import { bookingManageUrl, bookingPageUrl as shopBookingPageUrl, type SiteBased } from '../customerUrls.js';
 
 /**
@@ -517,11 +518,16 @@ export function isNotPlatformAccountError(e: unknown): boolean {
   return m.includes('account link') && m.includes('platform') && /not (created|controlled|owned|managed)/.test(m);
 }
 
-export async function stripeOnboard(authorization: string | string[] | undefined, deps: OwnerStripeDeps): Promise<Reply> {
+/**
+ * `client` (optional, validated): the app that started the onboarding, so Stripe returns to the right place. 'ios' = the iOS return page, 'web' = the web app.
+ * Only these two fixed values are accepted (anything else is 400 bad-request); a URL is never taken from the caller. Absent: today's rule (webReturnBase).
+ */
+export async function stripeOnboard(authorization: string | string[] | undefined, deps: OwnerStripeDeps, client?: unknown): Promise<Reply> {
   const r = await ownerShop(authorization, deps);
   if ('status' in r) return r;
   const { user, shop } = r;
-  const webBase = await deps.webReturnBase?.(user.id).catch(() => null);
+  if (client !== undefined && client !== null && client !== 'ios' && client !== 'web') return { status: 400, body: { error: 'bad-request' } };
+  const webBase = client === 'ios' ? null : client === 'web' ? APP_ORIGIN() : await deps.webReturnBase?.(user.id).catch(() => null);
   try {
     let accountId = shop.stripe_account_id;
     if (accountId) {

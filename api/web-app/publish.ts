@@ -1,6 +1,6 @@
 import { prepareIntent, readDraft, reliabilityOn, modeOf, enc } from '../../lib/webApp/reliability.js';
 import { runJob, dispatchJob } from '../../lib/webApp/publishJobs.js';
-import { callerFrom, sbRest } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, authOutage } from '../../lib/webApp/webAppServer.js';
 // POST { siteData, baseVersion? } + Authorization: Bearer <supabase jwt>. Publishes the caller's web-app site.
 // Same response shapes as POST /api/ios/publish (see lib/webApp/publishFlow.ts). 404 unless WEB_APP_ENTITLEMENTS=1.
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
@@ -8,6 +8,9 @@ import { liveWebPublishDeps, runWebPublish } from '../../lib/webApp/publishFlow.
 import { webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { entitlementOrFree, isFreeSubscriptionId } from '../../lib/webApp/priceGroup.js';
 import { savedPhoneState } from '../../lib/webApp/contactPhoneLive.js';
+import { nativeBuild, nativeModeGate } from '../../lib/account/siteMode.js';
+import { bookingInputsFrom, nativePublication } from '../../lib/account/nativePublish.js';
+import { webSiteOffline } from '../../lib/account/siteOffline.js';
 
 export const config = { maxDuration: 300 };
 
@@ -28,6 +31,16 @@ export default async function handler(req: any, res: any) {
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { return res.status(400).json({ error: 'bad-request' }); } }
     const input = body as any;
     const drafted = typeof input?.draftId === 'string' && Number.isSafeInteger(input?.revision);
+    // A native caller (X-PB-Build) must be in account mode (403 not-account-mode; 503 when that cannot be decided). A browser sends no such header and is asked nothing.
+    const native = !!nativeBuild(req);
+    if (native) {
+      const who = await callerFrom(req.headers?.authorization);
+      if (who) { const gate = await nativeModeGate(req, who.id); if (gate) return res.status(gate.status).json(gate.body); }
+      // The draft engine is off: a native caller has nothing to publish through (503, explicitly), and never reaches runWebPublish with the phone's own siteData.
+      if (!reliabilityOn()) return res.status(503).json({ error: 'temporarily-unavailable' });
+      // A native caller never publishes the phone's own siteData through the browser path: it must name a saved draft revision.
+      if (!drafted) return res.status(409).json({ error: 'use-drafted-publish' });
+    }
     if (reliabilityOn() && !drafted) {
       // An older web client (no draft engine): the pre-reliability browser publish, unchanged. Never deploy alongside this account's running server job.
       const caller = await callerFrom(req.headers?.authorization);
@@ -47,7 +60,25 @@ export default async function handler(req: any, res: any) {
         const ps = await savedPhoneState(caller.id); // contacts unreadable: skip the check rather than 403 forever
         if (!ps.phone && ps.contactsOk) return res.status(403).json({ error: 'phone-required' });
       }
-      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, input?.siteData, input?.republish === true);
+      // Native account publish: the server decides the Book/Shop links and refreshes the team cards (lib/account/nativePublish.ts). A browser's own list stays as is.
+      let publication = input?.siteData;
+      let nativeDraft: any;
+      if (native) {
+        try {
+          const inputs = bookingInputsFrom(input);
+          // Links and team come from the SAME row the intent uses, and only for the revision the caller named (else the usual 409).
+          nativeDraft = await readDraft(caller.id);
+          if (!nativeDraft || nativeDraft.draft_id !== input.draftId || nativeDraft.revision !== input.revision) return res.status(409).json({ error: 'publish_in_progress_or_draft_changed' });
+          publication = await nativePublication(caller.id, nativeDraft.site_data, inputs);
+        } catch (e: any) {
+          if (e?.status === 400) return res.status(400).json({ error: 'invalid_booking_fields' });
+          console.error('[web-app/publish] native links/team lookup failed (refusing):', e?.message || e);
+          return res.status(503).json({ error: 'temporarily-unavailable' });
+        }
+      }
+      // A native publish of a site that is offline is always a republish: it is never answered from an old live record (the draft's deployed_url may be stale).
+      const republish = input?.republish === true || (native && !!(nativeDraft?.deployed_url || nativeDraft?.published_binding) && (await webSiteOffline(caller.id)));
+      const job = await prepareIntent(caller.id, input?.draftId, input?.revision, 'publish', input?.baseVersion ?? null, publication, republish, nativeDraft);
       await sbRest(`web_app_publish_intents?id=eq.${job.id}&status=in.(queued,failed,awaiting_payment)`, { method: 'PATCH', body: { stripe_subscription_id: ent.stripe_subscription_id, status: 'queued' } });
       await runJob(job.id);
       const finished = (await sbRest(`web_app_publish_intents?id=eq.${job.id}&select=status,result&limit=1`))?.[0];
@@ -61,6 +92,7 @@ export default async function handler(req: any, res: any) {
     const r = await runWebPublish((body ?? {}) as any, liveWebPublishDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app/publish] handler error:', e?.message || e);
     return res.status(e?.status === 409 ? 409 : e?.status === 400 ? 400 : 503).json({ error: e?.status === 409 ? 'publish_in_progress_or_draft_changed' : e?.status === 400 ? 'invalid_draft' : 'temporarily-unavailable' });
   }

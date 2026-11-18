@@ -198,7 +198,12 @@ describe('owner Stripe endpoints', () => {
     stripeOnboard.mockResolvedValue({ status: 200, body: { url: 'u' } });
     const res = mkRes();
     await onboard({ method: 'POST', headers: { authorization: 'Bearer t' } }, res);
-    expect(stripeOnboard).toHaveBeenCalledWith('Bearer t', {});
+    expect(stripeOnboard).toHaveBeenCalledWith('Bearer t', {}, undefined); // no body: no client, today's rule
+    stripeOnboard.mockClear();
+    await onboard({ method: 'POST', headers: { authorization: 'Bearer t' }, body: { client: 'web' } }, mkRes());
+    await onboard({ method: 'POST', headers: { authorization: 'Bearer t' }, body: '{"client":"ios"}' }, mkRes());
+    await onboard({ method: 'POST', headers: { authorization: 'Bearer t' }, body: 'not json' }, mkRes());
+    expect(stripeOnboard.mock.calls.map((c: any[]) => c[2])).toEqual(['web', 'ios', undefined]);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ url: 'u' });
     const res2 = mkRes();

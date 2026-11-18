@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../lib/ios/publishFlow.js', () => ({
   liveDeps: vi.fn(() => ({})),
+  liveUserOf: vi.fn(async () => null),
   runIosPublish: vi.fn(async () => ({ status: 200, body: { siteId: 's', deployedUrl: 'https://s.vercel.app', republished: false } })),
   runIosSiteLookup: vi.fn(async () => ({ status: 404, body: { error: 'no-site' } })),
 }));

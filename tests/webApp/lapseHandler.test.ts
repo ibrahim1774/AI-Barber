@@ -59,3 +59,13 @@ describe('/api/web-app/lapse no longer runs the sign-up reminders (they have the
     expect('nudges' in r.body).toBe(false);
   });
 });
+
+describe('ONE_SITE_GUARD and the lapse answer', () => {
+  it('guard off: the answer has no accountMaintenance key (exactly today\'s shape)', async () => {
+    vi.stubEnv('CRON_SECRET', 's3cret');
+    vi.stubEnv('ONE_SITE_GUARD', '');
+    const r = await call({ authorization: 'Bearer s3cret' });
+    expect(r.code).toBe(200);
+    expect(Object.keys(r.body)).not.toContain('accountMaintenance');
+  });
+});

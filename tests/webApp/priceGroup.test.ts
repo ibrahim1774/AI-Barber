@@ -4,6 +4,7 @@ const db = vi.hoisted(() => ({ groups: [] as any[], ents: [] as any[], custs: []
 
 vi.mock('../../lib/webApp/webAppServer.js', () => ({
   webAppCors: () => false,
+  authOutage: () => false,
   webAppCheckoutOn: () => process.env.WEB_APP_CHECKOUT === '1',
   stripeCall: async () => ({ data: db.sessions }),
   callerFrom: async () => (db.user ? { id: db.user, email: 'o@example.com' } : null),

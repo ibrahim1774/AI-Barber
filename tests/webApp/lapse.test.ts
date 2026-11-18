@@ -25,6 +25,16 @@ function fakes(o: { up?: WebSiteRow[]; down?: WebSiteRow[]; ios?: string[]; enti
   return deps;
 }
 
+describe('SAFE_TAKE_OFFLINE: a removed site with a kept copy is never restored', () => {
+  it('a removed + taken-down row among the restore candidates is ignored (no publish, no stamp)', async () => {
+    const d = fakes({ down: [row({ taken_down_at: '2026-10-02T00:00:00Z', removed_at: '2026-10-03T00:00:00Z' })], status: 'active' });
+    const r = await sweepWebApp(d);
+    expect(d.publish).not.toHaveBeenCalled();
+    expect(d.clearTakenDown).not.toHaveBeenCalled();
+    expect(r.restored ?? []).toEqual([]);
+  });
+});
+
 describe('sweepWebApp', () => {
   it('takes down a site whose subscription is canceled: stamp first, then offline deploy', async () => {
     const d = fakes({ up: [row()] });

@@ -81,10 +81,12 @@ export interface NotifyDeps {
   loadContext(appointmentId: string): Promise<NotifyContext | null>;
   sendEmail(msg: EmailMessage): Promise<EmailResult>;
   push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
-  /** Web-app owners only (see ownerNotify isWebShop): email the shop owner. Absent = never emails the owner. */
+  /** Web-app owners only (see ownerNotify isWebShop): email the shop owner. Absent = never emails the owner (with or without GATE_ANY_SOURCE). */
   emailOwner?(ownerId: string, event: OwnerEvent): Promise<unknown>;
-  /** Does the owner hold an entitled web plan in the current Stripe mode? Absent = never emails the owner. Throws on a lookup error. */
+  /** Does the owner hold an entitled web plan in the current Stripe mode? Used only with GATE_ANY_SOURCE off (absent = no email then). With it on, ownerHasLivePlan decides instead. Throws on a lookup error. */
   ownerHasWebPlan?(ownerId: string): Promise<boolean>;
+  /** GATE_ANY_SOURCE only: does the owner's account have a live plan from any source? Absent: the live lookup (lib/account/plan.ts). */
+  ownerHasLivePlan?(ownerId: string): Promise<boolean>;
   now(): number;
 }
 
@@ -261,7 +263,7 @@ const pushRecipients = (ctx: NotifyContext) => [ctx.shop.owner_id, ctx.memberUse
 /** Additive web-app owner email; a no-op unless isWebShop (iOS shops, flag off, no current web plan, lookup error) or deps lack emailOwner/ownerHasWebPlan. Never throws. */
 async function emailOwner(ctx: NotifyContext, deps: NotifyDeps, event: OwnerEvent): Promise<void> {
   if (!deps.emailOwner) return;
-  await maybeEmailOwner(ctx.shop, event, deps.emailOwner, deps.ownerHasWebPlan);
+  await maybeEmailOwner(ctx.shop, event, deps.emailOwner, deps.ownerHasWebPlan, deps.ownerHasLivePlan);
 }
 
 async function emailCustomer(ctx: NotifyContext, deps: NotifyDeps, build: () => EmailMessage): Promise<EmailResult> {

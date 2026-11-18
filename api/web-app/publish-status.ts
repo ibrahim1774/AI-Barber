@@ -1,7 +1,7 @@
 import { dispatchJob } from '../../lib/webApp/publishJobs.js';
 import { enc, modeOf, readDraft, reliabilityOn } from '../../lib/webApp/reliability.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
-import { callerFrom, sbRest, webAppCors, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, webAppCors, webAppEntitlementsOn, authOutage } from '../../lib/webApp/webAppServer.js';
 
 export const config = { maxDuration: 300 };
 /** POST re-dispatches a failed job: at most this many per user per minute (per instance), and never before its backoff has passed. */
@@ -29,5 +29,5 @@ export default async function handler(req: any, res: any) {
     }
     const { next_attempt_at: _due, ...visible } = job ?? ({} as any);
     return res.status(200).json({ intent: job ? visible : null });
-  } catch { return res.status(503).json({ error: 'status_unavailable' }); }
+  } catch (e: any) { if (authOutage(res, e)) return; return res.status(503).json({ error: 'status_unavailable' }); }
 }

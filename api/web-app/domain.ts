@@ -18,7 +18,7 @@ import { liveWebDomainDeps } from '../../lib/ios/domainLive.js';
 import { liveVercelDomains, registrantContact } from '../../lib/ios/vercelDomains.js';
 import { supabaseDomains } from '../../lib/ios/domainsRepo.js';
 import { serviceClient } from '../../lib/bookings/repo.js';
-import { APP_ORIGIN, callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { APP_ORIGIN, callerFrom, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 import { isFree } from '../../lib/webApp/priceGroup.js';
 
 export const config = { maxDuration: 300 };
@@ -73,6 +73,7 @@ export default async function handler(req: any, res: any) {
     }
     return res.status(r.status).json(r.body);
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app/domain] error:', e?.message || e);
     return res.status(500).json({ error: 'Internal error' });
   }

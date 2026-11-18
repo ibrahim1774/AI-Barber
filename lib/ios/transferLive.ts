@@ -11,6 +11,8 @@ import { stampedSiteUrl } from './siteUrlFor.js';
 import { supabasePurchases } from './purchases.js';
 import { finishPendingMoves, liveMoveIntents } from './moveIntent.js';
 import type { TransferDeps } from './transfer.js';
+import { liveTie } from '../account/mayTake.js';
+import { guardMode, moveAddress } from '../account/sites.js';
 
 export const TRANSFER_LIMIT = 10; // moves (and probes) per account per window
 
@@ -34,9 +36,13 @@ function admin() {
  *  2. the caller's own staff row in that shop is deactivated (user_id null) so the owner row can be re-pointed
  *  3. ab_members: the shop's owner member user_id -> caller AND ics_token rotated (the old calendar feed dies)
  *  4. sites: `from`'s rows whose deployed_url host is the purchase's slug -> caller
+ *  5. account_sites (one-account plan, migration 038), ONLY while ONE_SITE_GUARD is not off: the Apple address row of the slug follows the purchase. With the guard off the table
+ *     is not touched (it exists only after migration 038). It cannot fail or slow a Move: moveAddress never throws (a missing table, no row for the account, or a conflict is logged and ignored).
  * The shop's children follow the shop id. ab_push_tokens and ios_domains are untouched.
  */
 export async function liveMoveBusiness(otid: string, from: string, callerId: string, slug: string | null): Promise<void> {
+  // First, so a later step that throws (and is retried by the finisher) cannot leave the address behind; idempotent on every retry.
+  if (guardMode() !== 'off') await moveAddress(from, callerId, slug);
   const db = admin();
   const { data: shop, error: sErr } = await db.from('ab_shops').select('id, owner_id').eq('ios_otid', otid).maybeSingle();
   if (sErr) throw new Error(`ab_shops lookup failed: ${sErr.message}`);
@@ -80,9 +86,11 @@ export function liveTransferDeps(): TransferDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    tie: liveTie,
     siteUrlFor: stampedSiteUrl,
     allow: (callerId) => transferLimiter.allow(callerId, 'write'),
     now: () => Date.now(),
+    kindOf: async (uid, env) => (await import('../account/kind.js')).accountKindReading(uid, env),
     async shopSummary(otid) {
       const { data, error } = await admin().from('ab_shops').select('id').eq('ios_otid', otid).maybeSingle();
       if (error) throw new Error(`ab_shops lookup failed: ${error.message}`);

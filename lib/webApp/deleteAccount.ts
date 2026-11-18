@@ -1,4 +1,4 @@
-import { markSiteOffline, suspendWork } from './reliability.js';
+import { forgetLiveAddress, markSiteOffline, reliabilityOn, suspendWork } from './reliability.js';
 // Account deletion for web-app (Stripe) accounts. Builds on the iOS delete flow (lib/ios/deleteAccount.ts, unchanged):
 // the same ordering (close the shop -> take every site down -> purge -> delete rows and the user), with
 //   - the account's web subscriptions CANCELED right after the shop is closed (no billing for a deleted account),
@@ -9,11 +9,12 @@ import { markSiteOffline, suspendWork } from './reliability.js';
 // An account with iOS purchases too is handled by the unchanged iOS parts. Flag: WEB_APP_ENTITLEMENTS.
 import { liveDeleteDeps, type DeleteAccountDeps } from '../ios/deleteAccount.js';
 import { liveRemoveDeps } from '../ios/removeSiteLive.js';
-import { purge, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
+import { purge, purgeOffline, safeTakeOfflineOn, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
 import { WEB_APP_TAG, isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { forgetSession, storedSessionId } from './checkoutSessions.js';
 import { emailOfUser } from './userExists.js';
+import { alertOwner } from './emails.js';
 
 const WEB = 'web:';
 const enc = encodeURIComponent;
@@ -23,6 +24,10 @@ type EntRow = { stripe_subscription_id: string; stripe_customer_id?: string | nu
 
 /** Stripe says the subscription does not exist any more. A retried delete counts that as done. */
 const missing = (e: any) => e?.status === 404 || e?.code === 'resource_missing';
+
+/** Marks an error as coming from a Stripe call (in place, so `missing` and every other reader of the error still sees the same object). The native delete route reports only these as `cardCancelFailed`. */
+const markStripe = (e: any): never => { throw e && typeof e === 'object' ? Object.assign(e, { stripeCall: true }) : Object.assign(new Error(String(e)), { stripeCall: true }); };
+const stripe = (path: string, body: unknown, method?: string) => stripeCall(path, body as any, method as any).catch(markStripe);
 
 /**
  * A first-time payer has no stored customer until the webhook lands. Stripe still knows their Checkout sessions (found by the
@@ -34,7 +39,7 @@ export async function sessionsOfUser(userId: string, lookupEmail: (id: string) =
   const stored = mode ? await storedSessionId(userId, mode) : null; // found by id, so it works without an email
   const email = await lookupEmail(userId);
   if (!email) return { customers: [], open: stored ? [stored] : [] };
-  const list = await stripeCall(`checkout/sessions?customer_details[email]=${enc(email)}&limit=100`, null, 'GET');
+  const list = await stripe(`checkout/sessions?customer_details[email]=${enc(email)}&limit=100`, null, 'GET');
   const customers = new Set<string>(); const open: string[] = [];
   for (const o of list?.data ?? []) {
     if (o?.metadata?.app !== WEB_APP_TAG || o?.metadata?.user_id !== userId) continue;
@@ -77,17 +82,17 @@ export async function planWebCancellations(userId: string, listForCustomer: (cus
 }
 
 async function defaultList(customerId: string): Promise<any[]> {
-  return (await stripeCall(`subscriptions?customer=${enc(customerId)}&status=all&limit=20`, null, 'GET'))?.data ?? [];
+  return (await stripe(`subscriptions?customer=${enc(customerId)}&status=all&limit=20`, null, 'GET'))?.data ?? [];
 }
 
 /** Cancel every still-paying web subscription of the user in THIS deployment's Stripe mode. Throws when one cannot be canceled. */
 export async function cancelWebSubscriptions(
   userId: string,
-  cancel: (subId: string) => Promise<void> = (id) => stripeCall(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
-  statusOf: (subId: string) => Promise<string> = async (id) => String((await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status),
+  cancel: (subId: string) => Promise<void> = (id) => stripe(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
+  statusOf: (subId: string) => Promise<string> = async (id) => String((await stripe(`subscriptions/${enc(id)}`, null, 'GET')).status),
   listForCustomer?: (customerId: string) => Promise<any[]>,
   discover: typeof sessionsOfUser = sessionsOfUser,
-  expire: (sessionId: string) => Promise<unknown> = (id) => stripeCall(`checkout/sessions/${enc(id)}/expire`, {}, 'POST'),
+  expire: (sessionId: string) => Promise<unknown> = (id) => stripe(`checkout/sessions/${enc(id)}/expire`, {}, 'POST'),
 ): Promise<string[]> {
   const ids = await planWebCancellations(userId, listForCustomer, discover); // refusal happens here, before anything is cancelled
   // Nobody may pay for a deleted account mid-delete: expire the user's still-open sessions (best effort; an already-expired one is fine).
@@ -117,18 +122,98 @@ export async function cancelThenForgetCustomers(userId: string, cancel?: Paramet
   return done;
 }
 
-/** Take the user's web sites offline and delete their stored copy, keeping the account and the subscription ("Take my website offline"). */
-export async function removeWebSitesOf(userId: string): Promise<number> {
+/**
+ * Take the user's web sites offline and delete their stored copy, keeping the account and the subscription ("Take my website offline").
+ * `opts.keepContent` (ONLY the native app's account-mode take offline, api/web-app/take-offline.ts with X-PB-Build): never deletes the stored copy or photos,
+ * whatever SAFE_TAKE_OFFLINE says (the domain is detached and the stored address forgotten, exactly the SAFE_TAKE_OFFLINE path). The browser and old builds
+ * pass nothing and get today's behaviour.
+ */
+export async function removeWebSitesOf(userId: string, opts: { keepContent?: boolean } = {}): Promise<number> {
   await suspendWork(userId);
-  const deps = liveWebDeleteDeps();
+  const deps = liveWebDeleteDeps({ keepPhone: !!opts.keepContent });
   const sites = (await deps.listSites(userId)).filter(isWebSite);
   for (const s of sites) await deps.takeDown(s);
-  for (const s of sites) await deps.purge(s);
+  if (opts.keepContent || safeTakeOfflineOn()) { const rm = liveRemoveDeps(); for (const s of sites) await purgeOffline(s, rm); } // keeps the stored copy
+  else for (const s of sites) await deps.purge(s);
   await markSiteOffline(userId);
+  // The keep-content take offline forgets the draft's live address itself, whatever WEB_APP_RELIABILITY says (best effort: no draft row or table means nothing to forget).
+  // A failure is logged; native draft GET/PUT and publish also treat a site whose web_app_sites row is removed or taken down as not live (lib/account/siteOffline.ts), so a stale
+  // address cannot come back if the draft engine is turned on later.
+  if (opts.keepContent && !reliabilityOn()) await forgetLiveAddress(userId).catch((e: any) => console.error('[take offline] could not forget the draft live address:', e?.status ?? e?.message ?? e));
   return sites.length;
 }
 
-export function liveWebDeleteDeps(): DeleteAccountDeps {
+/**
+ * True when the user has any row in web_app_entitlements, web_app_customers or web_app_checkout_sessions.
+ * web_app_price_groups is NOT Stripe history (it is written at web sign-up). A read error throws (fail closed).
+ */
+export async function hasStripeHistory(userId: string): Promise<boolean> {
+  for (const t of ['web_app_entitlements', 'web_app_customers', 'web_app_checkout_sessions']) {
+    const rows = await sbRest(`${t}?user_id=eq.${enc(userId)}&select=user_id&limit=1`);
+    if (Array.isArray(rows) && rows.length > 0) return true;
+  }
+  return false;
+}
+
+const STRIPE_PLAN_TIMEOUT_MS = 8000;
+/**
+ * Native single delete only: before an Apple-only or empty account with no Stripe history is allowed to skip Stripe, ask Stripe for the user's Checkout sessions (a card payer whose
+ * webhook has not landed has no local row yet). true = a completed or open session exists (so there IS something to cancel), false = none, null = could not be asked (key missing,
+ * Stripe down or slow: the caller then takes the normal path, which fails closed unless its fallback rules allow it).
+ */
+export async function hasCheckoutSessions(userId: string): Promise<boolean | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const found = await Promise.race([sessionsOfUser(userId), new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), STRIPE_PLAN_TIMEOUT_MS); })]);
+    return found.customers.length > 0 || found.open.length > 0;
+  } catch (e: any) { console.error('[ios/delete-account] could not ask Stripe for checkout sessions:', e?.message || e); return null; }
+  finally { if (timer) clearTimeout(timer); }
+}
+/** Thrown for a failure of Stripe itself (down, slow, bad key, key missing). Anything else (a database read) stays a hard failure. */
+class StripeDown extends Error { constructor(public reason: string) { super(reason); } }
+const readRows = async (path: string) => { const r = await sbRest(path); return Array.isArray(r) && r.length > 0; };
+
+/**
+ * iOS in-app delete only (`allowNoStripe`, passed by api/ios/delete-account.ts when APP_DELETE_CANCELS_WEB=1).
+ * Stripe is ALWAYS asked first (8 s). If it answers, today's behaviour. If the key is missing or Stripe is down/slow, the delete may
+ * go on WITHOUT Stripe only when the account has no Stripe history (entitlements, customers, sessions) AND (it holds an ios_purchases row
+ * OR has no web sign-up: no price-group row, no draft row). The owner is alerted whenever that happens. Everything else, and any read
+ * error, fails closed.
+ */
+async function planWithStripeFallback(userId: string): Promise<{ withoutStripe: string | null }> {
+  if (!keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY)) return { withoutStripe: await mayGoWithoutStripe(userId, 'Stripe key missing') };
+  let emailReadFailed = false;
+  const down = <A extends any[], T>(f: (...a: A) => Promise<T>) => async (...a: A): Promise<T> => { try { return await f(...a); } catch (e: any) { throw new StripeDown(`Stripe call failed: ${e?.message || e}`); } };
+  const list = down(async (c: string): Promise<any[]> => (await stripe(`subscriptions?customer=${enc(c)}&status=all&limit=20`, null, 'GET'))?.data ?? []);
+  const discover: typeof sessionsOfUser = (uid) => sessionsOfUser(uid, async (id) => { try { return await emailOfUser(id); } catch (e) { emailReadFailed = true; throw e; } });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      planWebCancellations(userId, list, async (uid) => { try { return await discover(uid); } catch (e: any) { throw emailReadFailed ? e : new StripeDown(`Stripe call failed: ${e?.message || e}`); } }),
+      new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new StripeDown('Stripe timed out')), STRIPE_PLAN_TIMEOUT_MS); }),
+    ]);
+    return { withoutStripe: null };
+  } catch (e: any) {
+    if (!(e instanceof StripeDown)) throw e;
+    return { withoutStripe: await mayGoWithoutStripe(userId, e.reason) };
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function mayGoWithoutStripe(userId: string, reason: string): Promise<string> {
+  const enc1 = enc(userId);
+  // (`cardCancel`: the account has a card plan or customer we could not reach, so the native delete route can say so; the message and every other behaviour are unchanged.)
+  if (await hasStripeHistory(userId)) throw Object.assign(new Error(`delete refused: ${reason} and the account has Stripe history`), { cardCancel: true });
+  const apple = await readRows(`ios_purchases?user_id=eq.${enc1}&select=original_transaction_id&limit=1`);
+  if (!apple) {
+    const webSignup = (await readRows(`web_app_price_groups?user_id=eq.${enc1}&select=user_id&limit=1`)) || (await readRows(`web_app_drafts?user_id=eq.${enc1}&select=user_id&limit=1`));
+    if (webSignup) throw new Error(`delete refused: ${reason} and the account has a web sign-up and no Apple purchase`);
+  }
+  await alertOwner('Account deleted without asking Stripe', [`user: ${userId}`, `reason: ${reason}`, apple ? 'The account holds an Apple purchase.' : 'The account has no web sign-up.', 'No Stripe history was found locally. Check Stripe for this customer if in doubt.']).catch((e: any) => console.error('[ios/delete-account] no-Stripe alert failed:', e?.message || e));
+  return reason;
+}
+
+/** `keepPhone` (the native keep-content take offline only): the removal stamp leaves the saved contact phone alone, so "nothing is deleted" is fully true. */
+export function liveWebDeleteDeps(opts: { allowNoStripe?: boolean; keepPhone?: boolean; onCancelled?: (subscriptionIds: string[]) => void; skipStripe?: boolean } = {}): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();
   const stamp = (otid: string, body: Record<string, unknown>) =>
@@ -137,7 +222,8 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
     ...remove,
     markRemoved: (otid, at) => stamp(otid, { removed_at: new Date(at).toISOString(), taken_down_at: new Date(at).toISOString() })
       // Drop the stored mobile number too. Separate and best effort: the columns come with migration 032, and a missing column must never break account deletion.
-      .then(() => stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {})),
+      // (Not for keepPhone: the keep-content take offline keeps the number.)
+        .then(() => (opts.keepPhone ? undefined : stamp(otid, { contact_phone: null, contact_phone_at: null }).catch(() => {}))),
     markTakenDown: (otid, at) => stamp(otid, { taken_down_at: new Date(at).toISOString() }),
   };
   return {
@@ -164,6 +250,23 @@ export function liveWebDeleteDeps(): DeleteAccountDeps {
     // The shop is closed first (customers told, money refunded); only then is the billing stopped.
     closeShop: base.closeShop
       ? async (userId) => {
+          if (opts.allowNoStripe) {
+            // Native single route only (`skipStripe`): the route found no Stripe history and an Apple-only or empty account, so there is nothing to cancel and Stripe is not asked (logged, no alert).
+            if (opts.skipStripe) {
+              console.log('[ios/delete-account] no Stripe history on an Apple-only or empty account: Stripe not asked');
+              await suspendWork(userId, 'deleting');
+              return base.closeShop!(userId);
+            }
+            // `cardCancel` marks a failure the app may call "the card plan": Stripe history we could not reach (mayGoWithoutStripe), or a failed Stripe call while cancelling. A database read error,
+            // a live subscription out of this key's reach, or a web sign-up refused during an outage stay plain failures.
+            const { withoutStripe } = await planWithStripeFallback(userId); // refuses (throws) unless Stripe answered or the fallback rules allow it
+            await suspendWork(userId, 'deleting');
+            const r = await base.closeShop!(userId);
+            if (!r.ok || withoutStripe) return r;
+            const cancelled = await cancelThenForgetCustomers(userId).catch((e: any) => { throw e?.stripeCall ? Object.assign(e, { cardCancel: true }) : e; }); // (not inside an optional call: its argument must always be evaluated)
+            opts.onCancelled?.(cancelled);
+            return r;
+          }
           await planWebCancellations(userId); // refuse BEFORE the shop is closed if a live subscription is out of this key's reach
           await suspendWork(userId, 'deleting');
           const r = await base.closeShop!(userId);

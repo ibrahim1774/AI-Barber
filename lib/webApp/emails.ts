@@ -11,6 +11,13 @@ export interface EmailInput {
   updateUrl?: string | null;
   /** 0 = the first notice; 1+ = a follow-up reminder. */
   reminder?: number;
+  /**
+   * The overlap email only: the caller (the sweep) decided the "cancel the app subscription" wording is safe (OVERLAP_EMAIL_BY_HOLDER and STRIPE_REFUND_ALERTS on, no
+   * Apple address, and the shop does not run on the Apple link or GATE_ANY_SOURCE is on). Absent or false: today's email, exactly.
+   */
+  overlapByHolder?: boolean;
+  /** The account's OWN sign-in email (never the Stripe customer's). Unknown: the new wording leaves out the address. */
+  accountEmail?: string | null;
 }
 export interface Mail {
   subject: string; html: string; text: string;
@@ -46,7 +53,8 @@ export interface Layout {
   lead: string;
   /** Plain "label: value" lines (also used for the text version). */
   facts: Array<[string, string, string?]>; // [label, text value, html value]
-  cta: { label: string; href: string };
+  /** Absent: no button (the new overlap wording has none). Every other email passes one, so their output is unchanged. */
+  cta?: { label: string; href: string };
   note?: string;
   origin: string;
 }
@@ -62,14 +70,14 @@ export function render(l: Layout): Mail {
 <tr><td style="padding:26px 28px 0 28px"><span style="font-size:13px;letter-spacing:3px;font-weight:700;color:#fff">PRIME<span style="color:${AMBER}">BARBER</span></span></td></tr>
 <tr><td style="padding:22px 28px 0 28px"><div style="font-size:24px;line-height:30px;font-weight:700;color:#fff">${esc(l.headline)}</div><div style="margin-top:10px;font-size:15px;line-height:22px;color:#c9ccd4">${l.lead}</div></td></tr>
 <tr><td style="padding:20px 28px 0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #2a2a2a">${factRows}</table></td></tr>
-<tr><td style="padding:26px 28px 6px 28px"><a href="${l.cta.href}" style="display:block;text-align:center;background:${AMBER};color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">${esc(l.cta.label)}</a></td></tr>
+${l.cta ? `<tr><td style="padding:26px 28px 6px 28px"><a href="${l.cta.href}" style="display:block;text-align:center;background:${AMBER};color:#15130c;text-decoration:none;padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700">${esc(l.cta.label)}</a></td></tr>` : `<tr><td style="padding:14px 28px 0 28px"></td></tr>`}
 ${l.note ? `<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:19px;color:#8b919e">${l.note}</td></tr>` : ''}
 <tr><td style="padding:22px 28px 26px 28px;font-size:12px;line-height:18px;color:#6b7280">Forgot your password? <a href="${resetLink(l.origin)}" style="color:#c9ccd4">Reset it</a>. We never email passwords.</td></tr>
 </table></td></tr></table></body></html>`;
   const text = [
     l.headline, '', l.lead.replace(/<[^>]+>/g, ''), '',
     ...l.facts.map(([k, v]) => `${k}: ${v}`), '',
-    `${l.cta.label}: ${l.cta.href}`,
+    ...(l.cta ? [`${l.cta.label}: ${l.cta.href}`] : []),
     ...(l.note ? ['', l.note.replace(/<[^>]+>/g, '')] : []),
     '', `Forgot your password? ${resetLink(l.origin)}`, 'We never email passwords.',
   ].join('\n');
@@ -273,6 +281,25 @@ export function duplicateRefundEmail(i: EmailInput, origin = APP_ORIGIN()): Mail
 
 /** A web subscriber who also bought through the App Store now pays twice. We only tell them; we never cancel for them. */
 export function iosOverlapEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
+  // overlapByHolder (the sweep sets it only with OVERLAP_EMAIL_BY_HOLDER=1 and STRIPE_REFUND_ALERTS=1, an account with no Apple address, and a shop that does NOT
+  // run on its Apple link unless GATE_ANY_SOURCE=1): the web account is told which account its plan is on, how to sign in with it (password, or the emailed
+  // sign-in code the app offers), and how to cancel the Apple subscription so it is not charged twice. No button (nothing here suggests cancelling the web plan).
+  // Anything else is today's email below, byte for byte.
+  if (i.overlapByHolder) {
+    const e = (i.accountEmail ?? '').trim();
+    return render({
+      subject: 'You now pay for Prime Barber twice',
+      preheader: `${e ? `Your plan is on ${e}. ` : ''}Cancel the new App Store subscription so you are not charged twice.`,
+      headline: 'You now pay for Prime Barber twice',
+      lead: esc(`You have a Prime Barber plan on the web${e ? `, on the account ${e}` : ''}, and you also bought one in the iPhone app. The app subscription adds nothing, so you are paying twice.`),
+      facts: [...(i.siteUrl ? facts(i).slice(0, 1) : []), ['Plan', TIER_NAME[i.tier] ?? i.tier], ...(e ? [['Account', e] as [string, string]] : [])],
+      note: [
+        'So that you are not charged twice, cancel the app subscription on your iPhone: Settings, your name, Subscriptions. To ask for your money back, go to reportaproblem.apple.com.',
+        `To use the app with the plan you already have, open the app and sign in${e ? ` with ${e}` : ''}. If you do not remember your password, tap Email me a sign-in code and we will email you a code.`,
+      ].map(esc).join('<br><br>'),
+      origin,
+    });
+  }
   const site = i.siteUrl ? i.siteUrl.replace(/^https?:\/\//, '') : null;
   return render({
     subject: 'You now pay for Prime Barber twice',

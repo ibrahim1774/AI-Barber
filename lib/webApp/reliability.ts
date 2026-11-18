@@ -50,8 +50,8 @@ const publishLike = (purpose: string) => purpose === 'publish' || purpose === 'c
 export interface IntentPlan { uid: string; draft: Draft; snapshot: any; id: string; purpose: string; baseVersion: number | null; republish?: boolean }
 
 /** Validates the saved revision and computes the deterministic intent id. Writes nothing, so a caller can create its Stripe session first. */
-export async function planIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any, republish = false): Promise<IntentPlan> {
-  const d = await readDraft(uid);
+export async function planIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any, republish = false, draft?: Draft): Promise<IntentPlan> {
+  const d = draft ?? await readDraft(uid); // a caller that already read the row (native publish: links and team are computed from it) passes it, so both use the SAME row
   if (!d || d.draft_id !== draftId || d.revision !== revision || (d.suspended && !(d.suspension_reason === 'offline' && publishLike(purpose)))) throw Object.assign(new Error('draft_changed'), { status: 409 });
   // Only derived links/team may differ from the acknowledged editor draft. Text and images come from that revision
   // (publish.ts also passes the browser's staff list, bookingUrl and shopUrl; all of it is validated below).
@@ -99,14 +99,18 @@ export async function submitIntent(plan: IntentPlan): Promise<Intent> {
   return rows[0];
 }
 /** This is an immutable snapshot. Browser redirects never supply its contents to the worker. */
-export async function prepareIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any, republish = false): Promise<Intent> {
-  return submitIntent(await planIntent(uid, draftId, revision, purpose, baseVersion, publication, republish));
+export async function prepareIntent(uid: string, draftId: unknown, revision: unknown, purpose: string, baseVersion: number | null = null, publication?: any, republish = false, draft?: Draft): Promise<Intent> {
+  return submitIntent(await planIntent(uid, draftId, revision, purpose, baseVersion, publication, republish, draft));
 }
 /** After the site has really been taken offline: the draft no longer reports a deployment, and finished submissions can run again. */
 export async function markSiteOffline(uid: string) {
   if (!reliabilityOn()) return;
   await sbRest(draftPath(uid), { method: 'PATCH', body: { deployed_url: null, published_binding: null } });
   await sbRest(`web_app_publish_intents?user_id=eq.${enc(uid)}&environment=eq.${modeOf()}&status=eq.live`, { method: 'PATCH', body: { status: 'superseded', attempts: 0, result: null } });
+}
+/** Forget the draft's live address and binding whether or not the draft engine switch is on (the keep-content take offline; a missing draft row is a no-op). */
+export async function forgetLiveAddress(uid: string) {
+  await sbRest(draftPath(uid), { method: 'PATCH', body: { deployed_url: null, published_binding: null } });
 }
 export async function suspendWork(uid: string, reason: 'offline' | 'deleting' = 'offline') {
   if (!reliabilityOn()) return;

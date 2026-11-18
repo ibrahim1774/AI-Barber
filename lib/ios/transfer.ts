@@ -25,6 +25,7 @@ import type { PurchasesRepo } from './purchases.js';
 import { timingSafeEqual } from 'node:crypto';
 import type { MoveIntents } from './moveIntent.js';
 import { hasLiveSite, otherAccountBody, siteUrlOf, type BindingOwner } from './ownership.js';
+import type { TieCheck, TieDecision } from '../account/mayTake.js';
 
 export interface TransferDeps {
   verify(transactionId: string): Promise<VerifiedTx>;
@@ -45,6 +46,10 @@ export interface TransferDeps {
   shopSummary?(otid: string): Promise<{ hasShop: boolean }>;
   /** The caller's own shop, if any (ab_shops has one row per owner). */
   shopOf?(userId: string): Promise<{ id: string; ios_otid: string | null } | null>;
+  /** GATE_ANY_SOURCE only: an account's kind reading (lib/account/kind.ts). Absent: no kind refusal. Throws -> fail closed (503). */
+  kindOf?(userId: string, env: 'Production' | 'Sandbox'): Promise<{ kind: 'web' | 'apple' | 'mixed' | 'neither'; holdsWebAddress: boolean; holdsAppleAddress: boolean }>;
+  /** ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the purchase is linked or moved to the caller. Absent or off: today's behaviour. */
+  tie?: TieCheck;
   /** Move intents (ab_events): recorded BEFORE the CAS; a retry finishes a move only when one exists. */
   intents: MoveIntents;
   /**
@@ -69,6 +74,7 @@ export type TransferResult =
   | { status: 409; body: { error: 'account-has-site'; slug: string; reason: 'site' | 'shop' } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 409; body: { error: 'move-in-progress' } }
+  | { status: 409; body: { error: 'move-blocked-web-account'; message: string } }
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null; ownerHint: string | null; hasLiveSite: boolean } }
   | { status: 402; body: { error: 'subscription-inactive'; reason?: 'revoked' } }
   | { status: 400; body: { error: 'proof-required' } }
@@ -182,6 +188,26 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     return true;
   };
 
+  // GATE_ANY_SOURCE: a web or mixed account never gives or receives a purchase (a web account's site is not a purchase's business).
+  // Only kinds web and mixed are refused here. An Apple receiver that holds a site or a shop gets today's account-has-site from the
+  // checks below, exactly as before. Off: never called.
+  const webBlock = async (account: string): Promise<boolean> => {
+    if (process.env.GATE_ANY_SOURCE !== '1' || !deps.kindOf) return false;
+    const r = await deps.kindOf(account, tx.environment); // the purchase's own environment (as mayTake and tryTake), never the Stripe key's
+    return r.kind === 'web' || r.kind === 'mixed';
+  };
+  // ONE_SITE_GUARD. The plan gives no body for transfer, so the existing ones are reused (decision, flagged in the report): a web or mixed
+  // account gets the same answer as the GATE_ANY_SOURCE block; an account whose address sits on another purchase gets account-has-site
+  // (reason 'site') with that address, as the check just above does for a live site.
+  const tieRefusal = async (account: string, where: string): Promise<TransferResult | null> => {
+    if (!deps.tie) return null;
+    const t: TieDecision = await deps.tie(account, otid, where);
+    if (t.action === 'allow') return null;
+    if (t.action === 'unavailable') return unavailable;
+    return t.reason === 'other-apple-id' ? { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: 'site' } } : blocked;
+  };
+  const blocked: TransferResult = { status: 409, body: { error: 'move-blocked-web-account', message: 'This subscription cannot be moved to or from an account that has a website made on the web. Contact support and we will sort it out.' } };
+
   try {
     if (inactive) {
       const cur = await repo.get(otid);
@@ -226,8 +252,11 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
           return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row) };
         }
       }
+      if (await webBlock(caller)) return blocked;
       const has = await mine();
       if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
+      const noTie = await tieRefusal(caller, 'ios/transfer link');
+      if (noTie) return noTie;
       if (await repo.setUserIfUnlinked(otid, caller)) {
         console.log(`ios-transfer ${tag} from=none to=${short(caller)} (linked)`);
         return { status: 200, body: { moved: false, linked: true } };
@@ -258,10 +287,15 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       return { status: 409, body: { error: 'purchase-changed' } };
     }
 
+    if ((await webBlock(caller)) || (await webBlock(ownerId))) return blocked;
+
     // a. One business per account: a caller with a live site under another purchase, or a shop of their own, is refused.
     const has = await mine();
     if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
     if (await ownShop()) return { status: 409, body: { error: 'account-has-site', slug: '', reason: 'shop' } };
+    // ONE_SITE_GUARD, before anything is recorded or moved (transferUser below also writes ios_purchases.user_id).
+    const noTie = await tieRefusal(caller, 'ios/transfer move');
+    if (noTie) return noTie;
 
     // b0. An earlier move of this purchase to a DIFFERENT account whose business move is unfinished must be
     // finished first (its `from` would otherwise be overwritten by this one).

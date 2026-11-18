@@ -3,6 +3,9 @@
 import { WEB_APP_TAG, groupConfigured, isPriceGroup, keyMode, type EntitlementRow, type PriceGroup } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import { appStoreStateOf } from './appStoreGuard.js';
+import { accountKindReading, kindEnvOf } from '../account/kind.js';
+import { guardMode } from '../account/sites.js';
+import { alertOwner } from './emails.js';
 
 const enc = encodeURIComponent;
 
@@ -110,6 +113,22 @@ export async function assignGroup(uid: string, email: string | null, requested: 
       // An App Store subscriber (or an iOS-linked shop) never gets the free site: publish would refuse it ('app-store-account') anyway.
       const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
       if (!mode || (await appStoreStateOf(uid, mode)) !== null) group = 'base';
+      // ONE_SITE_GUARD (off = nothing below runs, nothing new is read): a Free site is a web site, so an account that holds an Apple address
+      // (a lapsed purchase with a site, no live purchase or shop link) is refused it, the same way the App Store branch above refuses: stored 'base'.
+      // alert: the owner is told, the group is stored as asked ('free'); the group is write-once, so the alert goes out once. A read error is ignored in
+      // alert and thrown in '1' (the caller answers its usual 502 and nothing is stored).
+      const g = guardMode();
+      if (g !== 'off' && group === 'free' && mode) {
+        try {
+          if ((await accountKindReading(uid, kindEnvOf(mode))).holdsAppleAddress) {
+            if (g === 'enforce') group = 'base';
+            else await alertOwner('Prime Barber: Free site requested by an account with an Apple address (alert mode)', [`user: ${uid}`, 'The Free site was granted because ONE_SITE_GUARD=alert; with ONE_SITE_GUARD=1 it would have been refused.']).catch(() => {});
+          }
+        } catch (e: any) {
+          if (g === 'enforce') throw e;
+          console.error('[price group] one-site check failed (alert mode, ignored):', e?.message || e);
+        }
+      }
     }
   } else if (requested !== 'base') {
     const start = priceTestStart();
