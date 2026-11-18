@@ -100,11 +100,12 @@ async function nativeDelete(auth: string | undefined, body: unknown, res: Vercel
     if (r.status !== 200 && deletingUser) await resumeAfterFailedDelete(deletingUser).catch((e: any) => console.error('[ios/delete-account] resume failed:', e?.message || e));
     if (r.status === 200) return res.status(200).json({ ...r.body, outcome: { cardPlanCanceled: cancelled.length > 0, appleSubscriptionActive: apple } });
     if (publishing) return res.status(409).json({ error: 'publish-in-progress' });
-    return res.status(r.status).json(cardFailed && r.status === 500 ? { ...r.body, cardCancelFailed: true } : r.body);
+    // A later step failed AFTER the card plan was cancelled: say so, so the app can tell the owner the card plan is already cancelled and to try again.
+    return res.status(r.status).json(cardFailed && r.status === 500 ? { ...r.body, cardCancelFailed: true } : r.status === 500 && cancelled.length > 0 ? { ...r.body, cardPlanCanceled: true } : r.body);
   } catch (e: any) {
     if (deletingUser) await resumeAfterFailedDelete(deletingUser).catch(() => {});
     console.error('[ios/delete-account] handler error:', e?.message || e);
-    return res.status(500).json({ error: 'delete-failed' });
+    return res.status(500).json({ error: 'delete-failed', ...(cancelled.length > 0 ? { cardPlanCanceled: true } : {}) });
   }
 }
 

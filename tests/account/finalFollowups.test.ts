@@ -50,8 +50,12 @@ describe('S1: native account-mode take offline never deletes the stored copy', (
     await removeWebSitesOf('u1');
     expect(order).toEqual(['suspend', 'offline:fresh-cuts', 'domain:fresh-cuts', 'content:fresh-cuts', 'markSiteOffline']);
   });
-  it('the route passes keepContent only for the native caller; a browser passes nothing', async () => {
+  it('the route passes keepContent only for the native caller (header and ACCOUNT_PLAN_V2); a browser, or a header with V2 off, passes nothing', async () => {
     vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
+    expect((await post(takeOffline, { 'x-pb-build': '57' })).code).toBe(200); // V2 off: exactly a browser call
+    expect(order).toContain('content:fresh-cuts');
+    order.length = 0; (rm.deleteContent as any).mockClear();
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1');
     expect((await post(takeOffline, { 'x-pb-build': '57' })).code).toBe(200);
     expect(order).toContain('base:fresh-cuts');
     expect(rm.deleteContent).not.toHaveBeenCalled();

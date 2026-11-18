@@ -10,4 +10,4 @@ const host = (() => { try { return new URL(process.env.SUPABASE_URL ?? '').host;
 console.error(`target project: ${host}`);
 if (apply && !process.argv.includes('--yes-production')) { console.error('Refusing to write: pass --yes-production to confirm this is the database you mean.'); process.exit(1); }
 const r = await runBackfill(await liveBackfillDeps(), { apply });
-console.log(JSON.stringify({ apply, wouldInsert: r.plan.toInsert.length, inserted: r.inserted, alreadyThere: r.plan.alreadyThere, listed: r.plan.listed }, null, 2));
+console.log(JSON.stringify({ apply, wouldInsert: r.plan.toInsert.length, wouldRemoveStale: r.plan.toDelete.length, inserted: r.inserted, removed: r.removed, alreadyThere: r.plan.alreadyThere, listed: r.plan.listed }, null, 2));

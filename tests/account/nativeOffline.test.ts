@@ -12,7 +12,7 @@ import del from '../../api/web-app/delete-account.js';
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; r.end = () => r; return r; };
 const call = async (h: any, headers: any = {}) => { const r = res(); await h({ method: 'POST', headers: { authorization: 'Bearer t', ...headers } }, r); return r; };
 const HDR = { 'x-pb-build': '57' };
-beforeEach(() => { vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); Object.assign(st, { kind: 'web', kindFails: false, kindCalls: 0, removed: 0, deleted: 0 }); });
+beforeEach(() => { vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x'); vi.stubEnv('WEB_APP_RELIABILITY', '1'); vi.stubEnv('WEB_APP_CHECKOUT', '1'); vi.stubEnv('WEB_APP_ENTITLEMENTS', '1'); Object.assign(st, { kind: 'web', kindFails: false, kindCalls: 0, removed: 0, deleted: 0 }); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('/api/web-app/take-offline', () => {

@@ -1,7 +1,7 @@
 import { resumeAfterFailedDelete } from '../../lib/webApp/reliability.js';
 // POST + Authorization: Bearer <supabase jwt> -> deletes the caller's account, the web twin of /api/ios/delete-account
 // (see lib/webApp/deleteAccount.ts). 404 unless WEB_APP_ENTITLEMENTS=1.
-import { nativeBuild, nativeDeleteGate } from '../../lib/account/siteMode.js';
+import { nativeDeleteGate, nativeSingleRoute } from '../../lib/account/siteMode.js';
 import { deleteAccount } from '../../lib/ios/deleteAccount.js';
 import { liveWebDeleteDeps } from '../../lib/webApp/deleteAccount.js';
 import { authOutage, callerFrom, webAppCors, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
@@ -15,7 +15,7 @@ export default async function handler(req: any, res: any) {
   let deletingUser: string | null = null;
   try {
     // A native caller (X-PB-Build): a web account (account or web-only mode) may delete here; a device account keeps /api/ios/delete-account. Browsers are asked nothing.
-    if (nativeBuild(req)) {
+    if (nativeSingleRoute(req)) {
       const who = await callerFrom(req.headers?.authorization);
       if (who) { const gate = await nativeDeleteGate(req, who.id); if (gate) return res.status(gate.status).json(gate.body); }
     }

@@ -147,6 +147,7 @@ describe('backfill', () => {
       webSites: async () => webRows,
       apple: async () => appleRows,
       existing: async () => table.map((r) => ({ ...r })),
+      remove: async (row) => { const i = table.findIndex((r) => r.user_id === row.user_id && r.environment === row.environment && r.slug === row.slug && r.holder === 'apple'); if (i >= 0) table.splice(i, 1); },
       insert: async (row) => { if (table.some((r) => r.user_id === row.user_id && r.environment === row.environment)) return false; table.push(row); return true; },
     };
     return { table, deps };
@@ -165,6 +166,25 @@ describe('backfill', () => {
     expect(second.inserted).toBe(0);
     expect(second.plan.alreadyThere).toBe(3);
     expect(JSON.stringify(table)).toBe(snapshot);
+  });
+  it('a purchase moved A -> B while the guard was off: A\'s stale Apple row is removed and B gets the address (re-derived from ios_purchases); a second run changes nothing', async () => {
+    const A = '11111111-aaaa-4aaa-8aaa-111111111111'; const B = '22222222-bbbb-4bbb-8bbb-222222222222';
+    const { table, deps } = fakeDb([], [{ user_id: B, site_slug: 'moved-site', environment: 'Production', published_at: 'x' }]);
+    table.push({ user_id: A, environment: 'Production', slug: 'moved-site', holder: 'apple', published_once: true });
+    const dry = await runBackfill(deps, { apply: false });
+    expect(dry.plan.toDelete.map((r) => r.user_id)).toEqual([A]); expect(dry.plan.listed).toEqual([]); expect(table).toHaveLength(1);
+    const r = await runBackfill(deps, { apply: true });
+    expect([r.removed, r.inserted]).toEqual([1, 1]);
+    expect(table).toEqual([{ user_id: B, environment: 'Production', slug: 'moved-site', holder: 'apple', published_once: true }]);
+    const again = await runBackfill(deps, { apply: true });
+    expect([again.removed, again.inserted, again.plan.listed]).toEqual([0, 0, []]);
+  });
+  it('a slug held by an account that STILL owns the purchase (or a web row) is never taken away: listed as slug-held', () => {
+    const A = '11111111-aaaa-4aaa-8aaa-111111111111'; const B = '22222222-bbbb-4bbb-8bbb-222222222222';
+    const both = planBackfill([], [{ user_id: A, site_slug: 's', environment: 'Production' }, { user_id: B, site_slug: 's', environment: 'Production' }], [{ user_id: A, environment: 'Production', slug: 's', holder: 'apple' }]);
+    expect(both.toDelete).toEqual([]); expect(both.listed.map((l) => l.reason)).toEqual(['slug-held']);
+    const webHolder = planBackfill([], [{ user_id: B, site_slug: 's', environment: 'Production' }], [{ user_id: A, environment: 'Production', slug: 's', holder: 'web' }]);
+    expect(webHolder.toDelete).toEqual([]); expect(webHolder.listed.map((l) => l.reason)).toEqual(['slug-held']);
   });
   it('a dry run writes nothing', async () => {
     const { table, deps } = fakeDb();

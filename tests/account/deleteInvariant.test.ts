@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const w = vi.hoisted(() => ({
-  appleSite: false, webSite: false, card: false, appleLive: false, stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '' as '' | 'not-found' | 'apple-unavailable', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false, grace: false,
+  appleSite: false, webSite: false, card: false, appleLive: false, stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '' as '' | 'not-found' | 'apple-unavailable', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false, grace: false, takeDownFails: false,
   log: { stripe: [] as string[], takenDown: [] as string[], purged: [] as string[], user: 0, content: [] as string[], offline: [] as string[], stamps: [] as string[], base: [] as string[], alerts: 0 },
 }));
 const FUT = new Date(Date.now() + 30 * 86_400_000).toISOString();
@@ -48,7 +48,7 @@ vi.mock('../../lib/ios/deleteAccount.js', async (orig) => ({
     getUser: async () => (w.badToken ? null : { id: 'u1' }),
     closeShop: async () => { w.log.base.push('closeShop'); return { ok: true, bookingsCancelled: 0, ordersCancelled: 0, needsRefund: [], notCancelled: [] }; },
     listSites: async () => (w.appleSite ? [{ original_transaction_id: '2000000123', site_slug: 'apple-site', environment: 'Production', published_at: 'x' }] : []),
-    takeDown: async (s: any) => { w.log.takenDown.push(s.site_slug); }, purge: async (s: any) => { w.log.purged.push(s.site_slug); },
+    takeDown: async (s: any) => { if (w.takeDownFails) throw new Error('takedown failed'); w.log.takenDown.push(s.site_slug); }, purge: async (s: any) => { w.log.purged.push(s.site_slug); },
     deleteSites: async () => {}, deleteUser: async () => { w.log.user++; },
   }),
 }));
@@ -88,7 +88,7 @@ import iosTakeOffline from '../../api/ios/take-offline.js';
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; r.end = () => r; return r; };
 const post = async (h: any, header: boolean, body?: any, auth: string | null = 'Bearer t') => { const r = res(); await h({ method: 'POST', headers: { ...(auth ? { authorization: auth } : {}), ...(header ? { 'x-pb-build': '57' } : {}) }, body }, r); return r; };
 const kindOfWorld = (x: World = w) => (x.appleSite && x.webSite ? 'mixed' : x.webSite || (x.card && !x.appleSite) ? 'web' : x.appleSite || x.appleLive ? 'apple' : 'neither') as 'mixed' | 'web' | 'apple' | 'neither';
-const reset = () => { Object.assign(w, { stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false, grace: false }); w.log = { stripe: [], takenDown: [], purged: [], user: 0, content: [], offline: [], stamps: [], base: [], alerts: 0 }; };
+const reset = () => { Object.assign(w, { stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false, grace: false, takeDownFails: false }); w.log = { stripe: [], takenDown: [], purged: [], user: 0, content: [], offline: [], stamps: [], base: [], alerts: 0 }; };
 beforeEach(() => { reset(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x'); vi.spyOn(console, 'error').mockImplementation(() => {}); vi.spyOn(console, 'warn').mockImplementation(() => {}); vi.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -303,6 +303,15 @@ describe('native single routes: the cases the table does not cover (real kind re
     expect((await post(iosDelete, true, { transactionId: '2000000123' })).body.outcome.appleSubscriptionActive).toBe(false);
     reset(); setWorld(none); env(); w.blocked = true;
     expect((await post(iosDelete, true)).body.outcome.appleSubscriptionActive).toBe(true);
+  });
+
+  it('the card plan was cancelled but a later site-down step fails: 500 delete-failed with cardPlanCanceled:true (not cardCancelFailed), the account is still there', async () => {
+    reset(); setWorld({ appleSite: true, webSite: false, card: true, appleLive: true }); env(); w.takeDownFails = true;
+    const r = await post(iosDelete, true);
+    expect([r.code, r.body]).toEqual([500, { error: 'delete-failed', cardPlanCanceled: true }]); expect(w.log.user).toBe(0);
+    expect(w.log.stripe).toContain('DELETE subscriptions/sub_1');
+    reset(); setWorld({ appleSite: true, webSite: false, card: false, appleLive: true }); env(); w.takeDownFails = true;
+    expect((await post(iosDelete, true)).body).toEqual({ error: 'delete-failed' }); // nothing was cancelled: no flag
   });
 
   it('an expired purchase the sweep still watches (no takedown stamped: billing retry or grace) still counts for the reminder', async () => {

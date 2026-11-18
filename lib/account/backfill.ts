@@ -1,6 +1,7 @@
 // Backfill of the address table (migration 038) from what exists today. Idempotent: run it again each time ONE_SITE_GUARD is switched on.
 // Logic only, over injected readers and writers, so it is unit-tested against fakes. scripts/one-account-backfill.ts is the thin runner
-// (dry run unless --apply). It never overwrites a row: an existing row is left alone and, when it differs, listed.
+// (dry run unless --apply). It never overwrites a row: an existing row is left alone and, when it differs, listed. ONE exception: an Apple row whose purchase now belongs to someone else
+// (a Move made while ONE_SITE_GUARD was off does not carry the row) is stale: it is removed and the new owner's row is inserted (re-derived from ios_purchases).
 //   - web_app_sites with published_at not null  -> holder 'web'   (environment 'live' stores as Production, 'test' as Sandbox)
 //   - ios_purchases with user_id and site_slug  -> holder 'apple' (the purchase's own environment)
 // Written for each (account, environment) with exactly one address on exactly one side. NOT written, only listed:
@@ -19,7 +20,7 @@ export interface ExistingRow { user_id: string; environment: KindEnv; slug: stri
 export interface BackfillRow { user_id: string; environment: KindEnv; slug: string; holder: Holder; published_once: boolean }
 export type ListedReason = 'mixed' | 'multiple-web' | 'multiple-apple' | 'slug-held' | 'differs';
 export interface Listed { user_id: string; environment: KindEnv; reason: ListedReason; slugs: string[] }
-export interface BackfillPlan { toInsert: BackfillRow[]; alreadyThere: number; listed: Listed[] }
+export interface BackfillPlan { toInsert: BackfillRow[]; /** Stale Apple rows (the purchase moved to another account while the guard was off), removed before the insert. */ toDelete: ExistingRow[]; alreadyThere: number; listed: Listed[] }
 
 const key = (u: string, e: string) => `${u}|${e}`;
 
@@ -40,7 +41,7 @@ export function planBackfill(web: WebSiteSource[], apple: AppleSource[], existin
   }
   const byAccount = new Map(existing.map((r) => [key(r.user_id, r.environment), r]));
   const heldSlugs = new Map(existing.map((r) => [r.slug, r.user_id]));
-  const out: BackfillPlan = { toInsert: [], alreadyThere: 0, listed: [] };
+  const out: BackfillPlan = { toInsert: [], toDelete: [], alreadyThere: 0, listed: [] };
   const claimedSlugs = new Map<string, string>();
   for (const v of [...groups.values()].sort((a, b) => (key(a.uid, a.env) < key(b.uid, b.env) ? -1 : 1))) {
     const list = (reason: ListedReason, slugs: string[]) => out.listed.push({ user_id: v.uid, environment: v.env, reason, slugs });
@@ -56,7 +57,13 @@ export function planBackfill(web: WebSiteSource[], apple: AppleSource[], existin
       continue;
     }
     const owner = heldSlugs.get(slug) ?? claimedSlugs.get(slug);
-    if (owner && owner !== v.uid) { list('slug-held', [slug]); continue; }
+    if (owner && owner !== v.uid) {
+      const stale = existing.find((r) => r.slug === slug && r.user_id === owner);
+      // The holder's Apple row is stale when its own purchases no longer include this slug (the purchase moved to this account).
+      if (stale && stale.holder === 'apple' && stale.environment === v.env && holder === 'apple' && !groups.get(key(owner, stale.environment))?.apple.has(slug)) {
+        out.toDelete.push(stale); heldSlugs.delete(slug);
+      } else { list('slug-held', [slug]); continue; }
+    }
     claimedSlugs.set(slug, v.uid);
     out.toInsert.push({ user_id: v.uid, environment: v.env, slug, holder, published_once: holder === 'web' ? true : !!v.apple.get(slug) });
   }
@@ -67,19 +74,25 @@ export interface BackfillDeps {
   webSites(): Promise<WebSiteSource[]>;
   apple(): Promise<AppleSource[]>;
   existing(): Promise<ExistingRow[]>;
+  /** Remove a stale Apple row (only while it is still that holder's row for that slug). */
+  remove(row: ExistingRow): Promise<void>;
   /** Insert-ignore on the primary key; true when inserted. */
   insert(row: BackfillRow): Promise<boolean>;
 }
 
-export interface BackfillResult { plan: BackfillPlan; inserted: number; applied: boolean }
+export interface BackfillResult { plan: BackfillPlan; inserted: number; removed: number; applied: boolean }
 
 /** Plan, and with `apply` insert. A row another run inserted meanwhile (insert returns false) is not counted. Throws on a read error; stops on a write error. */
 export async function runBackfill(deps: BackfillDeps, opts: { apply: boolean }): Promise<BackfillResult> {
   const [web, apple, existing] = await Promise.all([deps.webSites(), deps.apple(), deps.existing()]);
   const plan = planBackfill(web, apple, existing);
   let inserted = 0;
-  if (opts.apply) for (const row of plan.toInsert) if (await deps.insert(row)) inserted++;
-  return { plan, inserted, applied: opts.apply };
+  let removed = 0;
+  if (opts.apply) {
+    for (const row of plan.toDelete) { await deps.remove(row); removed++; }
+    for (const row of plan.toInsert) if (await deps.insert(row)) inserted++;
+  }
+  return { plan, inserted, removed, applied: opts.apply };
 }
 
 /** Live readers and writer (service role). Pages through each table so a large table is read whole. */
@@ -97,6 +110,9 @@ export async function liveBackfillDeps(): Promise<BackfillDeps> {
     webSites: () => all('web_app_sites?published_at=not.is.null&select=user_id,slug,environment,published_at', 'slug'),
     apple: () => all('ios_purchases?user_id=not.is.null&site_slug=not.is.null&select=user_id,site_slug,environment,published_at', 'site_slug'),
     existing: () => all('account_sites?select=user_id,environment,slug,holder', 'slug'),
+    async remove(row) {
+      await sbRest(`account_sites?user_id=eq.${encodeURIComponent(row.user_id)}&environment=eq.${row.environment}&slug=eq.${encodeURIComponent(row.slug)}&holder=eq.apple`, { method: 'DELETE' });
+    },
     async insert(row) {
       const got = await sbRest('account_sites?on_conflict=user_id,environment', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation', body: row });
       return Array.isArray(got) && got.length > 0;
