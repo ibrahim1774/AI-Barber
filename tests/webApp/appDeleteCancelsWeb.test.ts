@@ -66,7 +66,6 @@ describe('iOS delete deps (allowNoStripe)', () => {
   const sessions = { data: [{ id: 'cs_1', status: 'complete', customer: 'cus_n', metadata: { app: 'aibarber-app', user_id: 'u1' } }] };
 
   it('no local rows but Stripe answers with a live subscription: it is cancelled', async () => {
-    vi.stubEnv('APP_DELETE_CANCELS_WEB', '1'); // the session lookup belongs to the switch
     stripeImpl.fn = stripeOk((p, m) => p.startsWith('checkout/sessions?') ? sessions : p.startsWith('subscriptions?') ? { data: [sub()] } : p === 'subscriptions/sub_1' && m === 'DELETE' ? {} : undefined);
     const r = await ios();
     expect(r.ok).toBe(true);

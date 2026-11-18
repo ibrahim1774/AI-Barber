@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const w = vi.hoisted(() => ({
-  appleSite: false, webSite: false, card: false, appleLive: false, stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '' as '' | 'not-found' | 'apple-unavailable', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false,
+  appleSite: false, webSite: false, card: false, appleLive: false, stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '' as '' | 'not-found' | 'apple-unavailable', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false, grace: false,
   log: { stripe: [] as string[], takenDown: [] as string[], purged: [] as string[], user: 0, content: [] as string[], offline: [] as string[], stamps: [] as string[], base: [] as string[], alerts: 0 },
 }));
 const FUT = new Date(Date.now() + 30 * 86_400_000).toISOString();
@@ -38,7 +38,7 @@ vi.mock('../../lib/webApp/webAppServer.js', async (orig) => ({
       if (path.includes('site_slug=not.is.null') && !w.appleSite) return [];
       if (path.includes('taken_down_at=is.null') && !w.appleLive) return []; // a lapsed (taken down) Apple site is not a live site
     }
-    if (table === 'ios_purchases') return w.appleSite || w.appleLive ? [{ original_transaction_id: '2000000123', product_id: 'com.ibrahim1774.aibarber.hosting.monthly', environment: 'Production', expires_at: w.appleLive || w.billingAfterTakedown ? FUT : PAST, revoked_at: null, taken_down_at: w.appleLive ? null : PAST, site_slug: w.appleSite ? 'apple-site' : null, published_at: w.appleSite ? 'x' : null, removed_at: null, user_id: 'u1' }] : [];
+    if (table === 'ios_purchases') return w.appleSite || w.appleLive ? [{ original_transaction_id: '2000000123', product_id: 'com.ibrahim1774.aibarber.hosting.monthly', environment: 'Production', expires_at: w.appleLive || w.billingAfterTakedown ? FUT : PAST, revoked_at: null, taken_down_at: w.appleLive || w.grace ? null : PAST, site_slug: w.appleSite ? 'apple-site' : null, published_at: w.appleSite ? 'x' : null, removed_at: null, user_id: 'u1' }] : [];
     return [];
   }),
 }));
@@ -88,7 +88,7 @@ import iosTakeOffline from '../../api/ios/take-offline.js';
 const res = () => { const r: any = { code: 0, body: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.setHeader = () => {}; r.end = () => r; return r; };
 const post = async (h: any, header: boolean, body?: any, auth: string | null = 'Bearer t') => { const r = res(); await h({ method: 'POST', headers: { ...(auth ? { authorization: auth } : {}), ...(header ? { 'x-pb-build': '57' } : {}) }, body }, r); return r; };
 const kindOfWorld = (x: World = w) => (x.appleSite && x.webSite ? 'mixed' : x.webSite || (x.card && !x.appleSite) ? 'web' : x.appleSite || x.appleLive ? 'apple' : 'neither') as 'mixed' | 'web' | 'apple' | 'neither';
-const reset = () => { Object.assign(w, { stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false }); w.log = { stripe: [], takenDown: [], purged: [], user: 0, content: [], offline: [], stamps: [], base: [], alerts: 0 }; };
+const reset = () => { Object.assign(w, { stripeDown: false, kindFails: false, publishInProgress: false, purchaseReadFails: false, orphan: false, verifyFails: '', badToken: false, billingAfterTakedown: false, planReadFails: false, cancelFails: false, domain: false, firstTime: false, blocked: false, sessionsDown: false, grace: false }); w.log = { stripe: [], takenDown: [], purged: [], user: 0, content: [], offline: [], stamps: [], base: [], alerts: 0 }; };
 beforeEach(() => { reset(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x'); vi.spyOn(console, 'error').mockImplementation(() => {}); vi.spyOn(console, 'warn').mockImplementation(() => {}); vi.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -113,6 +113,7 @@ describe('V2 off, or no header: both routes are byte-identical to before (snapsh
   it('take offline: every world x SAFE_TAKE_OFFLINE x (with|without transaction) x (no header | header with V2 off)', async () => {
     const out: Record<string, unknown> = {};
     for (const x of worlds) for (const safe of bools) for (const tx of bools) for (const header of bools) for (const expect_ of [undefined, 'keep', 'purge']) {
+      if (header && expect_ === 'keep') continue; // header-only safety (its own test below): the 1.2 app saying keep is never purged, even with ACCOUNT_PLAN_V2 off
       reset(); setWorld(x); w.stripeDown = false;
       vi.stubEnv('SAFE_TAKE_OFFLINE', safe ? '1' : ''); vi.stubEnv('ACCOUNT_PLAN_V2', '');
       out[`${wName(x)} safe=${safe} tx=${tx} header=${header} expect=${expect_}`] = summary(await post(iosTakeOffline, header, { ...(tx ? { transactionId: '2000000123' } : {}), ...(expect_ ? { expect: expect_ } : {}) }));
@@ -122,6 +123,24 @@ describe('V2 off, or no header: both routes are byte-identical to before (snapsh
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+describe('header-only safety on take offline (ACCOUNT_PLAN_V2 off)', () => {
+  it('X-PB-Build + expect keep + an action that would purge: 409 confirm-purge, nothing done; expect purge, no expect, or no header: as before', async () => {
+    const apple: World = { appleSite: true, webSite: false, card: false, appleLive: true };
+    vi.stubEnv('ACCOUNT_PLAN_V2', '');
+    reset(); setWorld(apple); vi.stubEnv('SAFE_TAKE_OFFLINE', '');
+    let r = await post(iosTakeOffline, true, { transactionId: '2000000123', expect: 'keep' });
+    expect([r.code, r.body]).toEqual([409, { error: 'confirm-purge' }]); expect([w.log.offline, w.log.content]).toEqual([[], []]);
+    // the Apple checks still come first
+    reset(); setWorld(apple); r = await post(iosTakeOffline, true, { expect: 'keep' }); expect(r.code).toBe(400);
+    for (const body of [{ transactionId: '2000000123', expect: 'purge' }, { transactionId: '2000000123' }]) {
+      reset(); setWorld(apple); r = await post(iosTakeOffline, true, body); expect([r.code, r.body]).toEqual([200, { removed: true }]); expect(w.log.content).toEqual(['apple-site']);
+    }
+    reset(); setWorld(apple); r = await post(iosTakeOffline, false, { transactionId: '2000000123', expect: 'keep' }); expect([r.code, w.log.content]).toEqual([200, ['apple-site']]); // no header: today's behaviour
+    // SAFE_TAKE_OFFLINE=1: nothing would be purged, so keep proceeds
+    reset(); setWorld(apple); vi.stubEnv('SAFE_TAKE_OFFLINE', '1'); r = await post(iosTakeOffline, true, { transactionId: '2000000123', expect: 'keep' }); expect([r.code, w.log.content]).toEqual([200, []]);
+  });
+});
+
 describe('native single routes (ACCOUNT_PLAN_V2=1 + X-PB-Build): delete account', () => {
   const nativeEnv = (cancels: boolean, ent: boolean) => { vi.stubEnv('ACCOUNT_PLAN_V2', '1'); vi.stubEnv('APP_DELETE_CANCELS_WEB', cancels ? '1' : ''); vi.stubEnv('WEB_APP_ENTITLEMENTS', ent ? '1' : ''); };
   it('every account x APP_DELETE_CANCELS_WEB x WEB_APP_ENTITLEMENTS x Stripe up/down: deletes exactly once or fails closed with nothing changed; never a 409; a card plan is never left billing', async () => {
@@ -283,6 +302,11 @@ describe('native single routes: the cases the table does not cover (real kind re
     reset(); setWorld(none); env(); w.orphan = true; w.verifyFails = 'not-found';
     expect((await post(iosDelete, true, { transactionId: '2000000123' })).body.outcome.appleSubscriptionActive).toBe(false);
     reset(); setWorld(none); env(); w.blocked = true;
+    expect((await post(iosDelete, true)).body.outcome.appleSubscriptionActive).toBe(true);
+  });
+
+  it('an expired purchase the sweep still watches (no takedown stamped: billing retry or grace) still counts for the reminder', async () => {
+    reset(); setWorld({ appleSite: true, webSite: false, card: false, appleLive: false }); env(); w.grace = true;
     expect((await post(iosDelete, true)).body.outcome.appleSubscriptionActive).toBe(true);
   });
 

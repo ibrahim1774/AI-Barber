@@ -6,8 +6,10 @@
 //   200 adds outcome { cardPlanCanceled, appleSubscriptionActive }. Optional body { transactionId }: a signed-out purchase's site that Apple confirms goes down with the account. A publish in progress: 409.
 // TAKE OFFLINE (api/ios/take-offline.ts): body { transactionId?, expect? }. kind web, or mixed with no transaction: the web site goes offline, content and phone kept, live address forgotten.
 //   apple / neither / mixed with a transaction (or a web account whose transaction Apple confirms is bound to a site it may remove): today's Apple flow, its own checks (400/404/403) before confirm-purge. expect 'keep' when the action would purge: 409 confirm-purge, nothing done.
-//   200 adds outcome { site, contentKept, otherSiteLive }.
+//   200 adds outcome { site, contentKept, otherSiteLive, domainDetached, domainReattachesOnPublish }: the site had a custom domain which the call detached (it stays paid and the owner's);
+//   a publish brings it back by itself for an Apple site always, for a web site only with SAFE_TAKE_OFFLINE=1 (else the owner adds the same name again in Settings, free).
 import { safeTakeOfflineOn } from '../ios/removeSite.js';
+import { sweepWatches } from '../ios/lapse.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { sbRest } from '../webApp/webAppServer.js';
 import type { AccountKind } from './kind.js';
@@ -19,13 +21,15 @@ const enc = encodeURIComponent;
  *   - a purchase linked to the account, in ANY environment, is not known to be refunded or expired (taken_down_at is ignored: taking a site offline does not stop Apple billing);
  *   - the caller's own `transactionId` was verified by Apple (`transactionVerified`): the phone has a purchase, even one published signed out;
  *   - the one-site guard recorded a purchase of this user it refused to tie to the account (blocked_purchases): Apple still bills it.
- * This flag only drives a reminder, never a decision. THROWS on a failed read of the linked purchases (the caller answers 503 with nothing done); the blocked-purchase read is best
+ * An expired row that the sweep still watches (a bound, published site with no takedown stamped) counts too: Apple has not confirmed the lapse, so it may be in billing retry or grace. A row that
+ * the sweep no longer watches (site taken down, or never published) cannot say: its stored expiry is all we know. This flag only drives a reminder, never a decision. THROWS on a failed read of the linked purchases (the caller answers 503 with nothing done); the blocked-purchase read is best
  * effort (a missing table, migration 039, or a failed read counts as no row, logged).
  */
 export async function appleSubscriptionActive(uid: string, opts: { transactionVerified?: boolean; now?: number } = {}): Promise<boolean> {
   const now = opts.now ?? Date.now();
-  const rows: any[] = (await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at&limit=50`)) ?? [];
-  if (rows.some((p) => !p.revoked_at && !(p.expires_at && Date.parse(p.expires_at) <= now))) return true;
+  const rows: any[] = (await sbRest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,site_slug,published_at&limit=50`)) ?? [];
+  // Not refunded, and either not expired, or expired but still watched by the sweep with no takedown stamped: Apple has not confirmed the lapse, so it may be in billing retry or grace.
+  if (rows.some((p) => !p.revoked_at && (!(p.expires_at && Date.parse(p.expires_at) <= now) || (sweepWatches(p) && !p.taken_down_at)))) return true;
   if (opts.transactionVerified) return true;
   try {
     const blocked: any[] = (await sbRest(`blocked_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id&limit=1`)) ?? [];

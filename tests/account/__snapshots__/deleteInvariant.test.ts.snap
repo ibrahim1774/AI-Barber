@@ -3154,23 +3154,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "---- safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "---- safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -3240,23 +3223,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "---- safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "---- safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -3358,23 +3324,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "---- safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "---- safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -3444,23 +3393,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "---- safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "---- safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -3562,23 +3494,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "---L safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "---L safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -3648,23 +3563,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "---L safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "---L safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -3766,23 +3664,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "---L safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "---L safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -3852,23 +3733,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "---L safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "---L safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -3970,23 +3834,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "--C- safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "--C- safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -4056,23 +3903,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "--C- safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "--C- safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -4174,23 +4004,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "--C- safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "--C- safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -4260,23 +4073,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "--C- safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "--C- safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -4378,23 +4174,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "--CL safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "--CL safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -4464,23 +4243,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "--CL safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "--CL safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -4582,23 +4344,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "--CL safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "--CL safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -4668,23 +4413,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "--CL safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "--CL safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -4786,23 +4514,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-W-- safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-W-- safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -4872,23 +4583,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-W-- safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-W-- safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -4990,23 +4684,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-W-- safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-W-- safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -5076,23 +4753,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-W-- safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-W-- safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -5194,23 +4854,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-W-L safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-W-L safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -5280,23 +4923,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-W-L safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-W-L safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -5398,23 +5024,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-W-L safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-W-L safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -5484,23 +5093,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-W-L safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-W-L safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -5602,23 +5194,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-WC- safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-WC- safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -5688,23 +5263,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-WC- safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-WC- safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -5806,23 +5364,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-WC- safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-WC- safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -5892,23 +5433,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-WC- safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-WC- safe=true tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -6010,23 +5534,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-WCL safe=false tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-WCL safe=false tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -6096,23 +5603,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "-WCL safe=false tx=true header=false expect=undefined": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "-WCL safe=false tx=true header=true expect=keep": {
     "body": {
       "error": "no-site",
     },
@@ -6214,23 +5704,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-WCL safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-WCL safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -6316,23 +5789,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "-WCL safe=true tx=true header=true expect=keep": {
-    "body": {
-      "error": "no-site",
-    },
-    "code": 404,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "-WCL safe=true tx=true header=true expect=purge": {
     "body": {
       "error": "no-site",
@@ -6402,23 +5858,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A--- safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A--- safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -6544,31 +5983,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A--- safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A--- safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -6654,23 +6068,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A--- safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A--- safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -6793,30 +6190,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A--- safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A--- safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -6900,23 +6273,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A--L safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A--L safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -7042,31 +6398,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A--L safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A--L safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -7152,23 +6483,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A--L safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A--L safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -7291,30 +6605,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A--L safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A--L safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -7398,23 +6688,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A-C- safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A-C- safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -7540,31 +6813,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A-C- safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A-C- safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -7650,23 +6898,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A-C- safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A-C- safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -7789,30 +7020,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A-C- safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A-C- safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -7896,23 +7103,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A-CL safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A-CL safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -8038,31 +7228,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A-CL safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A-CL safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -8148,23 +7313,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "A-CL safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "A-CL safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -8287,30 +7435,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "A-CL safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "A-CL safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -8394,23 +7518,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AW-- safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AW-- safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -8536,31 +7643,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AW-- safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AW-- safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -8646,23 +7728,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AW-- safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AW-- safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -8785,30 +7850,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AW-- safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AW-- safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -8892,23 +7933,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AW-L safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AW-L safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -9034,31 +8058,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AW-L safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AW-L safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -9144,23 +8143,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AW-L safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AW-L safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -9283,30 +8265,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AW-L safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AW-L safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -9390,23 +8348,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AWC- safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AWC- safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -9532,31 +8473,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AWC- safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AWC- safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -9642,23 +8558,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AWC- safe=true tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AWC- safe=true tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -9781,30 +8680,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AWC- safe=true tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AWC- safe=true tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -9888,23 +8763,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AWCL safe=false tx=false header=false expect=undefined": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AWCL safe=false tx=false header=true expect=keep": {
     "body": {
       "error": "bad-request",
     },
@@ -10030,31 +8888,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AWCL safe=false tx=true header=true expect=keep": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-      ],
-      "content": [
-        "apple-site",
-      ],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AWCL safe=false tx=true header=true expect=purge": {
     "body": {
       "removed": true,
@@ -10156,23 +8989,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
       "user": 0,
     },
   },
-  "AWCL safe=true tx=false header=true expect=keep": {
-    "body": {
-      "error": "bad-request",
-    },
-    "code": 400,
-    "log": {
-      "alerts": 0,
-      "base": [],
-      "content": [],
-      "offline": [],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
   "AWCL safe=true tx=false header=true expect=purge": {
     "body": {
       "error": "bad-request",
@@ -10256,30 +9072,6 @@ exports[`V2 off, or no header: both routes are byte-identical to before (snapsho
     },
   },
   "AWCL safe=true tx=true header=false expect=undefined": {
-    "body": {
-      "removed": true,
-    },
-    "code": 200,
-    "log": {
-      "alerts": 0,
-      "base": [
-        "removed",
-        "stamp",
-        "domain:apple-site",
-        "base:apple-site",
-      ],
-      "content": [],
-      "offline": [
-        "apple-site",
-      ],
-      "purged": [],
-      "stamps": [],
-      "stripe": [],
-      "takenDown": [],
-      "user": 0,
-    },
-  },
-  "AWCL safe=true tx=true header=true expect=keep": {
     "body": {
       "removed": true,
     },

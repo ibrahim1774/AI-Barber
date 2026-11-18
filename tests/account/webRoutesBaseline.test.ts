@@ -1,5 +1,5 @@
-// The browser's web routes (POST /api/web-app/delete-account and /api/web-app/take-offline) with every new switch off: behaviourally identical to main (10e1d555).
-// The snapshot was generated from 10e1d555 in a temporary worktree and diffed against this branch (see the commit message). The fakes sit at the database, Stripe and storage boundaries:
+// The browser's web routes (POST /api/web-app/delete-account and /api/web-app/take-offline) with every new switch off: behaviourally identical to live main (origin/main ffa87cdf).
+// The snapshot was generated from ffa87cdf in a temporary worktree and diffed against this branch (0 differing worlds). The fakes sit at the database, Stripe and storage boundaries:
 // every Stripe call, every database call (with the keys it writes) and every response is recorded; deleteAccount, liveWebDeleteDeps, removeWebSitesOf and both handlers are the REAL code.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -83,7 +83,7 @@ beforeEach(() => { reset(); vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x');
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const bools = [false, true];
 
-describe('the browser web routes with every new switch off match main (10e1d555)', () => {
+describe('the browser web routes with every new switch off match live main (ffa87cdf)', () => {
   it('POST /api/web-app/delete-account: every world, as recorded from main', async () => {
     const out: Record<string, unknown> = {};
     for (const card of bools) for (const site of bools) for (const domainSub of bools) for (const firstTime of bools) for (const openSession of bools) for (const priceGroup of bools)

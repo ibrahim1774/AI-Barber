@@ -6,7 +6,7 @@ import { liveRemoveDeps } from '../../lib/ios/removeSiteLive.js';
 import { liveUserOf } from '../../lib/ios/publishFlow.js';
 import { liveDeleteAccountRows } from '../../lib/ios/removeSiteLive.js';
 import { resolveSiteToRemove, takeSiteOffline } from '../../lib/ios/takeOffline.js';
-import { nativeSingleRoute, oldRouteKind } from '../../lib/account/siteMode.js';
+import { nativeBuild, nativeSingleRoute, oldRouteKind } from '../../lib/account/siteMode.js';
 import { applePurgesContent, domainFacts, expectOf, hasTransaction, memoVerify, otherSiteLive, takeOfflineSite, webSlugsOf } from '../../lib/account/nativeRoutes.js';
 import { removeWebSitesOf } from '../../lib/webApp/deleteAccount.js';
 
@@ -50,6 +50,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     // The 1.2 app (ACCOUNT_PLAN_V2=1 and X-PB-Build): the single route (lib/account/nativeRoutes.ts). Everything else is today's code below, byte for byte.
     if (nativeSingleRoute(req as any)) return await nativeTakeOffline(req, res, body);
+    // Header-only safety for a phone that holds a stale mode (ACCOUNT_PLAN_V2 off): the 1.2 app (X-PB-Build) that says expect:'keep' ("nothing is deleted") is never purged. When this call
+    // would purge, it is 409 confirm-purge with nothing done, even here. The Apple site's own checks (400/404/403) still come first. 'purge' or no expect: exactly as before.
+    if (nativeBuild(req as any) && (body as { expect?: unknown } | null)?.expect === 'keep' && applePurgesContent()) {
+      const p = await resolveSiteToRemove(body, { verify: memoVerify(lazyDefaultVerifier()), repo: supabasePurchases(), userOf: liveUserOf }, { authorization: req.headers?.authorization });
+      return p.result ? res.status(p.result.status).json(p.result.body) : res.status(409).json({ error: 'confirm-purge' });
+    }
     const r = await takeSiteOffline(
       body,
       { ...liveRemoveDeps(), verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf, deleteAccountRows: liveDeleteAccountRows },

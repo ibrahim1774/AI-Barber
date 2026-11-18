@@ -24,7 +24,14 @@ const TO = 'bbbbbbbb-2222-4222-8222-222222222222';
 afterEach(() => { vi.unstubAllEnvs(); moveAddressSpy.mockClear(); calls.length = 0; });
 
 describe('liveMoveBusiness carries the address row', () => {
-  it.each([['guard off', ''], ['alert', 'alert'], ['1', '1']])('%s: the address step runs with (from, to, slug), before the rest', async (_n, v) => {
+  it('guard off: account_sites is not touched at all (the table only exists after migration 038); the rest of the Move still runs', async () => {
+    vi.stubEnv('ONE_SITE_GUARD', '');
+    vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'srv');
+    await liveMoveBusiness('2000000123', FROM, TO, 'fade-lab');
+    expect(moveAddressSpy).not.toHaveBeenCalled();
+    expect(calls.length).toBeGreaterThan(0);
+  });
+  it.each([['alert', 'alert'], ['1', '1']])('%s: the address step runs with (from, to, slug), before the rest', async (_n, v) => {
     vi.stubEnv('ONE_SITE_GUARD', v);
     vi.stubEnv('SUPABASE_URL', 'https://sb.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'srv');
     await liveMoveBusiness('2000000123', FROM, TO, 'fade-lab');
@@ -33,7 +40,7 @@ describe('liveMoveBusiness carries the address row', () => {
   });
 });
 
-describe('guard off, then a Move, then guard on: the row moved', () => {
+describe('moveAddress itself (a Move made while the guard was off is picked up by the backfill and re-count before the guard goes on)', () => {
   it('the new owner holds the address and the old one holds none', async () => {
     const real = await vi.importActual<typeof import('../../lib/account/sites.js')>('../../lib/account/sites.js');
     const f = fakeSites([{ user_id: FROM, environment: 'Production', slug: 'fade-lab', holder: 'apple', published_once: true }]);
