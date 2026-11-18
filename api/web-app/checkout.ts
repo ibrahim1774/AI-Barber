@@ -8,14 +8,15 @@ import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, isPriceGroup, keyMod
 import { assignGroup, readStoredGroup } from '../../lib/webApp/priceGroup.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { expireSession, rememberSession, storedSessionId } from '../../lib/webApp/checkoutSessions.js';
-import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 import { newCheckoutMethodParams } from '../../lib/checkoutPaymentMethods.js';
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-  const caller = await callerFrom(req.headers.authorization);
+  let caller: Awaited<ReturnType<typeof callerFrom>>;
+  try { caller = await callerFrom(req.headers.authorization); } catch (e) { if (authOutage(res, e)) return; throw e; }
   if (!caller) return res.status(401).json({ error: 'unauthorized' });
   const { tier, interval, siteSlug, draftId, revision, publish } = req.body ?? {};
   if (!isTier(tier) || !isInterval(interval)) return res.status(400).json({ error: 'bad_plan' });
@@ -31,7 +32,15 @@ export default async function handler(req: any, res: any) {
     try { appStore = await appStoreStateOf(caller.id, mode); }
     catch (e: any) { console.error('[web-app checkout] app store lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
     if (appStore === 'active') return res.status(409).json({ error: 'ios_subscription_active' });
-    if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
+    if (process.env.GATE_ANY_SOURCE === '1') {
+      // GATE_ANY_SOURCE: a stray lapsed shop link no longer locks the web. Refuse only an Apple or mixed account (rule R1), shop link or not.
+      try {
+        const { accountKindReading } = await import('../../lib/account/kind.js');
+        const k = await accountKindReading(caller.id, mode === 'live' ? 'Production' : 'Sandbox');
+        // Apple or mixed: refuse. Only say "active" when a counted Apple purchase is live; a lapsed, refunded or removed holder gets today's lapsed code.
+        if (k.kind === 'apple' || k.kind === 'mixed') return res.status(409).json({ error: k.liveApplePurchase ? 'ios_subscription_active' : 'ios_linked_lapsed' });
+      } catch (e: any) { console.error('[web-app checkout] account kind lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
+    } else if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
 
     // Price test group: the stored group wins; else a valid requested test group (new sign-ups only; stored now); else base.
     // A stored g10 / g20 user whose price is not configured fails closed: never silently charge a different price.
@@ -213,7 +222,12 @@ export default async function handler(req: any, res: any) {
     // The previously stored open session is expired by id (works without an email), then this one is stored.
     const previous = await storedSessionId(caller.id, mode);
     if (previous && previous !== session.id) await expireSession(previous);
-    await rememberSession(caller.id, mode, session.id);
+    const remembered = await rememberSession(caller.id, mode, session.id);
+    // APP_DELETE_CANCELS_WEB: a session we cannot remember cannot be cancelled by an account delete, so it is never handed out.
+    if (remembered === false && process.env.APP_DELETE_CANCELS_WEB === '1') {
+      await expireSession(session.id);
+      return res.status(503).json({ error: 'checkout_unavailable' });
+    }
     // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
     try {
       if (!customer && !caller.email) throw new Error('no customer or email to look sessions up by');

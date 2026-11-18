@@ -1,7 +1,7 @@
 // POST { phone } + Bearer <supabase jwt> -> saves the caller's mobile number (required after payment).
 // 200 { ok, phone } | 400 invalid_phone | 401 | 429 | 500 save_failed. Never says whether a number is used elsewhere.
 import { keyMode } from '../../lib/webApp/stripeCore.js';
-import { callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 import { saveContactPhone } from '../../lib/webApp/contactPhone.js';
 import { liveContactPhoneDeps } from '../../lib/webApp/contactPhoneLive.js';
 import { supabaseRateStore, withFallback } from '../../lib/bookings/rateLimit.js';
@@ -34,6 +34,7 @@ export default async function handler(req: any, res: any) {
     const out = await saveContactPhone(req.headers?.authorization, parseBody(req), { ...deps, callerFrom: async () => caller }, req.method);
     return res.status(out.status).json(out.body);
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app contact-phone]', e?.status ?? 'err');
     return res.status(500).json({ error: 'save_failed' });
   }

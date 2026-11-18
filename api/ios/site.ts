@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
-import { liveDeps, runIosSiteLookup } from '../../lib/ios/publishFlow.js';
+import { liveDeps, liveUserOf, runIosSiteLookup } from '../../lib/ios/publishFlow.js';
+import { oldRouteGate } from '../../lib/account/siteMode.js';
 
 // POST { transactionId } + Authorization: Bearer <Supabase token> → the site bound to that purchase
 // (only when the purchase is linked to the caller): { siteId, deployedUrl, siteData, active, ... }.
@@ -40,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const transactionId = body && typeof body.transactionId === 'string' ? body.transactionId.trim() : '';
     if (!transactionId) return res.status(400).json({ error: 'bad-request' });
+    const old = await oldRouteGate(req as any, liveUserOf);
+    if (old) return res.status(old.status).json(old.body);
     const r = await runIosSiteLookup(transactionId, liveDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);
   } catch (e: any) {

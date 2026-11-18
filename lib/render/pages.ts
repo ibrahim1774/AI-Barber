@@ -19,7 +19,7 @@ import { pageSectionsOf } from './sections.js';
 import { faqDataQuestions, hasOpenDay, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 import { GUIDES_DIR, isGuideFile } from './guideIds.js';
-import { hasPagesV2, isWebCreated } from '../pagesV2.js';
+import { hasPagesV2, searchPagesOn } from '../pagesV2.js';
 
 /** One file of the deployed site. `path` is validated by assertSiteFilePath before it is written. */
 export interface SiteFile {
@@ -57,6 +57,8 @@ export interface ExtraPagesModel {
   guidesHidden?: string[];
   /** Step 8: true = no guide pages. */
   guidesOff?: boolean;
+  /** Explicit opt-in (lib/pagesV2.ts searchPagesOn): the web page rules apply to a site that is not web-made. Set by the iOS app only. */
+  searchPages?: boolean;
 }
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */
@@ -196,6 +198,7 @@ export function cleanExtraPages(raw: unknown): ExtraPagesModel {
   const on: ExtraKey[] = [];
   if (Array.isArray(r.on)) for (const k of r.on) if (isExtraKey(k) && !on.includes(k)) on.push(k);
   const out: ExtraPagesModel = { on, serviceGuides: r.serviceGuides === true };
+  if (r.searchPages === true) out.searchPages = true;
   if (typeof r.seed === 'number' && Number.isInteger(r.seed) && Math.abs(r.seed) <= Number.MAX_SAFE_INTEGER) out.seed = r.seed;
   if (r.pick && typeof r.pick === 'object' && !Array.isArray(r.pick)) {
     const pick: Record<string, number> = Object.create(null);
@@ -339,7 +342,7 @@ function allSectionsHidden(key: ExtraKey, d: WebsiteData): boolean {
  * Web-created pages-v2 sites have NO FAQ page (Ibrahim, 2026-11-05): `/faq/` is never a file, a menu item, a sitemap entry or a link for them. Every other
  * site (iOS-made, legacy, pages v1, single page) keeps it exactly as on origin/main. A previously published /faq/ is redirected (siteRedirects.ts).
  */
-export const faqRemoved = (d: { extraPages?: unknown; source?: unknown } | null | undefined): boolean => hasPagesV2(d) && isWebCreated(d);
+export const faqRemoved = (d: { extraPages?: unknown; source?: unknown } | null | undefined): boolean => hasPagesV2(d) && searchPagesOn(d);
 
 /** The data floor of one extra page (plan 1c) on the cleaned site: true when the page has the real data it needs. */
 function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {

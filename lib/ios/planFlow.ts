@@ -14,6 +14,9 @@ import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
 import { tierOf, type Tier } from './tiers.js';
 import { webAppEntitlementsOn } from '../webApp/entitlementGate.js';
+import type { AccountPlan } from '../account/plan.js';
+import type { PlanSiteMode } from '../account/siteMode.js';
+import { liveTie, type TieCheck } from '../account/mayTake.js';
 
 export interface PlanView {
   /** The shop has a purchase linked (ab_shops.ios_otid). */
@@ -61,8 +64,19 @@ export interface PlanDeps {
   now?(): number;
   /** Is migration 015 (member title / booking_url, ab_add_member) applied? Adds `capabilities.memberProfile` to GET when present. */
   memberProfileLive?(): Promise<boolean>;
+  /** ACCOUNT_PLAN_V2 only: the one plan answer (lib/account/plan.ts). Absent or throwing: GET answers as it does with the switch off. */
+  accountPlan?(userId: string): Promise<AccountPlan>;
   /** Per-user write limit on POST (each call costs App Store Server API requests). Absent = none. */
   limiter?: Pick<RateLimiter, 'allow'>;
+  /**
+   * ONE_SITE_GUARD=1 only, GET: the account's newest UNRESOLVED refused Production purchase (a blocked_purchases ledger row of the account whose ios_purchases row is
+   * still live at Apple and is not tied to the account), or null. Absent once the purchase has expired, been refunded or been tied.
+   */
+  blockedPurchase?(userId: string, nowMs: number): Promise<{ reason: string; originalTransactionId: string } | null>;
+  /** ONE_SITE_GUARD=1 only, GET: does the account still have a live plan (a card plan or Free; lib/account/planLive.ts, the mayTake rule)? Independent of ACCOUNT_PLAN_V2. */
+  planLive?(userId: string): Promise<boolean>;
+  /** ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the shop link or the account link is written. Absent or off: today's behaviour. */
+  tie?: TieCheck;
 }
 
 type Auth = string | string[] | undefined;
@@ -149,10 +163,49 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
       ? { ...planView({ ios_otid: found.original_transaction_id }, found, now, a.user.id), linked: false }
       : planView({ ios_otid: null }, null, now, a.user.id);
   }
-  if (!deps.memberProfileLive) return { status: 200, body: view };
+  // ACCOUNT_PLAN_V2 (default off): add the one-account fields. Off: this is null and nothing below differs from before.
+  const v2 = process.env.ACCOUNT_PLAN_V2 === '1' && deps.accountPlan ? await planV2Fields(a.user.id, deps.accountPlan) : null;
+  // ONE_SITE_GUARD=1 (absent otherwise): the signal for a refused Apple purchase stays on the GET for as long as it is unresolved and still live at Apple, keyed by its
+  // originalTransactionId so the app can show it once per purchase. Production only (the ledger rows and the purchase query are). A failed lookup adds nothing.
+  let blockedExtra: Record<string, unknown> = {};
+  if (process.env.ONE_SITE_GUARD === '1' && deps.blockedPurchase) {
+    try {
+      const b = await deps.blockedPurchase(a.user.id, now);
+      // The lookup ran and succeeded: an authoritative answer. The app clears its Settings row only on "checked and none"; absent on a failed lookup or with the guard off.
+      blockedExtra = { blockedPurchaseChecked: true };
+      if (b) blockedExtra = { blockedPurchaseChecked: true, blockedPurchase: { reason: b.reason, originalTransactionId: b.originalTransactionId, ...(a.user.email ? { accountEmail: a.user.email } : {}), ...(b.reason !== 'other-apple-id' && deps.planLive ? { planLive: await deps.planLive(a.user.id).catch(() => true) } : {}) } };
+    } catch (e: any) { console.error('[shop/plan] blocked purchase lookup failed (left out):', e?.message || e); }
+  }
+  if (!deps.memberProfileLive) return { status: 200, body: v2 ? { ...view, ...v2.fields, ...blockedExtra, capabilities: { siteMode: v2.siteMode } } : { ...view, ...blockedExtra } };
   // A failed probe reads as "not live": the app then keeps website-only fields in site JSON.
   const memberProfile = await deps.memberProfileLive().catch(() => false);
-  return { status: 200, body: { ...view, capabilities: { memberProfile } } };
+  return { status: 200, body: { ...view, ...(v2?.fields ?? {}), ...blockedExtra, capabilities: { memberProfile, ...(v2 ? { siteMode: v2.siteMode } : {}) } } };
+}
+
+/**
+ * A refused tie on the plan check, for the app (ONE_SITE_GUARD=1 only; absent otherwise, so old builds and switch-off answers are unchanged):
+ * `blockedPurchase: { reason, accountEmail? }`. accountEmail is the signed-in caller's OWN email, never anyone else's.
+ */
+function blockedPurchaseOf(t: { reason: string; planLive?: boolean }, email: string | null | undefined, environment: string, otid?: string): { blockedPurchaseChecked?: true; blockedPurchase?: { reason: string; accountEmail?: string; planLive?: boolean; originalTransactionId?: string } } {
+  // Production purchases only (the same rule as the letter): a Sandbox purchase (App Review, TestFlight) never carries the signal or the account email.
+  if (process.env.ONE_SITE_GUARD !== '1' || environment !== 'Production') return {};
+  return { blockedPurchaseChecked: true, blockedPurchase: { reason: t.reason, ...(otid ? { originalTransactionId: otid } : {}), ...(email ? { accountEmail: email } : {}), ...(t.planLive !== undefined ? { planLive: t.planLive } : {}) } };
+}
+
+/** The ACCOUNT_PLAN_V2 additions to the GET body. A failed lookup adds nothing (the old answer, never a 5xx). */
+async function planV2Fields(userId: string, read: NonNullable<PlanDeps['accountPlan']>) {
+  try {
+    const p = await read(userId);
+    return {
+      fields: { source: p.source, status: p.status, kind: p.kind, site: p.site, legacy: p.legacy, holderPurchaseEnded: p.holderPurchaseEnded },
+      siteMode: p.siteMode,
+    };
+  } catch (e: any) {
+    // ACCOUNT_PLAN_V2 is on but the account could not be read: the old fields stay, and the answer says so with siteMode 'unknown' (no kind, no site). The new
+    // app must not read this as "switch off" (which means device); it shows "Checking your plan. Try again." This is the ONLY place 'unknown' is produced.
+    console.error('[shop/plan] account plan lookup failed:', e?.message || e);
+    return { fields: {}, siteMode: 'unknown' as PlanSiteMode };
+  }
 }
 
 /**
@@ -205,7 +258,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     const other = await otherAccountBody(deps.emailOf, row.user_id, row);
     return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
   }
-  if (!shopRow) return refreshNoShop(user.id, tx, row, now(), deps);
+  if (!shopRow) return refreshNoShop(user.id, tx, row, now(), deps, user.email);
   let shop = shopRow;
   // An unlinked purchase whose slug/shop already belongs to another account is theirs, not this
   // caller's (the same Apple ID under a second email). Nothing attached yet: first signed-in claim wins.
@@ -222,6 +275,17 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   if (!isActive(tx, now())) {
     const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
     return { status: 200, body: planView(shop, current, now(), user.id) };
+  }
+  // ONE_SITE_GUARD: asked before the shop link or the account link is written. Not allowed (or undecidable): nothing is tied and the
+  // account's current plan comes back, exactly as for a purchase that is not live. An already-linked purchase is always allowed.
+  if (deps.tie && (shop.ios_otid !== otid || !row.user_id)) {
+    const t = await deps.tie(user.id, otid, 'shop/plan');
+    // Undecidable (a blip): 503, so a new Apple payer is not shown "no plan" for a moment. A real refusal keeps the 200 with the current plan.
+    if (t.action === 'unavailable') return err(503, 'temporarily-unavailable');
+    if (t.action !== 'allow') {
+      const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
+      return { status: 200, body: { ...planView(shop, current, now(), user.id), ...blockedPurchaseOf(t, user.email, tx.environment, otid) } };
+    }
   }
   // The shop link first: when another shop already holds this purchase ('taken') nothing is linked.
   const before = shop.ios_otid;
@@ -258,7 +322,8 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
  * active one is linked to them (unless its bound slug belongs to someone else's shop). Returns the same view GET
  * gives a no-shop account (`linked` stays false: there is no shop to link).
  */
-async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, nowMs: number, deps: PlanDeps): Promise<FlowResult> {
+async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, nowMs: number, deps: PlanDeps, email: string | null = null): Promise<FlowResult> {
+  let blocked: { blockedPurchase?: unknown } = {};
   let mine = row.user_id === userId ? row : null;
   if (!mine && !row.user_id && isActive(tx, nowMs)) {
     if (row.site_slug && deps.bindingOwner) {
@@ -268,8 +333,13 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
         return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
       }
     }
+    // ONE_SITE_GUARD: not allowed (or undecidable): nothing is linked, the answer is the one a purchase that is not theirs gets.
+    const t = deps.tie ? await deps.tie(userId, row.original_transaction_id, 'shop/plan (no shop)') : null;
+    if (t?.action === 'unavailable') return err(503, 'temporarily-unavailable');
+    if (t && t.action === 'refuse') blocked = blockedPurchaseOf(t, email, tx.environment, tx.originalTransactionId);
     try {
-      if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };
+      if (t && t.action !== 'allow') { /* tie nothing */ }
+      else if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };
       else {
         const again = await deps.purchase(row.original_transaction_id);
         if (again?.user_id && again.user_id !== userId) {
@@ -285,7 +355,7 @@ async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, n
   const view = mine && purchaseLive(mine, nowMs)
     ? { ...planView({ ios_otid: mine.original_transaction_id }, mine, nowMs, userId), linked: false }
     : planView({ ios_otid: null }, null, nowMs, userId);
-  return { status: 200, body: view };
+  return { status: 200, body: { ...view, ...blocked } };
 }
 
 /** Real dependencies for api/shop/plan.ts (service-role Supabase, Apple). */
@@ -310,5 +380,24 @@ export function livePlanDeps(): PlanDeps {
     now: Date.now,
     memberProfileLive: () => shops.memberProfileLive(),
     limiter: userLimiter,
+    accountPlan: async (uid) => (await import('../account/plan.js')).accountPlan(uid),
+    tie: liveTie,
+    planLive: async (uid) => (await import('../account/planLive.js')).webPlanLive(uid, 'Production'),
+    async blockedPurchase(uid, nowMs) {
+      const { sbRest } = await import('../webApp/webAppServer.js');
+      let rows: any[];
+      try { rows = (await sbRest(`blocked_purchases?user_id=eq.${encodeURIComponent(uid)}&select=original_transaction_id,reason,first_seen_at&order=first_seen_at.desc&limit=20`)) ?? []; }
+      catch (e: any) { if (e?.status === 404) return null; throw e; } // no ledger table: nothing refused yet
+      const refused = rows.filter((r) => typeof r.original_transaction_id === 'string' && !r.original_transaction_id.includes(':')); // not the web-publish: / apple-publish: rows
+      if (!refused.length) return null;
+      const ids = refused.map((r) => encodeURIComponent(r.original_transaction_id)).join(',');
+      const ps: any[] = (await sbRest(`ios_purchases?original_transaction_id=in.(${ids})&environment=eq.Production&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,user_id`)) ?? [];
+      // Unresolved = still live at Apple, tied to NO account (user_id null) and not the link of any shop: a purchase now tied to anyone is resolved, never "cancel it".
+      const shopLinked: any[] = (await sbRest(`ab_shops?ios_otid=in.(${ids})&select=ios_otid`)) ?? [];
+      const linked = new Set(shopLinked.map((s) => s.ios_otid as string));
+      const live = new Map(ps.filter((p) => p.user_id == null && !linked.has(p.original_transaction_id) && purchaseLive(p, nowMs)).map((p) => [p.original_transaction_id as string, p]));
+      const hit = refused.find((r) => live.has(r.original_transaction_id));
+      return hit ? { reason: hit.reason as string, originalTransactionId: hit.original_transaction_id as string } : null;
+    },
   };
 }

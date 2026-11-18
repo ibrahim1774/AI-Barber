@@ -4,13 +4,14 @@
 // when it is missing the portal fails closed (500 portal_not_configured), it never falls back to the base configuration.
 import { isEntitledStatus, keyMode, portalConfigFor, tierForPriceId, type PriceGroup } from '../../lib/webApp/stripeCore.js';
 import { readStoredGroup } from '../../lib/webApp/priceGroup.js';
-import { callerFrom, sbRest, stripeCall, APP_ORIGIN, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, stripeCall, APP_ORIGIN, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
   if (webAppCors(req, res)) return;
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-  const caller = await callerFrom(req.headers.authorization);
+  let caller: Awaited<ReturnType<typeof callerFrom>>;
+  try { caller = await callerFrom(req.headers.authorization); } catch (e) { if (authOutage(res, e)) return; throw e; }
   if (!caller) return res.status(401).json({ error: 'unauthorized' });
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
   if (!mode) return res.status(500).json({ error: 'portal_not_configured' });

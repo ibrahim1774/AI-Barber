@@ -7,6 +7,7 @@ import { userLimiter, shopBookingLimiter } from './rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from './repo.js';
 import type { VerifiedTx } from '../ios/appleVerify.js';
 import type { PurchasesRepo } from '../ios/purchases.js';
+import { liveTie, type TieCheck } from '../account/mayTake.js';
 
 export const BOOKING_BASE_URL = process.env.BOOKING_BASE_URL || 'https://www.aibarber.org';
 
@@ -22,7 +23,7 @@ export interface PurchaseVerifierParts {
  * Store purchase made at publish grants its tier at once. `load` is lazy: the App Store library
  * is only pulled in by calls that verify.
  */
-export function makePurchaseVerifier(load: () => Promise<PurchaseVerifierParts>, now: () => number = Date.now): PurchaseVerifier {
+export function makePurchaseVerifier(load: () => Promise<PurchaseVerifierParts>, now: () => number = Date.now, tie?: TieCheck): PurchaseVerifier {
   return {
     async verify(transactionId) {
       const { verify, repo } = await load();
@@ -33,6 +34,12 @@ export function makePurchaseVerifier(load: () => Promise<PurchaseVerifierParts>,
       return { originalTransactionId: tx.originalTransactionId };
     },
     async linkUserIfUnlinked(otid, userId) {
+      // ONE_SITE_GUARD: this is itself a tie point (the same question the setup flow asked before the shop link; asked again here so no
+      // caller can tie a purchase without it). Not allowed or undecidable: nothing is linked.
+      if (tie) {
+        const t = await tie(userId, otid, 'bookings/live link');
+        if (t.action !== 'allow') return false;
+      }
       const { repo } = await load();
       return repo.setUserIfUnlinked(otid, userId);
     },
@@ -46,7 +53,7 @@ function livePurchases(): PurchaseVerifier {
       import('../ios/purchases.js'),
     ]);
     return { verify: (id) => defaultVerifier()(id), repo: supabasePurchases() };
-  });
+  }, Date.now, liveTie);
 }
 
 export function liveDeps(): OwnerDeps {
@@ -64,5 +71,6 @@ export function liveDeps(): OwnerDeps {
     writeLimiter: userLimiter,
     bindingOwner: liveBindingOwner,
     emailOf: liveEmailOf,
+    tie: liveTie,
   };
 }

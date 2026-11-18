@@ -629,4 +629,20 @@ describe('POST /api/web-app/checkout: buyer user agent / IP for the server-side 
     await withHeaders({ 'user-agent': 'UA-one', 'x-forwarded-for': '1.1.1.1' });
     expect(created()[2].opts.idempotencyKey).toBe(a);
   });
+
+  it('APP_DELETE_CANCELS_WEB on: a session that cannot be remembered is expired and 503 is returned, no URL', async () => {
+    vi.stubEnv('APP_DELETE_CANCELS_WEB', '1');
+    (globalThis as any).__csFail = true;
+    const r = await run();
+    expect(r.code).toBe(503);
+    expect(r.body.url).toBeUndefined();
+    expect(stripe.calls.some((c) => c.path === 'checkout/sessions/cs_new/expire')).toBe(true);
+  });
+  it('APP_DELETE_CANCELS_WEB off: a session that cannot be remembered still returns the URL (today)', async () => {
+    (globalThis as any).__csFail = true;
+    const r = await run();
+    expect(r.code).toBe(200);
+    expect(r.body.url).toBe('https://stripe.test/cs_new');
+    expect(stripe.calls.some((c) => c.path === 'checkout/sessions/cs_new/expire')).toBe(false);
+  });
 });

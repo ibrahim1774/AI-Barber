@@ -7,7 +7,7 @@
 //   DELETE clear the cookie.
 // The cookie is scoped to this path, so it is never sent to any other endpoint. Tokens are never logged.
 import { clientIp, memoryStore } from '../../lib/bookings/rateLimit.js';
-import { callerFrom, webAppCheckoutOn, webAppCors, webAppOriginAllowed } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, webAppCheckoutOn, webAppCors, webAppOriginAllowed, authOutage } from '../../lib/webApp/webAppServer.js';
 
 import { COOKIE, COOKIE_PATH, COOKIE_MAX_AGE, HINT, hintFor, clearHint, cookieFor, clearCookie } from '../../lib/webApp/sessionCookie.js';
 export { COOKIE, COOKIE_PATH, COOKIE_MAX_AGE, HINT, hintFor, clearHint, cookieFor, clearCookie };
@@ -111,7 +111,8 @@ export default async function handler(req: any, res: any) {
     if (out.session.userId !== caller.id) return res.status(401).json({ error: 'token_mismatch' });
     res.setHeader('Set-Cookie', [cookieFor(out.session.refresh_token), hintFor()]);
     return res.status(200).json(publicSession(out.session));
-  } catch {
+  } catch (e: any) {
+    if (authOutage(res, e)) return;
     return res.status(502).json({ error: 'session_failed' });
   }
 }

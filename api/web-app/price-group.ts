@@ -9,7 +9,7 @@
 import { isPriceGroup } from '../../lib/webApp/stripeCore.js';
 import { assignGroup, readStoredGroup } from '../../lib/webApp/priceGroup.js';
 import { clientIp, memoryStore } from '../../lib/bookings/rateLimit.js';
-import { callerFrom, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, webAppCheckoutOn, webAppCors, authOutage } from '../../lib/webApp/webAppServer.js';
 
 export const PRICE_GROUP_PER_MINUTE = 20;
 const limiter = memoryStore();
@@ -35,6 +35,7 @@ export default async function handler(req: any, res: any) {
     const stored = await assignGroup(caller.id, caller.email, group, 'client');
     return res.status(200).json({ ok: true, group: stored });
   } catch (e: any) {
+    if (authOutage(res, e)) return;
     console.error('[web-app price-group]', e?.message || e);
     return res.status(502).json({ error: 'save_failed' });
   }

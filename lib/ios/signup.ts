@@ -36,7 +36,7 @@ export type SignupResult =
 
 export interface SignupDeps {
   /** Supabase admin createUser with email_confirm:true. Resolves { exists:true } for a taken email. */
-  createUser(u: { email: string; password: string; metadata: { full_name: string; name: string; phone: string } }): Promise<{ exists: boolean }>;
+  createUser(u: { email: string; password: string; metadata: { full_name: string; name: string; phone: string } }): Promise<{ exists: boolean; userId?: string }>;
   /** Both limits must pass: the caller's IP and the email. Throws -> fail CLOSED (503). */
   allow(ip: string, emailKey: string): Promise<boolean>;
   /** Apple verification of the purchase the account is being created for. */
@@ -46,6 +46,11 @@ export interface SignupDeps {
   /** Count one account creation against this purchase; false once MAX_SIGNUPS_PER_PURCHASE is used. Throws -> fail CLOSED (503). */
   allowForPurchase(originalTransactionId: string): Promise<boolean>;
   now(): number;
+  /**
+   * Optional, fire-and-forget: called once after a NEW account was created (never for 409). The response does not wait
+   * for it and a throw or rejection here is logged and ignored. Used for the welcome email (lib/ios/emailFlows.ts).
+   */
+  accountCreated?(info: { userId: string; email: string; name: string; originalTransactionId: string; environment: 'Production' | 'Sandbox' }): void | Promise<void>;
 }
 
 /** Digits with an optional leading +, 7 to 15 digits (E.164 max). Spaces, dashes, dots, parentheses are stripped. */
@@ -87,11 +92,13 @@ export async function runSignup(input: SignupInput | null, ip: string, deps: Sig
   }
 
   let otid: string;
+  let txEnv: 'Production' | 'Sandbox' = 'Production';
   try {
     const tx = await deps.verify(transactionId);
     if (tx.revoked) return { status: 402, body: { error: 'subscription-inactive', reason: 'revoked' } };
     if (!isActive(tx, deps.now())) return { status: 402, body: { error: 'subscription-inactive' } };
     otid = tx.originalTransactionId;
+    txEnv = tx.environment;
   } catch (e: any) {
     if (e instanceof VerifyFailure) {
       const status = ({ 'not-found': 404, 'bad-bundle': 400, 'bad-product': 400, 'apple-unavailable': 503 } as const)[e.code];
@@ -124,6 +131,12 @@ export async function runSignup(input: SignupInput | null, ip: string, deps: Sig
   try {
     const r = await deps.createUser({ email, password, metadata: { full_name: name, name, phone } });
     if (r.exists) return { status: 409, body: { error: 'email-exists' } };
+    if (deps.accountCreated && r.userId) {
+      try {
+        Promise.resolve(deps.accountCreated({ userId: r.userId, email, name, originalTransactionId: otid, environment: txEnv }))
+          .catch((e: any) => console.error('[ios/signup] accountCreated hook failed:', e?.message || e));
+      } catch (e: any) { console.error('[ios/signup] accountCreated hook threw:', e?.message || e); }
+    }
     return { status: 200, body: { ok: true, email } };
   } catch (e: any) {
     console.error('[ios/signup] createUser failed:', e?.message || e);

@@ -7,6 +7,8 @@ import { sweepDunning } from '../../lib/webApp/dunning.js';
 import { sweepDuplicates } from '../../lib/webApp/duplicates.js';
 import { keyMode } from '../../lib/webApp/stripeCore.js';
 import { webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
+import { runAccountMaintenance } from '../../lib/account/maintenance.js';
+import { guardMode } from '../../lib/account/sites.js';
 
 export const config = { maxDuration: 300 };
 
@@ -29,7 +31,9 @@ export default async function handler(req: any, res: any) {
     const iosOverlap = mode ? await sweepIosOverlap(liveIosOverlapDeps(mode)).catch((e: any) => { console.error('[web-app ios-overlap]', e?.message || e); return null; }) : null;
     // Domain backstop: a plan-end that failed earlier (Stripe outage) is retried. Best effort, idempotent.
     const domainRenewal = mode ? await import('../../lib/webApp/domainPlanEnd.js').then(async (m) => m.sweepDomainRenewal(await m.livePlanEndDeps(mode))).catch((e: any) => { console.error('[web-app domain renewal backstop]', e?.message || e); return null; }) : null;
-    return res.status(200).json({ ok: true, ...summary, dunning, duplicates, iosOverlap, domainRenewal });
+    // Once-a-day account clean-ups (address rows when ONE_SITE_GUARD is on; expired kept copies), throttled by maintenance_runs. The answer keeps today's shape while the guard is off.
+    const accountMaintenance = await runAccountMaintenance().catch((e: any) => { console.error('[web-app account maintenance]', e?.message || e); return null; });
+    return res.status(200).json({ ok: true, ...summary, dunning, duplicates, iosOverlap, domainRenewal, ...(accountMaintenance && guardMode() !== 'off' ? { accountMaintenance } : {}) });
   } catch (err: any) {
     console.error('[Sweeper:web] threw:', err?.message || err);
     return res.status(500).json({ error: err?.message || 'web-app sweep failed' });

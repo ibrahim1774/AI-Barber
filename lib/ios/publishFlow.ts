@@ -25,6 +25,10 @@ import {
   type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
+import { liveTie, type TieCheck } from '../account/mayTake.js';
+import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
+import { reportBlocked } from '../account/blocked.js';
+import { webPublishInProgress } from '../account/webInflight.js';
 import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
@@ -33,6 +37,10 @@ import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
 import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
+import { searchPagesOn } from '../pagesV2.js';
+import { seoProblem, seoSanitize } from '../render/seoText.js';
+import { guideCopySanitize } from '../render/guidePages.js';
+import { svcCopySanitize } from '../serviceCopy/prune.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
@@ -69,7 +77,7 @@ export type IosPublishResult =
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
   | { status: 409; body: OtherAccountBody }
-  | { status: 409; body: { error: 'account-has-site'; slug: string } }
+  | { status: 409; body: { error: 'account-has-site'; slug: string; reason?: 'web-account' | 'other-apple-id' | 'mixed'; /** The signed-in caller's OWN email (never anyone else's), so the app can say which account already has the plan. */ accountEmail?: string; /** web-account / mixed: false = the account's web plan has ended. Absent (address-conflict refusals, other-apple-id): treat as live. */ planLive?: boolean } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
@@ -119,6 +127,17 @@ export interface PublishDeps {
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
   /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
   finishMove?(userId: string): Promise<unknown>;
+  /**
+   * ONE_SITE_GUARD: "may this account take this purchase?" (lib/account/mayTake.ts), asked before the purchase is tied to the account.
+   * Absent, or the guard off: today's behaviour, nothing read.
+   */
+  tie?: TieCheck;
+  /** ONE_SITE_GUARD (tests): the mode. Absent: read from the environment. */
+  guardMode?: () => GuardMode;
+  /** ONE_SITE_GUARD (tests): the address table. Absent: the live one. */
+  sites?: SitesDeps;
+  /** ONE_SITE_GUARD (tests): is a web publish in progress for the account? Absent: the live lookup (lib/account/webInflight.ts). */
+  webPublishInProgress?(uid: string, env: 'Production' | 'Sandbox'): Promise<boolean>;
   /**
    * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
    * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
@@ -190,8 +209,17 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return badRequest;
   if (!validInput(input)) return badRequest;
   // The web-origin marker is set by the web app only; a hand-made iOS request cannot turn the web-only page rules on.
-  const sd = { ...input.siteData } as WebsiteData;
+  let sd = { ...input.siteData } as WebsiteData;
   delete (sd as { source?: unknown }).source;
+  // A site that opted into the web page rules (extraPages.searchPages, lib/pagesV2.ts searchPagesOn) gets the same cleaning of the text
+  // those rules read as a web draft save and a web publish (validateWebSnapshot): invalid seo.* and guides.* text is dropped (never a reason
+  // to refuse), and service text is kept only when it is not model-written (svcCopySanitize with no signing secret or refs keeps no model
+  // text: the iOS path never turns the service-text writer on). A site without the mark is not touched.
+  if (searchPagesOn(sd)) {
+    const seoStop = seoProblem(sd);
+    if (seoStop) return badRequest;
+    sd = svcCopySanitize(guideCopySanitize(seoSanitize(sd).siteData).siteData, { autoPublish: false, secret: null }).siteData as WebsiteData;
+  }
   if (hasDataUrl(sd)) return badRequest;
   // Build the pending payload up front: any shape problem surfaces here as a
   // 400, never after a slug has been bound.
@@ -319,6 +347,14 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
           return { status: 409, body: { error: 'account-has-site', slug: mine.site_slug as string } };
         }
       }
+      // ONE_SITE_GUARD: a web or mixed account, or an account whose address sits on another purchase, never takes this purchase. Asked after
+      // every refusal above (today's answers win) and before the write; a republish by an already-linked purchase never gets here.
+      if (deps.tie) {
+        const t = await deps.tie(caller, otid, 'ios/publish');
+        if (t.action === 'unavailable') return unavailable;
+        // 409 account-has-site is what builds handle. `reason` says why; the slug is the account's own address, '' when it has none (never an invented site).
+        if (t.action === 'refuse') return { status: 409, body: { error: 'account-has-site', slug: t.slug, reason: t.reason, ...(await ownEmail(deps, caller, tx.environment)), ...(t.planLive !== undefined ? { planLive: t.planLive } : {}) } };
+      }
       let linked = false;
       try {
         linked = await deps.repo.setUserIfUnlinked(otid, caller);
@@ -340,6 +376,9 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     let slug: string;
     let force: boolean;
     const wasBound = !!row.site_slug;
+    // ONE_SITE_GUARD (off = nothing below runs and nothing new is read or written). Only a first bind by a signed-in caller takes the
+    // account's address row; a bound slug is permanent, so a republish never touches the table (apart from stamping the first publish).
+    const mode = deps.guardMode ? deps.guardMode() : guardMode();
     if (row.site_slug) {
       // Bound slug is permanent, whatever the shop is now called.
       slug = row.site_slug;
@@ -353,15 +392,60 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       for (let attempt = 0; attempt < 2 && !bound; attempt++) {
         let candidate: string;
         try {
-          candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
+          candidate = await chooseSlug(sd.shopName, tx.environment, caller ? withAddressTaken(deps.isTaken, mode, deps.sites) : deps.isTaken);
         } catch (e) {
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
+        }
+        // The account's one address, taken BEFORE the slug is bound to the purchase.
+        let created = false;
+        if (caller && mode !== 'off') {
+          let took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
+          if (took.kind === 'refused' && took.existing && !took.existing.published_once) {
+            // This account's own UNPUBLISHED row. It is released and re-taken (adopted) only when that is safe:
+            //  - a WEB row (a failed first web publish, B1): only when no web publish is in progress that could still finish and claim it. In progress =
+            //    refused below like any other address (1: 409 account-has-site, reason web-account; the barber retries after the web publish settles, or it
+            //    gave up and released the row; alert: recorded, the publish goes on as today). An unreadable lookup counts as in progress.
+            //  - an APPLE row bound to no purchase (B3b): only when it is older than 5 minutes (two simultaneous requests for one purchase must not release
+            //    each other's fresh row). A failed purchase lookup is unavailable (503) in 1, not adoptable in alert.
+            const ex = took.existing;
+            let adopt = false;
+            if (ex.holder === 'web') {
+              adopt = !(await (deps.webPublishInProgress ?? webPublishInProgress)(caller, tx.environment));
+            } else {
+              let bound: unknown;
+              try { bound = await deps.repo.findBySlug?.(ex.slug); }
+              catch (e: any) {
+                console.error(`[ios/publish] ${otid}: purchase lookup for an unbound address row failed:`, e?.message || e);
+                if (mode === 'enforce') return unavailable;
+                bound = undefined;
+              }
+              adopt = bound === null && !!ex.taken_at && Date.now() - Date.parse(ex.taken_at) > 5 * 60_000;
+            }
+            if (adopt) {
+              await tryRelease(caller, tx.environment, ex.slug, mode, deps.sites);
+              took = await tryTake(caller, tx.environment, candidate, 'apple', mode, deps.sites);
+            }
+          }
+          if (took.kind === 'unavailable') return unavailable;
+          if (took.kind === 'ok') created = took.created;
+          if (took.kind === 'refused') {
+            // A concurrent request for THIS purchase took the row and bound its slug first: publish onto that slug.
+            const raced = took.existing?.holder === 'apple' ? await deps.repo.get(otid) : null;
+            if (raced?.site_slug && raced.site_slug === took.existing?.slug) { bound = raced.site_slug; break; }
+            // The slug is held by ANOTHER account's row. isTaken now knows that, so the next attempt picks another; in alert mode nothing changes from today.
+            if (!took.existing && mode === 'enforce') { console.warn(`[ios/publish] ${otid}: ${candidate} is held by another account's address row; choosing again`); continue; }
+            // The account holds another address (a web site, or one on a different purchase). Recorded and alerted (never emailed: the purchase is already the account's).
+            if (took.existing) await reportBlocked({ otid, uid: caller, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', slug: took.existing.slug, environment: tx.environment, email: false, where: 'ios/publish address' });
+            if (mode === 'enforce' && took.existing) return { status: 409, body: { error: 'account-has-site', slug: took.existing.slug, reason: took.existing.holder === 'web' ? 'web-account' : 'other-apple-id', ...(await ownEmail(deps, caller, tx.environment)) } };
+          }
         }
         if (await deps.repo.bindSlug(otid, candidate)) {
           bound = candidate;
           break;
         }
+        // Lost the bind: give back the row this request created (the retry takes its own).
+        if (created && caller) await tryRelease(caller, tx.environment, candidate, mode, deps.sites);
         // A concurrent request for THIS purchase bound first: publish onto its slug.
         const again = await deps.repo.get(otid);
         if (again?.site_slug) bound = again.site_slug;
@@ -436,6 +520,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     const only = caller ? { userId: caller, slug } : undefined;
     await deps.repo.markPublished(otid, only).catch((e) =>
       console.error(`[ios/publish] ${slug}: live but markPublished failed:`, e?.message || e));
+    // ONE_SITE_GUARD: the first publish went live, so the address row now counts as published (never throws; no-op with the guard off).
+    if (caller && !republished) await tryMarkPublishedOnce(caller, tx.environment, slug, mode, deps.sites);
 
     // A bound slug was just force-redeployed with real content, so it no longer
     // shows the offline page (the resubscribe path). Cleared on every bound
@@ -492,6 +578,12 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   }
 }
 
+/** The authenticated caller's own email for a refusal body (empty object when unknown; never throws). Only ever the caller's own account. */
+async function ownEmail(deps: Pick<PublishDeps, 'emailOf'>, caller: string, environment: string): Promise<{ accountEmail?: string }> {
+  if (environment !== 'Production') return {}; // Sandbox purchases never carry the account email (same rule as the letter)
+  try { const e = await deps.emailOf?.(caller); return e ? { accountEmail: e } : {}; } catch { return {}; }
+}
+
 async function anonymousSiteLookup(
   transactionId: string,
   deps: Pick<PublishDeps, 'verify' | 'repo'>,
@@ -524,7 +616,7 @@ async function anonymousSiteLookup(
  */
 export async function runIosSiteLookup(
   transactionId: string,
-  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'> & Partial<Pick<PublishDeps, 'userOf' | 'emailOf' | 'bindingOwner'>>,
+  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'> & Partial<Pick<PublishDeps, 'userOf' | 'emailOf' | 'bindingOwner' | 'tie'>>,
   ctx: IosPublishContext = {},
 ): Promise<IosSiteLookupResult> {
   const token = bearer(ctx.authorization);
@@ -570,6 +662,12 @@ export async function runIosSiteLookup(
       if (owner && owner !== caller) {
         return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null, row) };
       }
+      // ONE_SITE_GUARD: Restore never ties a purchase the account may not take: 404 no-site (as if nothing is bound), 503 when it cannot be decided.
+      if (deps.tie) {
+        const t = await deps.tie(caller, row.original_transaction_id, 'ios/site');
+        if (t.action === 'unavailable') return unavailable;
+        if (t.action === 'refuse') return { status: 404, body: { error: 'no-site' } };
+      }
       if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {
         row = (await deps.repo.get(row.original_transaction_id)) ?? row; // lost the race: re-decide below
       } else {
@@ -610,12 +708,13 @@ export function liveDeps(): PublishDeps {
     }),
     writePending: writePendingSite,
     // A request: at most one redeploy of a newer copy (review fix round 1, finding 9).
-    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS, ownerPublish: true }),
     readPending: readPendingSite,
     readPendingVersioned,
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    tie: liveTie,
     clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
     now: () => Date.now(),
   };

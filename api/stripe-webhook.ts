@@ -276,7 +276,7 @@ export default async function handler(req: any, res: any) {
           .then(() => publishSite(siteId, { plan: typeof plan === 'string' ? plan : null, sessionId: typeof session.id === 'string' ? session.id : null, siteOwners: supabaseSiteOwners() }))
           .then((outcome) => {
             if (!outcome.ok) {
-              console[outcome.reason === 'deploy-failed' ? 'error' : 'warn'](
+              console[outcome.reason === 'deploy-failed' || outcome.reason === 'removed-check-failed' ? 'error' : 'warn'](
                 `[Stripe Webhook] Publish ${outcome.reason} for ${siteId}${outcome.error ? `: ${outcome.error}` : ''} — sweeper will retry`,
               );
             } else {

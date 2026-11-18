@@ -11,7 +11,7 @@
 //
 // Pure, no I/O. Imports only other pure modules.
 import { RESERVED_PATHS, isMultiPage, isPageSlug, type SiteFile } from './render/pages.js';
-import { hasPagesV2, isWebCreated } from './pagesV2.js';
+import { hasPagesV2, searchPagesOn } from './pagesV2.js';
 import { isGuideHref } from './render/guideIds.js';
 
 /** Most redirects a site carries; beyond it the oldest are dropped. DECISION: 200 and no expiry (the plan said 100 and 12 months; no timestamps are
@@ -85,7 +85,7 @@ export function pagePathsOf(pages: readonly SiteFile[]): string[] {
  * service-page text, noindex and JSON-LD (render/site.ts). Anything else (iOS-made, single page, pages v1, legacy) is left exactly as it was.
  */
 export const redirectsApply = (d: Parameters<typeof isMultiPage>[0] & { extraPages?: unknown; source?: unknown }, pages: readonly SiteFile[]): boolean =>
-  isMultiPage(d) && hasPagesV2(d) && isWebCreated(d) && pages.length > 1;
+  isMultiPage(d) && hasPagesV2(d) && searchPagesOn(d) && pages.length > 1;
 
 /** extraPages.moved (old service slug -> new slug, written by the web editor on a rename), clean entries only. */
 export function movedMap(d: { extraPages?: unknown } | null | undefined): Map<string, string> {
