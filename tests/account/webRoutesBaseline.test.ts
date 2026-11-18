@@ -104,4 +104,15 @@ describe('the browser web routes with every new switch off match live main (ffa8
     }
     expect(out).toMatchSnapshot();
   });
+  it('POST /api/web-app/delete-account with X-PB-Build and ACCOUNT_PLAN_V2 off is exactly the no-header (browser) result, in every world (asserted, not snapshotted)', async () => {
+    vi.stubEnv('ACCOUNT_PLAN_V2', '');
+    for (const card of bools) for (const site of bools) for (const domainSub of bools) for (const fail of ['none', 'stripe', 'publish', 'token']) {
+      const run = async (header: string | null) => {
+        reset(); Object.assign(w, { card, site, domainSub });
+        if (fail === 'stripe') w.stripeDown = true; if (fail === 'publish') w.publishInProgress = true; if (fail === 'token') w.badToken = true;
+        return call(webDelete, header);
+      };
+      expect(await run('57'), `card=${card} site=${site} domainSub=${domainSub} fail=${fail}`).toEqual(await run(null));
+    }
+  });
 });

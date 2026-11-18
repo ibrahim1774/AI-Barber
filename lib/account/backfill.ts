@@ -39,9 +39,14 @@ export function planBackfill(web: WebSiteSource[], apple: AppleSource[], existin
     const v = g(a.user_id, a.environment);
     v.apple.set(a.site_slug, (v.apple.get(a.site_slug) ?? false) || !!a.published_at);
   }
-  const byAccount = new Map(existing.map((r) => [key(r.user_id, r.environment), r]));
-  const heldSlugs = new Map(existing.map((r) => [r.slug, r.user_id]));
-  const out: BackfillPlan = { toInsert: [], toDelete: [], alreadyThere: 0, listed: [] };
+  // A stale Apple row: its holder's own purchases no longer include the slug, and another account's purchase does (the purchase moved while the guard was off). It is removed, and the
+  // loop below treats it as absent (so its old owner is not listed as `differs`, and the new owner is not listed as `slug-held`).
+  const stale = existing.filter((r) => r.holder === 'apple' && !groups.get(key(r.user_id, r.environment))?.apple.has(r.slug)
+    && [...groups.values()].some((o) => o.uid !== r.user_id && o.env === r.environment && o.apple.has(r.slug)));
+  const live = existing.filter((r) => !stale.includes(r));
+  const byAccount = new Map(live.map((r) => [key(r.user_id, r.environment), r]));
+  const heldSlugs = new Map(live.map((r) => [r.slug, r.user_id]));
+  const out: BackfillPlan = { toInsert: [], toDelete: stale, alreadyThere: 0, listed: [] };
   const claimedSlugs = new Map<string, string>();
   for (const v of [...groups.values()].sort((a, b) => (key(a.uid, a.env) < key(b.uid, b.env) ? -1 : 1))) {
     const list = (reason: ListedReason, slugs: string[]) => out.listed.push({ user_id: v.uid, environment: v.env, reason, slugs });
@@ -57,13 +62,7 @@ export function planBackfill(web: WebSiteSource[], apple: AppleSource[], existin
       continue;
     }
     const owner = heldSlugs.get(slug) ?? claimedSlugs.get(slug);
-    if (owner && owner !== v.uid) {
-      const stale = existing.find((r) => r.slug === slug && r.user_id === owner);
-      // The holder's Apple row is stale when its own purchases no longer include this slug (the purchase moved to this account).
-      if (stale && stale.holder === 'apple' && stale.environment === v.env && holder === 'apple' && !groups.get(key(owner, stale.environment))?.apple.has(slug)) {
-        out.toDelete.push(stale); heldSlugs.delete(slug);
-      } else { list('slug-held', [slug]); continue; }
-    }
+    if (owner && owner !== v.uid) { list('slug-held', [slug]); continue; }
     claimedSlugs.set(slug, v.uid);
     out.toInsert.push({ user_id: v.uid, environment: v.env, slug, holder, published_once: holder === 'web' ? true : !!v.apple.get(slug) });
   }
@@ -74,8 +73,8 @@ export interface BackfillDeps {
   webSites(): Promise<WebSiteSource[]>;
   apple(): Promise<AppleSource[]>;
   existing(): Promise<ExistingRow[]>;
-  /** Remove a stale Apple row (only while it is still that holder's row for that slug). */
-  remove(row: ExistingRow): Promise<void>;
+  /** Remove a stale Apple row. Re-reads ios_purchases first and skips (false) when the holder still owns the purchase. True when removed. */
+  remove(row: ExistingRow): Promise<boolean>;
   /** Insert-ignore on the primary key; true when inserted. */
   insert(row: BackfillRow): Promise<boolean>;
 }
@@ -89,15 +88,15 @@ export async function runBackfill(deps: BackfillDeps, opts: { apply: boolean }):
   let inserted = 0;
   let removed = 0;
   if (opts.apply) {
-    for (const row of plan.toDelete) { await deps.remove(row); removed++; }
+    for (const row of plan.toDelete) if (await deps.remove(row)) removed++;
     for (const row of plan.toInsert) if (await deps.insert(row)) inserted++;
   }
   return { plan, inserted, removed, applied: opts.apply };
 }
 
 /** Live readers and writer (service role). Pages through each table so a large table is read whole. */
-export async function liveBackfillDeps(): Promise<BackfillDeps> {
-  const { sbRest } = await import('../webApp/webAppServer.js');
+export async function liveBackfillDeps(rest?: (path: string, init?: any) => Promise<any>): Promise<BackfillDeps> {
+  const sbRest = rest ?? (await import('../webApp/webAppServer.js')).sbRest;
   const all = async (path: string, order: string): Promise<any[]> => {
     const rows: any[] = [];
     for (let offset = 0; ; offset += 1000) {
@@ -107,11 +106,15 @@ export async function liveBackfillDeps(): Promise<BackfillDeps> {
     }
   };
   return {
-    webSites: () => all('web_app_sites?published_at=not.is.null&select=user_id,slug,environment,published_at', 'slug'),
-    apple: () => all('ios_purchases?user_id=not.is.null&site_slug=not.is.null&select=user_id,site_slug,environment,published_at', 'site_slug'),
-    existing: () => all('account_sites?select=user_id,environment,slug,holder', 'slug'),
+    webSites: () => all('web_app_sites?published_at=not.is.null&select=user_id,slug,environment,published_at', 'slug.asc,environment'),
+    apple: () => all('ios_purchases?user_id=not.is.null&site_slug=not.is.null&select=user_id,site_slug,environment,published_at', 'site_slug.asc,original_transaction_id'),
+    existing: () => all('account_sites?select=user_id,environment,slug,holder', 'slug.asc,user_id.asc,environment'),
     async remove(row) {
+      // Re-read the purchases right before deleting: the holder may still own this purchase (a page of the list above could have missed its row). Skip then.
+      const still = (await sbRest(`ios_purchases?user_id=eq.${encodeURIComponent(row.user_id)}&site_slug=eq.${encodeURIComponent(row.slug)}&environment=eq.${row.environment}&select=original_transaction_id&limit=1`)) ?? [];
+      if (Array.isArray(still) && still.length > 0) return false;
       await sbRest(`account_sites?user_id=eq.${encodeURIComponent(row.user_id)}&environment=eq.${row.environment}&slug=eq.${encodeURIComponent(row.slug)}&holder=eq.apple`, { method: 'DELETE' });
+      return true;
     },
     async insert(row) {
       const got = await sbRest('account_sites?on_conflict=user_id,environment', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation', body: row });

@@ -147,7 +147,7 @@ describe('backfill', () => {
       webSites: async () => webRows,
       apple: async () => appleRows,
       existing: async () => table.map((r) => ({ ...r })),
-      remove: async (row) => { const i = table.findIndex((r) => r.user_id === row.user_id && r.environment === row.environment && r.slug === row.slug && r.holder === 'apple'); if (i >= 0) table.splice(i, 1); },
+      remove: async (row) => { const i = table.findIndex((r) => r.user_id === row.user_id && r.environment === row.environment && r.slug === row.slug && r.holder === 'apple'); if (i >= 0) table.splice(i, 1); return i >= 0; },
       insert: async (row) => { if (table.some((r) => r.user_id === row.user_id && r.environment === row.environment)) return false; table.push(row); return true; },
     };
     return { table, deps };
@@ -178,6 +178,35 @@ describe('backfill', () => {
     expect(table).toEqual([{ user_id: B, environment: 'Production', slug: 'moved-site', holder: 'apple', published_once: true }]);
     const again = await runBackfill(deps, { apply: true });
     expect([again.removed, again.inserted, again.plan.listed]).toEqual([0, 0, []]);
+  });
+  it('a stale row\'s old owner is not also listed as differs: with another purchase of its own it gets that address', () => {
+    const A = '11111111-aaaa-4aaa-8aaa-111111111111'; const B = '22222222-bbbb-4bbb-8bbb-222222222222';
+    const p = planBackfill([], [{ user_id: A, site_slug: 'a-own', environment: 'Production', published_at: 'x' }, { user_id: B, site_slug: 'moved', environment: 'Production', published_at: 'x' }], [{ user_id: A, environment: 'Production', slug: 'moved', holder: 'apple' }]);
+    expect(p.toDelete.map((r) => [r.user_id, r.slug])).toEqual([[A, 'moved']]);
+    expect(p.listed).toEqual([]);
+    expect(p.toInsert.map((r) => [r.user_id, r.slug]).sort()).toEqual([[A, 'a-own'], [B, 'moved']]);
+  });
+  it('the live deps: purchases are paged in a total order (slug, transaction id), and remove() re-reads and keeps a row whose holder still owns the purchase', async () => {
+    const { liveBackfillDeps } = await import('../../lib/account/backfill.js');
+    const A = '11111111-aaaa-4aaa-8aaa-111111111111';
+    const queries: string[] = [];
+    const rows = Array.from({ length: 1500 }, (_, i) => ({ user_id: `u${i}`, site_slug: i < 1001 ? 'same' : `s${i}`, original_transaction_id: String(1000 + i), environment: 'Production' }));
+    let ownsStill = true;
+    const rest = async (path: string, init: any = {}) => {
+      queries.push(`${init.method ?? 'GET'} ${path}`);
+      if (path.startsWith('ios_purchases?user_id=eq.')) return ownsStill ? [{ original_transaction_id: '1' }] : [];
+      if (path.startsWith('ios_purchases?')) { const off = Number(/offset=(\d+)/.exec(path)![1]); return rows.slice(off, off + 1000); }
+      return [];
+    };
+    const deps = await liveBackfillDeps(rest);
+    expect((await deps.apple()).length).toBe(1500); // two pages, each row once
+    expect(queries.filter((q) => q.startsWith('GET ios_purchases?user_id=not')).every((q) => q.includes('order=site_slug.asc,original_transaction_id.asc'))).toBe(true);
+    const stale = { user_id: A, environment: 'Production' as const, slug: 'same', holder: 'apple' as const };
+    expect(await deps.remove(stale)).toBe(false); // the holder still owns it: nothing deleted
+    expect(queries.some((q) => q.startsWith('DELETE'))).toBe(false);
+    ownsStill = false;
+    expect(await deps.remove(stale)).toBe(true);
+    expect(queries.some((q) => q.startsWith('DELETE account_sites'))).toBe(true);
   });
   it('a slug held by an account that STILL owns the purchase (or a web row) is never taken away: listed as slug-held', () => {
     const A = '11111111-aaaa-4aaa-8aaa-111111111111'; const B = '22222222-bbbb-4bbb-8bbb-222222222222';
