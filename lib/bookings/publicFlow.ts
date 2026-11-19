@@ -38,6 +38,8 @@ import {
   refundIfCancelled,
   safeNotify,
   effectiveDeposit,
+  cardRequired,
+  STRIPE_MIN_CENTS,
   text,
   validEmail,
   validZone,
@@ -60,8 +62,6 @@ import {
 } from './repo.js';
 
 type Params = Record<string, unknown>;
-
-const STRIPE_MIN_CENTS = 50;
 
 async function shopForSlug(deps: FlowDeps, slug: unknown): Promise<ShopRow | null> {
   if (!isSlugParam(slug)) return null;
@@ -91,9 +91,14 @@ export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResul
       phone: shop.phone ?? null,
       accent: shop.accent ?? null,
       cancelCutoffMin: shop.cancel_cutoff_min,
-      pay: { inShop: inShopAllowed(shop), card: cardEnabled(shop), manual: manualHandles(shop) },
+      pay: { inShop: inShopAllowed(shop, deps.now()), card: cardEnabled(shop), manual: manualHandles(shop) },
     },
-    services: services.map((s) => ({
+    services: services.map((s) => {
+      // Per bookable barber who offers this service, at THAT barber's own price (what createAppointment checks).
+      const offering = members.filter((m) => offers(cat, s.id, m.id));
+      const required = offering.filter((m) => cardRequired(shop, s, priceFor(cat, s, m.id), deps.now())).map((m) => m.id);
+      const uniform = offering.every((m) => priceFor(cat, s, m.id) === s.price_cents);
+      return {
       id: s.id,
       name: s.name,
       priceCents: s.price_cents,
@@ -101,7 +106,15 @@ export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResul
       description: s.description ?? null,
       photoUrl: s.photo_url ?? null,
       depositCents: effectiveDeposit(shop, s, s.price_cents),
-    })),
+      // Card is the only way to book this service, whichever barber is picked: EVERY barber offering it is card-required
+      // at their own price (the shop's require_card switch). Additive: pay.inShop is unchanged.
+      cardOnly: offering.length > 0 && required.length === offering.length,
+      // Only some barbers are card-required (their own prices differ): which ones, so the page can decide once one is chosen. Omitted when none.
+      ...(required.length > 0 && required.length < offering.length ? { cardOnlyMemberIds: required } : {}),
+      // No barber overrides this service's price, so the base price (and a balance computed from it) is what every booking pays.
+      uniformPrice: uniform,
+      };
+    }),
     members: members.map((m) => {
       const ids = services.filter((s) => offers(cat, s.id, m.id)).map((s) => s.id);
       return {
@@ -213,7 +226,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   const nowMs = deps.now();
 
   // Payment method must be one the shop offers.
-  if (pay === 'shop' && !inShopAllowed(shop)) return invalid('pay');
+  if (pay === 'shop' && !inShopAllowed(shop, nowMs)) return invalid('pay');
   if (pay === 'manual' && Object.keys(manualHandles(shop)).length === 0) return invalid('pay');
   if (pay === 'card' && !cardEnabled(shop)) return invalid('pay');
   // The manual rail is fixed at booking time (POST /sent must name the same one): the one
@@ -241,14 +254,21 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   // requests that are about to insert.
   if (free.length > 0 && deps.limits && !(await deps.limits.shopBooking(shop.id))) return shopRateLimited();
 
+  // A free barber the chosen pay method cannot be used with (their own price decides): skipped, so "any barber" tries the
+  // next one. When no free barber fits, the reason is reported instead of "slot taken".
+  let payRefused: FlowResult | null = null;
+  let tookTurn = false; // a free barber was attempted (so a race loss is slot-taken, not a pay error)
   for (const m of free) {
     const price = priceFor(cat, service, m.id);
     const deposit = effectiveDeposit(shop, service, price);
+    // The shop requires card for this service (checked with THIS barber's price): pay in shop and manual are refused.
+    if (pay !== 'card' && cardRequired(shop, service, price, nowMs)) { payRefused ??= err(400, 'card-required', { field: 'pay' }); continue; }
     let chargeCents = 0;
     if (pay === 'card') {
       chargeCents = deposit > 0 ? deposit : price ?? 0;
-      if (chargeCents < STRIPE_MIN_CENTS) return invalid('pay');
+      if (chargeCents < STRIPE_MIN_CENTS) { payRefused ??= invalid('pay'); continue; }
     }
+    tookTurn = true;
     const row: NewAppointment = {
       shop_id: shop.id,
       member_id: m.id,
@@ -307,7 +327,28 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
         } catch (e2: any) {
           console.error(`[bookings] dropping failed card hold ${appt.id} failed:`, e2?.message || e2);
         }
-        return err(502, 'payment-unavailable');
+        // A shop that requires card has no other way to pay, so a stale "charges enabled" would lock it out: ask Stripe once
+        // (read-only) and store the answer the way the webhook does. Only on this failure path, only for require_card shops.
+        let cardOff = false;
+        if (shop.require_card && deps.payments.refreshChargesEnabled) {
+          try {
+            cardOff = (await deps.payments.refreshChargesEnabled(shop)) === false;
+          } catch (e3: any) {
+            console.error(`[bookings] refreshing Stripe status for shop ${shop.id} failed:`, e3?.message || e3);
+          }
+        }
+        // Cards still reported on (or Stripe silent) yet checkout cannot be made: open the shop's other pay options for a
+        // short window so it is never unbookable. Not for failures a customer can cause (a customer_email Stripe rejects).
+        let payOtherWay = false;
+        if (shop.require_card && !cardOff && !customerCausedCheckoutFailure(e) && deps.repo.markCardCheckoutFailed) {
+          try {
+            await deps.repo.markCardCheckoutFailed(shop.id, iso(deps.now()));
+            payOtherWay = true; // only hinted once the window is really open (a failed write keeps today's plain 502)
+          } catch (e4: any) {
+            console.error(`[bookings] recording the card checkout failure for shop ${shop.id} failed:`, e4?.message || e4);
+          }
+        }
+        return err(502, 'payment-unavailable', cardOff ? { cardOff: true } : payOtherWay ? { payOtherWay: true } : {});
       }
     }
 
@@ -332,8 +373,22 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
     );
   }
 
+  if (payRefused && !tookTurn) return payRefused;
   const alts = await alternatives(deps.repo, shop, r.members, service.duration_min, startMs, deps.now(), rules);
   return err(409, 'slot-taken', { alternatives: alts });
+}
+
+/**
+ * The only customer-supplied value passed to Stripe is customer_email (checked by validEmail first). A 4xx from Stripe that names
+ * the email is the customer's own input being rejected, so it must never open the card-bypass window. Everything else (5xx,
+ * timeouts and network errors, auth/permission/rate-limit, other 4xx about the shop's account) is a failure of the Stripe call itself.
+ */
+export function customerCausedCheckoutFailure(e: any): boolean {
+  const status = Number(e?.status);
+  if (!(status >= 400 && status < 500)) return false;
+  // Stripe names the offending request field in error.param (primary signal); the message check is a fallback.
+  if (typeof e?.param === 'string' && e.param.startsWith('customer_email')) return true;
+  return /e-?mail/i.test(`${e?.message ?? ''} ${e?.code ?? ''} ${e?.param ?? ''}`);
 }
 
 const shopRateLimited = (): FlowResult => ({

@@ -149,8 +149,22 @@ export const cardEnabled = (shop: ShopRow) => !!shop.stripe_charges_enabled && !
  * were switched off. Used by both /api/book/shop (pay.inShop) and the booking create, so the
  * booking page and the server always agree.
  */
-export const inShopAllowed = (shop: ShopRow) =>
-  !!shop.pay_in_shop || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0);
+export const inShopAllowed = (shop: ShopRow, nowMs?: number) =>
+  !!shop.pay_in_shop
+  || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0)
+  // Inside the failed-checkout window pay in shop opens only when the shop has no other non-card way (the same rule as above);
+  // with manual handles those reopen instead (cardRequired is false) and pay in shop stays as the owner set it.
+  || (nowMs != null && cardCheckoutRecentlyFailed(shop, nowMs) && Object.keys(manualHandles(shop)).length === 0);
+
+/** How long a failed card checkout (Stripe still reporting cards on) opens a require_card shop's other pay options. */
+export const CARD_FAILURE_WINDOW_MS = 10 * 60_000;
+
+/** A require_card shop whose card checkout failed within the window: its other ways to pay are open so it is never unbookable. */
+export function cardCheckoutRecentlyFailed(shop: ShopRow, nowMs: number): boolean {
+  if (!shop.require_card || !shop.card_checkout_failed_at) return false;
+  const at = Date.parse(shop.card_checkout_failed_at);
+  return Number.isFinite(at) && nowMs - at >= 0 && nowMs - at < CARD_FAILURE_WINDOW_MS;
+}
 
 // ---------------------------------------------------------------------------
 // Bookings gate
@@ -258,6 +272,23 @@ export const serviceDeposit = (service: ServiceRow, price: number | null) =>
  */
 export const effectiveDeposit = (shop: ShopRow, service: ServiceRow, price: number | null) =>
   cardEnabled(shop) ? serviceDeposit(service, price) : 0;
+
+/** Stripe's minimum card charge. */
+export const STRIPE_MIN_CENTS = 50;
+
+/**
+ * Is this service card-only for the shop? Only when the shop turned on `require_card` (042), card payments are live, and the
+ * card charge (the deposit, else the price) reaches Stripe's minimum. Unpriced services and anything under the minimum keep
+ * today's options, and with cards off the setting does nothing, so a shop never becomes unbookable. For CARD_FAILURE_WINDOW_MS after a
+ * card checkout failed (cards still reported on) it is also false, so the other options reopen. `price` is the price the
+ * booking will use (a barber's own price when there is one).
+ */
+export function cardRequired(shop: ShopRow, service: ServiceRow, price: number | null, nowMs: number = Date.now()): boolean {
+  if (!shop.require_card || !cardEnabled(shop)) return false;
+  if (cardCheckoutRecentlyFailed(shop, nowMs)) return false;
+  const dep = serviceDeposit(service, price);
+  return (dep > 0 ? dep : price ?? 0) >= STRIPE_MIN_CENTS;
+}
 
 /** Each member's availability, time off and busy times overlapping [fromMs, toMs). */
 export async function loadSchedules(
@@ -395,6 +426,7 @@ export function manageView(appt: AppointmentRow, memberName: string, shop: ShopR
     memberName,
     priceCents: appt.price_cents,
     amountPaidCents: appt.amount_paid_cents,
+    amountRefundedCents: appt.amount_refunded_cents,
     paymentStatus: appt.payment_status,
     shop: { name: shop.name, slug: shop.slug, address: shop.address, phone: shop.phone, timezone: shop.timezone },
   };

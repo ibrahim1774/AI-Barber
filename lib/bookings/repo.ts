@@ -37,6 +37,10 @@ export interface ShopRow {
   phone: string | null;
   accent: string | null;
   daily_summary: boolean;
+  /** Migration 042: card is the only way to book a service whose card charge is at least 50 cents (needs live card). Absent before 042 is applied; read as false. */
+  require_card?: boolean;
+  /** Migration 042: when a card checkout last failed for a require_card shop with Stripe still reporting cards on (server-written). Absent before 042. */
+  card_checkout_failed_at?: string | null;
   /** The shop's own site origin and look (011, server-written after a site deploy). */
   site_base_url?: string | null;
   site_look?: unknown;
@@ -301,6 +305,8 @@ export interface BookingRepo {
   slugTaken(slug: string): Promise<boolean>;
   insertShop(row: NewShop): Promise<InsertShopResult>;
   setShopOtid(shopId: string, otid: string | null): Promise<'ok' | 'taken'>;
+  /** Service role: stamp card_checkout_failed_at (042). Throws when the write fails (callers catch: a booking never fails over it). Optional for older fakes. */
+  markCardCheckoutFailed?(shopId: string, atIso: string): Promise<void>;
   insertMember(row: { shop_id: string; user_id: string; role: 'owner'; display_name: string; sort: number }): Promise<MemberRow>;
   /** Add a barber through the ab_add_member SQL function: locks the shop row, counts active members, refuses at the limit. */
   addMember(row: NewTeamMember): Promise<AddMemberResult>;
@@ -317,6 +323,37 @@ const SHOP_COLS =
   'slot_step_min, pay_in_shop, manual_handles, stripe_account_id, stripe_charges_enabled, platform_fee_bps, ' +
   'bookings_enabled, ios_otid, address, phone, accent, daily_summary';
 // + site_base_url, site_look (011) through withSiteCols, so code deployed before the migration still reads shops.
+/**
+ * Read a shop with `require_card` (042); if the column is missing (042 not applied yet), read it again without it.
+ * The column then reads as absent, which every caller treats as false. `run` must be a read (it may be called twice).
+ */
+const REQUIRE_CARD_COL = 'require_card, card_checkout_failed_at'; // both come from 042 together
+let requireCardWarned = false;
+export function isMissingRequireCard(e: PgError): boolean {
+  if (!e) return false;
+  const text = `${e.message ?? ''} ${e.details ?? ''}`;
+  return (e.code === '42703' || e.code === 'PGRST204' || e.code === 'PGRST200') && /require_card|card_checkout_failed_at/.test(text);
+}
+// Until 042 is applied every shop read would fail once before the retry: remember "missing" per process for a minute (then probe
+// again, so the column is picked up within a minute of the migration).
+export const REQUIRE_CARD_MISSING_TTL_MS = 60_000;
+let requireCardMissingUntil = 0;
+/** Test hook: forget the cached "column missing" answer and the one-time warning. */
+export function resetRequireCardProbe(): void {
+  requireCardMissingUntil = 0;
+  requireCardWarned = false;
+}
+async function withRequireCard<R extends { error: PgError }>(run: (cols: string) => PromiseLike<R>): Promise<R> {
+  if (Date.now() < requireCardMissingUntil) return withSiteCols(SHOP_COLS, run);
+  const first = await withSiteCols(`${SHOP_COLS}, ${REQUIRE_CARD_COL}`, run);
+  if (!isMissingRequireCard(first.error)) return first;
+  requireCardMissingUntil = Date.now() + REQUIRE_CARD_MISSING_TTL_MS;
+  if (!requireCardWarned) {
+    requireCardWarned = true;
+    console.warn('[ab_shops] require_card missing (migration 042 not applied); reading shops without it');
+  }
+  return withSiteCols(SHOP_COLS, run);
+}
 const MEMBER_COLS = 'id, shop_id, user_id, role, display_name, photo_url, bio, sort, active, ics_token';
 const SERVICE_COLS =
   'id, shop_id, name, price_cents, duration_min, description, photo_url, bookable, show_on_site, deposit_type, deposit_value, sort, active';
@@ -355,9 +392,9 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
   };
 
   return {
-    shopBySlug: (slug) => one('shopBySlug', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('slug', slug).maybeSingle())),
-    shopByOwner: (userId) => one('shopByOwner', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('owner_id', userId).maybeSingle())),
-    shopById: (id) => one('shopById', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('id', id).maybeSingle())),
+    shopBySlug: (slug) => one('shopBySlug', withRequireCard((c) => db().from('ab_shops').select(c).eq('slug', slug).maybeSingle())),
+    shopByOwner: (userId) => one('shopByOwner', withRequireCard((c) => db().from('ab_shops').select(c).eq('owner_id', userId).maybeSingle())),
+    shopById: (id) => one('shopById', withRequireCard((c) => db().from('ab_shops').select(c).eq('id', id).maybeSingle())),
     purchase: (otid) =>
       one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),
@@ -488,6 +525,10 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       }
       if (error) fail('insertShop', error);
       return { ok: true, row: data as unknown as ShopRow };
+    },
+    async markCardCheckoutFailed(shopId, atIso) {
+      const { error } = await db().from('ab_shops').update({ card_checkout_failed_at: atIso }).eq('id', shopId);
+      if (error) fail('markCardCheckoutFailed', error);
     },
     async setShopOtid(shopId, otid) {
       const { error } = await db().from('ab_shops').update({ ios_otid: otid }).eq('id', shopId);

@@ -80,7 +80,7 @@ export interface StripeOpts {
 }
 
 export class StripeApiError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string, readonly type?: string) {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly type?: string, readonly param?: string) {
     super(message);
     this.name = 'StripeApiError';
   }
@@ -136,7 +136,7 @@ export async function stripeRequest(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = json?.error ?? {};
-    throw new StripeApiError(err.message || `Stripe ${method} ${path} failed`, res.status, err.code, err.type);
+    throw new StripeApiError(err.message || `Stripe ${method} ${path} failed`, res.status, err.code, err.type, typeof err.param === 'string' ? err.param : undefined);
   }
   return json;
 }
@@ -434,10 +434,12 @@ export interface AccountStatus {
   pendingVerification: number;
   /** Additive: requirements.disabled_reason (e.g. requirements.pending_verification, requirements.past_due, under_review, rejected.fraud), or null. */
   disabledReason: string | null;
+  /** Additive: the account's payout schedule (settings.payouts.schedule.interval: 'manual' | 'daily' | 'weekly' | 'monthly'), or null when Stripe did not say. Read only, never written. */
+  payoutInterval: string | null;
 }
 
 export const NO_ACCOUNT_STATUS: AccountStatus = {
-  connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null,
+  connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null,
 };
 
 const reqCount = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -454,6 +456,8 @@ export async function fetchAccountStatus(accountId: string, opts: StripeOpts = {
       currentlyDue: new Set([...reqCount(r?.currently_due), ...reqCount(r?.past_due)]).size,
       pendingVerification: reqCount(r?.pending_verification).length,
       disabledReason: typeof r?.disabled_reason === 'string' && r.disabled_reason ? r.disabled_reason : null,
+      // Standard accounts expose settings.payouts.schedule on the same GET; read it defensively (the shape is not guaranteed).
+      payoutInterval: typeof a?.settings?.payouts?.schedule?.interval === 'string' && a.settings.payouts.schedule.interval ? a.settings.payouts.schedule.interval : null,
     };
   } catch (e) {
     if (e instanceof StripeApiError && (e.status === 403 || e.status === 404)) {
@@ -461,6 +465,22 @@ export async function fetchAccountStatus(accountId: string, opts: StripeOpts = {
     }
     throw e;
   }
+}
+
+/**
+ * For a shop that requires card: one GET of its connected account after a checkout failure, storing charges_enabled the same
+ * way the account.updated webhook does when it differs. Read-only on Stripe. null = Stripe did not say (no account, access
+ * revoked 403/404 which reads as not connected: never change anything then); throws when Stripe is unreachable.
+ */
+export async function refreshChargesEnabled(shop: { id: string; stripe_account_id: string | null; stripe_charges_enabled: boolean }, db: SupabaseClient = serviceDb(), opts: StripeOpts = {}): Promise<boolean | null> {
+  if (!shop.stripe_account_id) return null;
+  const s = await fetchAccountStatus(shop.stripe_account_id, opts);
+  if (!s.connected) return null;
+  if (s.chargesEnabled !== shop.stripe_charges_enabled) {
+    const { error } = await db.from('ab_shops').update({ stripe_charges_enabled: s.chargesEnabled }).eq('stripe_account_id', shop.stripe_account_id);
+    if (error) dbFail('refreshChargesEnabled', error);
+  }
+  return s.chargesEnabled;
 }
 
 // ---------------------------------------------------------------------------

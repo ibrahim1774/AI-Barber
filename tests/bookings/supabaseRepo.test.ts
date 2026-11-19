@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { supabaseBookingRepo } from '../../lib/bookings/repo.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { supabaseBookingRepo, resetRequireCardProbe, REQUIRE_CARD_MISSING_TTL_MS } from '../../lib/bookings/repo.js';
 
 /** Minimal chainable stand-in for supabase-js: every call is recorded, awaiting resolves `result`. */
 function fakeClient(result: { data: unknown; error: unknown }) {
@@ -104,5 +104,84 @@ describe('supabaseBookingRepo', () => {
   it("a site row of another user is 'foreign'", async () => {
     const { client } = fakeClient({ data: { user_id: 'other', deployed_url: 'https://x.vercel.app' }, error: null });
     expect(await supabaseBookingRepo(client).siteDeployedUrl('site', 'me')).toBe('foreign');
+  });
+});
+
+describe('shop reads and the require_card column (migration 042)', () => {
+  beforeEach(() => { resetRequireCardProbe(); vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('remembers "column missing" for 60 seconds, then probes again and picks the column up', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-19T12:00:00Z'));
+    const missingErr = { code: '42703', message: 'column ab_shops.require_card does not exist' };
+    const m = shopClient('require_card', missingErr);
+    const repo = supabaseBookingRepo(m.client);
+    await repo.shopById('a');                      // probe fails, retried without
+    expect(m.selects).toHaveLength(2);
+    await repo.shopById('a'); await repo.shopBySlug('s');
+    expect(m.selects).toHaveLength(4);             // cached: one query each, none naming require_card
+    expect(m.selects.slice(2).every((c) => !c.includes('require_card'))).toBe(true);
+    vi.setSystemTime(new Date(Date.now() + REQUIRE_CARD_MISSING_TTL_MS - 1));
+    await repo.shopById('a');
+    expect(m.selects).toHaveLength(5);             // still cached just before the minute
+    vi.setSystemTime(new Date(Date.now() + 2));
+    const ok = shopClient(null, null);             // 042 applied now
+    const row = await supabaseBookingRepo(ok.client).shopById('a');
+    expect(ok.selects[0]).toContain('require_card'); // probes again after the minute
+    expect(row).toMatchObject({ require_card: true });
+  });
+
+  /** A client whose select() fails with the given error while the column list names `bad`, else returns the row. */
+  function shopClient(bad: string | null, error: unknown) {
+    const selects: string[] = [];
+    let cols = '';
+    const chain: any = new Proxy({}, {
+      get(_t, prop: string) {
+        if (prop === 'then') return undefined;
+        if (prop === 'select') return (c: string) => { selects.push(c); cols = c; return chain; };
+        if (prop === 'maybeSingle') return () => Promise.resolve(bad && cols.includes(bad) ? { data: null, error } : { data: { id: 'shop-1', ...(cols.includes('require_card') ? { require_card: true } : {}) }, error: null });
+        return () => chain;
+      },
+    });
+    return { client: { from: () => chain } as any, selects };
+  }
+  const missing = (code: string) => ({ code, message: code === 'PGRST204' ? "Could not find the 'require_card' column of 'ab_shops' in the schema cache" : 'column ab_shops.require_card does not exist' });
+
+  it('reads require_card when the column exists', async () => {
+    const { client, selects } = shopClient(null, null);
+    expect(await supabaseBookingRepo(client).shopBySlug('x')).toEqual({ id: 'shop-1', require_card: true });
+    expect(selects).toHaveLength(1);
+    expect(selects[0]).toContain('require_card');
+  });
+  for (const code of ['42703', 'PGRST204']) {
+    it(`reads the shop without it when the column is missing (${code}): require_card is absent, i.e. false`, async () => {
+      const { client, selects } = shopClient('require_card', missing(code));
+      const row = await supabaseBookingRepo(client).shopById('id');
+      expect(row).toEqual({ id: 'shop-1' });
+      expect(selects).toHaveLength(2);
+      expect(selects[1]).not.toContain('require_card');
+      expect(selects[1]).toContain('site_look'); // the 011 fallback still applies
+    });
+  }
+  it('either 042 column missing counts as "not applied" (fallback and cache)', async () => {
+    const { client, selects } = shopClient('card_checkout_failed_at', { code: '42703', message: 'column ab_shops.card_checkout_failed_at does not exist' });
+    expect(await supabaseBookingRepo(client).shopBySlug('x')).toEqual({ id: 'shop-1' });
+    expect(selects[0]).toContain('card_checkout_failed_at');
+    expect(selects[1]).not.toContain('card_checkout_failed_at');
+    expect(selects[1]).not.toContain('require_card');
+  });
+
+  it('markCardCheckoutFailed updates only that shop and throws on error', async () => {
+    const ok = fakeClient({ data: null, error: null });
+    await supabaseBookingRepo(ok.client).markCardCheckoutFailed!('shop-1', '2026-11-02T12:00:00.000Z');
+    expect(ok.calls).toEqual(expect.arrayContaining([['update', [{ card_checkout_failed_at: '2026-11-02T12:00:00.000Z' }]], ['eq', ['id', 'shop-1']]]));
+    const bad = fakeClient({ data: null, error: { code: '42703', message: 'column does not exist' } });
+    await expect(supabaseBookingRepo(bad.client).markCardCheckoutFailed!('s', 'x')).rejects.toThrow('column does not exist');
+  });
+
+  it('an unrelated error still throws (no silent retry)', async () => {
+    const { client, selects } = shopClient('require_card', { code: '42501', message: 'permission denied for table ab_shops' });
+    await expect(supabaseBookingRepo(client).shopByOwner('u')).rejects.toThrow('permission denied');
+    expect(selects).toHaveLength(1);
   });
 });

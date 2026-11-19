@@ -221,13 +221,15 @@ export function cardChargeCents(service: Pick<Service, 'priceCents' | 'depositCe
  * price with no deposit). That can leave nothing, for a card-only shop: the caller then asks
  * the customer to call the shop rather than offering a choice the server would refuse.
  */
-export function payOptions(pay: Shop['pay'], service?: Pick<Service, 'priceCents' | 'depositCents'> | null): PayKind[] {
+export function payOptions(pay: Shop['pay'], service?: Pick<Service, 'priceCents' | 'depositCents' | 'cardOnly'> | null): PayKind[] {
   const out: PayKind[] = [];
   if (pay.inShop) out.push('shop');
   if (pay.card) out.push('card');
   if (manualMethods(pay.manual).length) out.push('manual');
   const base: PayKind[] = out.length ? out : ['shop'];
   if (service && cardChargeCents(service) < CARD_MIN_CENTS) return base.filter((o) => o !== 'card');
+  // The shop requires card for this service: card is the only choice (pay in shop and the manual methods are hidden).
+  if (service?.cardOnly && base.includes('card')) return ['card'];
   return base;
 }
 type PayKind = 'shop' | 'card' | 'manual';
@@ -310,10 +312,67 @@ export function serviceLabel(s: Service, cardOn = true): string {
   return [formatMoney(s.priceCents), `${s.durationMin} min`, dep ? `${formatMoney(dep)} deposit` : ''].filter(Boolean).join(' · ');
 }
 
-/** Price (or "Price at shop" only when there is no price) plus the deposit due now, e.g. "$30 · $10 deposit due now". */
-export function priceWithDeposit(s: Pick<Service, 'priceCents' | 'depositCents'>, cardOn = true): string {
+/**
+ * Price (or "Price at shop" only when there is no price), the deposit due now and what is left for the shop, e.g.
+ * "$45 · $22.50 deposit now · $22.50 at the shop". The "at the shop" part appears only when `uniformPrice` is true (no barber
+ * overrides the price); otherwise the base price may not be what the chosen barber charges, so no balance is claimed.
+ */
+export function priceWithDeposit(s: Pick<Service, 'priceCents' | 'depositCents' | 'uniformPrice'>, cardOn = true): string {
   const dep = shownDeposit(s, cardOn);
-  return [formatMoney(s.priceCents) || 'Price at shop', dep ? `${formatMoney(dep)} deposit due now` : ''].filter(Boolean).join(' · ');
+  // The balance is only claimed when it is certain: no barber has their own price for this service.
+  const left = dep > 0 && s.priceCents != null && s.uniformPrice === true ? s.priceCents - dep : 0;
+  return [
+    formatMoney(s.priceCents) || 'Price at shop',
+    dep ? `${formatMoney(dep)} deposit now` : '',
+    left > 0 ? `${formatMoney(left)} at the shop` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/** The card row's second line: "$22.50 deposit now, secure checkout" / "Card or Apple Pay, secure checkout". */
+export function cardRowDetail(s: Pick<Service, 'priceCents' | 'depositCents'>, cardOn = true): string {
+  const dep = shownDeposit(s, cardOn);
+  return `${dep > 0 ? `${formatMoney(dep)} deposit now` : 'Card or Apple Pay'}, secure checkout`;
+}
+
+/** Is this service card-only for the chosen barber? ('any' relies on `cardOnly`, i.e. every barber is card-required.) */
+export function cardOnlyFor(s: Pick<Service, 'cardOnly' | 'cardOnlyMemberIds'>, memberId: string, forced = false): boolean {
+  if (forced || s.cardOnly) return true;
+  return memberId !== 'any' && !!s.cardOnlyMemberIds?.includes(memberId);
+}
+
+/** The key a server-forced card-only decision is remembered under: the service AND the chosen barber. */
+export const forcedKey = (serviceId: string, memberId: string) => `${serviceId}:${memberId}`;
+
+export const CARD_REQUIRED_NOTE = 'Booking this service needs card payment.';
+export const CARD_REQUIRED_ERROR = 'This booking needs card payment. Please pay online by card.';
+export const CARD_ONLY_UNAVAILABLE = "Card payments aren't available right now. Please try again in a few minutes or call the shop.";
+
+export interface ManagePaymentInput {
+  status: string;
+  paymentStatus: string;
+  priceCents: number | null;
+  amountPaidCents: number;
+  amountRefundedCents?: number;
+}
+
+/**
+ * The rows under "Price" on the manage page, from the amounts stored on the booking (never the service's current price).
+ * Mirrors paymentSummary in lib/bookings/money.ts (the page does not import lib/); both are held to one case table.
+ */
+export function paymentRows(i: ManagePaymentInput): [string, string][] {
+  const paid = Math.max(0, i.amountPaidCents || 0);
+  const refunded = Math.max(0, i.amountRefundedCents || 0);
+  const price = i.priceCents == null ? null : Math.max(0, i.priceCents);
+  const due = (net: number): [string, string][] => {
+    const left = price == null ? 0 : price - net;
+    return i.status === 'booked' && left > 0 ? [['Due at the shop', formatMoney(left)]] : [];
+  };
+  if (i.paymentStatus === 'deposit' && price != null && paid > 0) return [['Paid', `${formatMoney(paid)} deposit`], ...due(paid)];
+  if (i.paymentStatus === 'refunded' && refunded > 0) return [['Refunded', formatMoney(refunded)]];
+  if (i.paymentStatus === 'partially_refunded' && paid > 0 && refunded > 0) {
+    return [['Paid', `${formatMoney(paid)} · ${formatMoney(refunded)} refunded`]]; // never a due row: a refund is not a balance
+  }
+  return paid > 0 ? [['Paid', formatMoney(paid)]] : [];
 }
 
 /** The line under "Cancel this booking?". A refund line only when money was taken: "No payment will be refunded." is for a captured payment the shop keeps. */
@@ -356,15 +415,17 @@ export type ErrLike = { status: number; code: string; field?: string; serverMess
 export const RATE_LIMITED_FALLBACK = 'Too many bookings right now. Please try again in a few minutes.';
 
 /** Plain-words message for a failed booking create, or null when the caller has special handling (paused, slot-taken). */
-export function bookingErrorMessage(e: ErrLike): string {
+export function bookingErrorMessage(e: ErrLike, opts: { cardOnly?: boolean } = {}): string {
   if (e.status === 429 || e.code === 'rate-limited') return e.serverMessage?.trim() || RATE_LIMITED_FALLBACK;
   if (e.status === 409 && e.code === 'duplicate') return 'You already have a booking at that time. Check your email for the manage link.';
   if (e.status === 409) return 'Sorry, that time was just taken.';
+  if (e.status === 400 && e.code === 'card-required') return CARD_REQUIRED_ERROR;
   if (e.status === 400 && e.field === 'method') return 'Please choose how you want to send payment.';
   if (e.status === 400) return `Please check your ${e.field || 'details'}.`;
   if (e.status === 404) return 'This shop is no longer available.';
   if (e.status === 423 || e.code === 'bookings-paused') return "This shop isn't taking online bookings right now.";
-  if (e.status === 502 && e.code === 'payment-unavailable') return "Card payments aren't available right now. Please choose another way to pay.";
+  // A card-only service has no other way to pay, so don't point at one.
+  if (e.status === 502 && e.code === 'payment-unavailable') return opts.cardOnly ? CARD_ONLY_UNAVAILABLE : "Card payments aren't available right now. Please choose another way to pay.";
   return 'Something went wrong. Please try again.';
 }
 

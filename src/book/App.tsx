@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, shownDeposit, cancelNote, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, cardRowDetail, paymentRows, CARD_REQUIRED_NOTE, cardOnlyFor, forcedKey, cancelNote, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -45,7 +45,7 @@ type Loaded = Extract<ShopResponse, { paused: false }>;
 function BookPage({ api, slug, loadSlug, search }: { api: Api; slug: string | null; loadSlug: () => Promise<string | null>; search: string }) {
   const [data, setData] = useState<ShopResponse | null>(null);
   const [error, setError] = useState<'not-found' | 'failed' | null>(null);
-  useEffect(() => {
+  const load = (quiet = false) => {
     // On the barber's own site (/book) the slug comes from the site's config.
     (slug ? Promise.resolve(slug) : loadSlug()).then((s) => {
       if (!s) { setError('not-found'); return; }
@@ -54,16 +54,17 @@ function BookPage({ api, slug, loadSlug, search }: { api: Api; slug: string | nu
         applySite(d.site, d.paused ? null : (d as Loaded).shop.accent, 'book');
         if (!d.paused) document.title = `Book at ${(d as Loaded).shop.name}`;
       });
-    }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
-  }, [slug]);
+    }).catch((e) => { if (!quiet) setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'); });
+  };
+  useEffect(() => { load(); }, [slug]);
   if (error === 'not-found') return <Shell><Message title="Shop not found" body="This booking link isn't active." /></Shell>;
   if (error) return <Shell><Message title="Something went wrong" body="Please refresh and try again." /></Shell>;
   if (!data) return <Shell><Spinner /></Shell>;
   if (data.paused) return <Shell><Message title={data.shop.name} body="Bookings are paused for now — call the shop." /></Shell>;
-  return <Shell><Flow api={api} d={data as Loaded} search={search} /></Shell>;
+  return <Shell><Flow api={api} d={data as Loaded} search={search} reload={() => load(true)} /></Shell>;
 }
 
-function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string }) {
+function Flow({ api, d, search = '', reload = () => {} }: { api: Api; d: Loaded; search?: string; reload?: () => void }) {
   const { shop, services, members } = d;
   // ?barber=<uuid> from a team card: only a member of this shop counts, else 'any'.
   const preferred = useMemo(() => barberFromSearch(search, members), [search, members]);
@@ -81,9 +82,14 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
   const [done, setDone] = useState<{ appt: BookedAppointment; method: ManualMethod | null } | null>(null);
 
   const elig = eligibleMembers(members, service?.id ?? null);
-  const options = payOptions(shop.pay, service);
+  // A card-required refusal from the server marks this service + barber card-only for the rest of the visit, so the
+  // customer is never stuck on options the server will refuse. Keyed by service AND barber (another barber may differ).
+  const [forcedCard, setForcedCard] = useState<string[]>([]);
+  const cardOnly = !!service && cardOnlyFor(service, memberId, forcedCard.includes(forcedKey(service.id, memberId)));
+  const options = payOptions(shop.pay, service ? { ...service, cardOnly } : service);
   // One payment row per manual method, so a shop with several handles always reaches the payment step.
-  const mm = manualMethods(shop.pay.manual);
+  // Card-only services hide the manual rows (options then has no 'manual').
+  const mm = options.includes('manual') ? manualMethods(shop.pay.manual) : [];
   const rowCount = options.filter((o) => o !== 'manual').length + mm.length;
   const ctx = { barberCount: elig.length, payOptionCount: rowCount };
   const go = (s: Step) => { setProblem(null); setAlts([]); setStep(s); };
@@ -109,8 +115,24 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
         setProblem('Sorry, that time was just taken.'); setAlts(e.alternatives);
         if (!e.alternatives.length) setStep('time');
       } else {
-        setProblem(bookingErrorMessage(e));
-        if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
+        // cardOff / payOtherWay: the server found cards off at Stripe, or opened the other ways to pay for a few minutes.
+        const cardOff = e.status === 502 && (e.body?.cardOff === true || e.body?.payOtherWay === true);
+        // cardOff: the server found card payments switched off at Stripe: the other ways to pay are open again.
+        setProblem(bookingErrorMessage(e, { cardOnly: cardOnly && !cardOff }));
+        const key = forcedKey(service.id, memberId);
+        if (e.code === 'card-required') {
+          setForcedCard((f) => (f.includes(key) ? f : [...f, key]));
+          if (!shop.pay.card) reload(); // stale payload (card is off now): fetch the current options
+          setStep('payment');
+        } else if (cardOff) {
+          setForcedCard((f) => f.filter((k) => k !== key)); // the reloaded payload decides again
+          reload(); setStep('payment');
+        } else if (e.status === 400 && e.field === 'pay') {
+          // The server refused this way to pay for this barber (e.g. their own price is under the card minimum): start the
+          // payment step over with everything the payload allows.
+          setForcedCard((f) => f.filter((k) => k !== key));
+          setStep('payment');
+        } else if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
       }
     } finally { setBusy(false); }
   }
@@ -183,6 +205,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
       {step === 'details' && service && slot && <>
         <h2>Your details</h2>
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
+        {cardOnly && options.includes('card') && <p className="note" role="status">{CARD_REQUIRED_NOTE}</p>}
         {options.length > 0 && <DetailsForm cust={cust} setCust={setCust} busy={busy}
           submitLabel={ctx.payOptionCount > 1 ? 'Continue' : options[0] === 'card' ? 'Continue to payment' : 'Book'}
           onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0], options[0] === 'manual' ? mm[0] : undefined); }} />}
@@ -192,7 +215,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
         <h2>How would you like to pay?</h2>
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
         {options.includes('shop') && <button className="row" disabled={busy} onClick={() => submit('shop')}><span className="grow"><div className="t">Pay in shop</div><div className="m">Settle up at your appointment</div></span></button>}
-        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{shownDeposit(service, shop.pay.card) > 0 ? `${formatMoney(shownDeposit(service, shop.pay.card))} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
+        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{cardRowDetail(service, shop.pay.card)}</div></span></button>}
         {options.includes('manual') && manualMethods(shop.pay.manual).map((m) => <button key={m} className="row" disabled={busy} onClick={() => submit('manual', m)}><span className="grow"><div className="t">{METHOD_LABEL[m]}</div><div className="m">Book now, then send payment</div></span></button>)}
         {busy && <Spinner />}
         {altsBlock}
@@ -347,7 +370,8 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
           <div><span>When</span><span>{formatWhen(a.start, tz)}</span></div>
           <div><span>Barber</span><span>{a.memberName}</span></div>
           {a.priceCents != null && <div><span>Price</span><span>{formatMoney(a.priceCents)}</span></div>}
-          {a.amountPaidCents > 0 && <div><span>Paid</span><span>{formatMoney(a.amountPaidCents)}</span></div>}
+          {paymentRows({ status: mode === 'cancelled' ? 'cancelled' : a.status, paymentStatus: a.paymentStatus, priceCents: a.priceCents, amountPaidCents: a.amountPaidCents, amountRefundedCents: a.amountRefundedCents })
+            .map(([k, v]) => <div key={k}><span>{k}</span><span>{v}</span></div>)}
           {a.shop.address && <div><span>Where</span><span>{a.shop.address}</span></div>}
         </div>
         {mode === 'view' && live && <>

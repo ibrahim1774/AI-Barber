@@ -19,6 +19,12 @@ export type Service = {
   description: string | null;
   photoUrl: string | null;
   depositCents: number;
+  /** The shop requires card payment for this service (absent from an older server). */
+  cardOnly?: boolean;
+  /** Only these barbers are card-required (their own prices differ); omitted when none or when cardOnly is true. */
+  cardOnlyMemberIds?: string[];
+  /** No barber overrides this service's price, so priceCents is what every booking pays. Absent = unknown. */
+  uniformPrice?: boolean;
 };
 export type Member = {
   id: string;
@@ -61,6 +67,8 @@ export type ManageAppointment = {
   memberName: string;
   priceCents: number | null;
   amountPaidCents: number;
+  /** Absent from an older server. */
+  amountRefundedCents?: number;
   paymentStatus: string;
   shop: { name: string; slug: string; address: string | null; phone: string | null; timezone: string };
 };

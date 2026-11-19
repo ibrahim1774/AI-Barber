@@ -32,7 +32,7 @@ describe('GET /api/book/shop', () => {
     expect(b.paused).toBe(false);
     expect(b.shop).toMatchObject({ slug: 'fresh-cuts', name: 'Fresh Cuts', timezone: 'America/New_York', address: '1 Main St', cancelCutoffMin: 120 });
     expect(b.shop.pay).toEqual({ inShop: true, card: false, manual: { cashapp: '$fresh' } });
-    expect(b.services).toEqual([{ id: w.ids.cut, name: 'Haircut', priceCents: 3000, durationMin: 30, description: null, photoUrl: null, depositCents: 0 }]);
+    expect(b.services).toEqual([{ id: w.ids.cut, name: 'Haircut', priceCents: 3000, durationMin: 30, description: null, photoUrl: null, depositCents: 0, cardOnly: false, uniformPrice: true }]);
     expect(b.members.map((m: any) => [m.name, m.serviceIds])).toEqual([['Mike', null], ['Jay', null]]);
   });
 
@@ -453,7 +453,7 @@ describe('manage by token', () => {
       appointment: {
         id: a.id, start: T10, end: '2026-11-03T15:30:00.000Z', status: 'booked',
         serviceId: w.ids.cut, serviceName: 'Haircut', memberId: w.ids.mike, memberName: 'Mike',
-        priceCents: 3000, amountPaidCents: 0, paymentStatus: 'none',
+        priceCents: 3000, amountPaidCents: 0, amountRefundedCents: 0, paymentStatus: 'none',
         shop: { name: 'Fresh Cuts', slug: 'fresh-cuts', address: '1 Main St', phone: null, timezone: 'America/New_York' },
       },
       canCancel: true, canReschedule: true, refundCentsIfCancelled: 0,
