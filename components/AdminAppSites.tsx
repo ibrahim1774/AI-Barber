@@ -119,6 +119,7 @@ const WebOwnerPanel: React.FC = () => {
   };
   const runFree = async (action: 'grant-free' | 'revoke-free') => {
     if (!email.trim()) return;
+    if (action === 'grant-free' && !window.confirm(`Put ${email.trim()} in the Free group? Their iOS app will treat them as a web account (no Apple paywall) once FREE_IS_WEB is on.`)) return;
     if (action === 'revoke-free' && !window.confirm(`Take ${email.trim()} out of the Free group? Their published site (if any) stays up.`)) return;
     setBusy(true);
     setMsg(null);

@@ -223,12 +223,20 @@ describe('mayTake with ONE_SITE_GUARD=1', () => {
     purchase: async () => ({ original_transaction_id: 'NEW', user_id: null, environment: 'Production' }) as any,
     purchaseOfSlug: async () => null,
   });
-  it('switch on: a Free account with no site is refused web-account (enforced tie point: refuse)', async () => {
+  it('switch on: a Free account with no site is ALLOWED (an older phone still ties its Apple purchase, exactly as on origin/main)', async () => {
     vi.stubEnv('FREE_IS_WEB', '1');
-    expect(await mayTakePurchase(UID, 'NEW', world(true))).toMatchObject({ may: false, reason: 'web-account', kind: 'web', slug: null });
+    expect(await mayTakePurchase(UID, 'NEW', world(true))).toEqual({ may: true });
     const report = vi.fn(async () => {});
     const d = await checkTie(UID, 'NEW', 'test', { mode: () => guardMode({ ONE_SITE_GUARD: '1' }), mayTake: (u, o) => mayTakePurchase(u, o, world(true)), report });
-    expect(d).toMatchObject({ action: 'refuse', reason: 'web-account' });
+    expect(d).toEqual({ action: 'allow' });
+    expect(report).not.toHaveBeenCalled();
+  });
+  it('switch on: Free + published site and Free + card plan are still refused web-account, as today', async () => {
+    vi.stubEnv('FREE_IS_WEB', '1');
+    const w1 = world(true); w1.kindDeps.webSites = async () => [published];
+    expect(await mayTakePurchase(UID, 'NEW', w1)).toMatchObject({ may: false, reason: 'web-account', slug: 'cuts' });
+    const w2 = world(true); w2.kindDeps.entitlements = async () => [card];
+    expect(await mayTakePurchase(UID, 'NEW', w2)).toMatchObject({ may: false, reason: 'web-account' });
   });
   it('switch off: allowed as today', async () => {
     expect(await mayTakePurchase(UID, 'NEW', world(true))).toEqual({ may: true });
@@ -281,6 +289,14 @@ describe('routes for a Free account with no site (ACCOUNT_PLAN_V2=1, FREE_IS_WEB
     expect(w.log.user).toBe(1);
     expect(w.log.priceGroupDeleted).toBe(1);
     expect(w.log.stripe.filter((c) => c.startsWith('DELETE'))).toEqual([]);
+  });
+  it('delete with Stripe down: refused 500 delete-failed, nothing deleted (a web sign-up with no subscription, as on origin/main)', async () => {
+    const stripe = (await import('../../lib/webApp/webAppServer.js')).stripeCall as any;
+    stripe.mockImplementation(async (path: string, _b: unknown, method = 'POST') => { w.log.stripe.push(`${method} ${path.split('?')[0]}`); throw new Error('stripe down'); });
+    const r = await post(iosDelete);
+    expect(r.code).toBe(500);
+    expect(r.body).toMatchObject({ error: 'delete-failed' });
+    expect([w.log.user, w.log.priceGroupDeleted]).toEqual([0, 0]);
   });
   it('take offline: 404 no-site, nothing taken down', async () => {
     const r = await post(iosTakeOffline, {});

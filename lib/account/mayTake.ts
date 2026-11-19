@@ -47,7 +47,9 @@ export async function mayTakePurchase(uid: string, otid: string, deps: MayTakeDe
   // The SAME environment tryTake uses for this purchase (tx.environment): a Sandbox purchase is judged against Sandbox rows, a Production one against
   // Production rows. Web tables map Production -> live, Sandbox -> test inside loadKindFacts. No dependence on the deployment's Stripe key.
   const env: KindEnv = environment ?? deps.env();
-  const facts = await loadKindFacts(uid, env, deps.kindDeps);
+  // Free alone never refuses a purchase: the decision reads the real web facts only (published address, card plan), so isFree is left out here.
+  // A Free account with no site ties an Apple purchase exactly as before FREE_IS_WEB (it then becomes an Apple account).
+  const facts = await loadKindFacts(uid, env, { ...deps.kindDeps, isFree: undefined });
   const reading = readKind(facts);
   const row = await deps.address(uid, env);
   const webSlug = facts.webSites.find((s) => !!s.published_at)?.slug ?? (row?.holder === 'web' && row.published_once ? row.slug : null);
