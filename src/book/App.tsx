@@ -115,7 +115,8 @@ function Flow({ api, d, search = '', reload = () => {} }: { api: Api; d: Loaded;
         setProblem('Sorry, that time was just taken.'); setAlts(e.alternatives);
         if (!e.alternatives.length) setStep('time');
       } else {
-        const cardOff = e.status === 502 && e.body?.cardOff === true;
+        // cardOff / payOtherWay: the server found cards off at Stripe, or opened the other ways to pay for a few minutes.
+        const cardOff = e.status === 502 && (e.body?.cardOff === true || e.body?.payOtherWay === true);
         // cardOff: the server found card payments switched off at Stripe: the other ways to pay are open again.
         setProblem(bookingErrorMessage(e, { cardOnly: cardOnly && !cardOff }));
         const key = forcedKey(service.id, memberId);
@@ -124,6 +125,7 @@ function Flow({ api, d, search = '', reload = () => {} }: { api: Api; d: Loaded;
           if (!shop.pay.card) reload(); // stale payload (card is off now): fetch the current options
           setStep('payment');
         } else if (cardOff) {
+          setForcedCard((f) => f.filter((k) => k !== key)); // the reloaded payload decides again
           reload(); setStep('payment');
         } else if (e.status === 400 && e.field === 'pay') {
           // The server refused this way to pay for this barber (e.g. their own price is under the card minimum): start the

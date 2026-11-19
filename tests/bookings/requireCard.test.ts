@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createAppointment, getShop, getManage } from '../../lib/bookings/publicFlow.js';
-import { cardRequired, STRIPE_MIN_CENTS } from '../../lib/bookings/core.js';
+import { cardRequired, cardCheckoutRecentlyFailed, inShopAllowed, CARD_FAILURE_WINDOW_MS, STRIPE_MIN_CENTS } from '../../lib/bookings/core.js';
 import { makeShop, makeService, world } from './fakeRepo.js';
 
 const T10 = '2026-11-03T15:00:00.000Z';
@@ -109,21 +109,21 @@ describe('require_card on', () => {
       expect((await book(w)).status).toBe(201);
     });
 
-    it('Stripe unreachable: plain 502 (no hint), nothing changed', async () => {
+    it('Stripe unreachable: stored status untouched, 502 with payOtherWay (the 10-minute window opens)', async () => {
       const w = mk();
       refreshable(w, new Error('stripe unreachable'));
       w.payments.createCardCheckout.mockRejectedValueOnce(new Error('stripe down'));
-      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable', payOtherWay: true } });
       expect(w.state.shops[0].stripe_charges_enabled).toBe(true);
-      expect((await book(w)).body).toEqual({ error: 'card-required', field: 'pay' });
+      expect((await book(w)).status).toBe(201);
     });
 
-    it('Stripe says cards are still on, or says nothing: plain 502', async () => {
+    it('Stripe says cards are still on, or says nothing: payOtherWay', async () => {
       for (const result of [true, null]) {
         const w = mk();
         refreshable(w, result);
         w.payments.createCardCheckout.mockRejectedValueOnce(new Error('transient'));
-        expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+        expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable', payOtherWay: true } });
       }
     });
 
@@ -223,5 +223,91 @@ describe('require_card on', () => {
     const tok = w.state.appointments[0].manage_token;
     expect(r.status).toBe(201);
     expect(((await getManage({ token: tok }, w.deps)).body as any).appointment.amountRefundedCents).toBe(0);
+  });
+});
+
+describe('failed card checkout with cards still on: a short window for the other pay options', () => {
+  const stripeOn = (w: ReturnType<typeof world>, result: boolean | null | Error = true) => {
+    (w.payments as any).refreshChargesEnabled = vi.fn(async () => { if (result instanceof Error) throw result; return result; });
+  };
+  const fail = (w: ReturnType<typeof world>, e: any = new Error('stripe 500')) => w.payments.createCardCheckout.mockRejectedValueOnce(e);
+  const stamp = (w: ReturnType<typeof world>) => w.state.shops[0].card_checkout_failed_at;
+
+  it('opens: 502 payOtherWay, timestamp stored, cardOnly false, pay in shop books', async () => {
+    const w = mk(); stripeOn(w, true); fail(w);
+    expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable', payOtherWay: true } });
+    expect(stamp(w)).toBe('2026-11-02T12:00:00.000Z');
+    expect(await cardOnlyOf(w)).toBe(false);
+    expect((await book(w)).status).toBe(201);
+  });
+
+  it('also opens when Stripe cannot be asked (refresh null or throws)', async () => {
+    for (const r of [null, new Error('unreachable')]) {
+      const w = mk(); stripeOn(w, r as any); fail(w);
+      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable', payOtherWay: true } });
+      expect((await book(w)).status).toBe(201);
+    }
+  });
+
+  it('closes after 10 minutes: card is required again', async () => {
+    const w = mk(); stripeOn(w, true); fail(w);
+    await book(w, { pay: 'card' });
+    w.setNow('2026-11-02T12:09:59Z');
+    expect(await cardOnlyOf(w)).toBe(false);
+    w.setNow('2026-11-02T12:10:01Z');
+    expect(await cardOnlyOf(w)).toBe(true);
+    expect((await book(w)).body).toEqual({ error: 'card-required', field: 'pay' });
+    expect(CARD_FAILURE_WINDOW_MS).toBe(600_000);
+  });
+
+  it('a shop with pay in shop off and no handles: the window lets pay in shop through (inShopAllowed)', async () => {
+    const w = mk({ pay_in_shop: false, manual_handles: {} }); stripeOn(w, true); fail(w);
+    const before = ((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).shop.pay.inShop;
+    expect(before).toBe(false);
+    await book(w, { pay: 'card' });
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).shop.pay.inShop).toBe(true);
+    expect((await book(w)).status).toBe(201);
+    w.setNow('2026-11-02T12:11:00Z');
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).shop.pay.inShop).toBe(false);
+  });
+
+  it('no timestamp on success, on cardOff, or without the flag', async () => {
+    const w1 = mk(); stripeOn(w1, true);
+    expect((await book(w1, { pay: 'card' })).status).toBe(201);
+    expect(stamp(w1)).toBeUndefined();
+    const w2 = mk(); (w2.payments as any).refreshChargesEnabled = vi.fn(async () => { w2.state.shops[0].stripe_charges_enabled = false; return false; }); fail(w2);
+    expect((await book(w2, { pay: 'card' })).body).toEqual({ error: 'payment-unavailable', cardOff: true });
+    expect(stamp(w2)).toBeUndefined();
+    const w3 = mk({ require_card: false }); stripeOn(w3, true); fail(w3);
+    expect((await book(w3, { pay: 'card' })).body).toEqual({ error: 'payment-unavailable' });
+    expect(stamp(w3)).toBeUndefined();
+  });
+
+  it('a write failure never breaks the 502 (plain 502, no hint)', async () => {
+    const w = mk(); stripeOn(w, true); fail(w);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    (w.deps.repo as any).markCardCheckoutFailed = vi.fn(async () => { throw new Error('column missing'); });
+    expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+    vi.restoreAllMocks();
+  });
+
+  it('abuse: a Stripe 4xx about the customer\'s email never opens the window; a 5xx, network error or account 4xx does', async () => {
+    const stripeErr = (status: number, message: string, code?: string) => Object.assign(new Error(message), { name: 'StripeApiError', status, code });
+    for (const e of [stripeErr(400, 'Invalid email address: a@b', 'email_invalid'), stripeErr(400, 'Invalid customer_email')]) {
+      const w = mk(); stripeOn(w, true); fail(w, e);
+      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+      expect(stamp(w)).toBeUndefined();
+      expect(await cardOnlyOf(w)).toBe(true);
+    }
+    for (const e of [stripeErr(500, 'api error'), stripeErr(0, 'timeout'), stripeErr(403, 'account cannot create sessions'), stripeErr(400, 'This account cannot currently make live charges.'), new TypeError('fetch failed')]) {
+      const w = mk(); stripeOn(w, true); fail(w, e);
+      expect((await book(w, { pay: 'card' })).body).toEqual({ error: 'payment-unavailable', payOtherWay: true });
+    }
+  });
+
+  it('flag off: never touches the column, behaviour as before', async () => {
+    const w = mk({ require_card: false });
+    expect(cardCheckoutRecentlyFailed({ ...w.state.shops[0], card_checkout_failed_at: '2026-11-02T12:00:00Z' }, Date.parse('2026-11-02T12:01:00Z'))).toBe(false);
+    expect(inShopAllowed(w.state.shops[0], Date.parse('2026-11-02T12:01:00Z'))).toBe(true);
   });
 });

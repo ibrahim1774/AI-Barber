@@ -41,7 +41,11 @@ describe('042_require_card.sql', () => {
   it('is additive: one new column, default false, not null', () => {
     expect(s).toMatch(/alter table public\.ab_shops add column if not exists require_card bool not null default false;/);
     expect(s).not.toMatch(/\b(drop|delete|truncate|rename)\b/i);
-    expect((s.match(/\balter table\b/gi) ?? []).length).toBe(1);
+  });
+  it('adds card_checkout_failed_at (nullable timestamptz) with NO grant to authenticated (server-written only)', () => {
+    expect(s).toMatch(/alter table public\.ab_shops add column if not exists card_checkout_failed_at timestamptz null;/);
+    expect(s).not.toMatch(/grant[^;]*card_checkout_failed_at/i);
+    expect((s.match(/\balter table\b/gi) ?? []).length).toBe(2);
   });
   it('lets owners write it through a column grant only', () => {
     expect(s).toMatch(/grant update \(require_card\) on public\.ab_shops to authenticated;/);

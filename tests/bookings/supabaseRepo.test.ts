@@ -163,6 +163,22 @@ describe('shop reads and the require_card column (migration 042)', () => {
       expect(selects[1]).toContain('site_look'); // the 011 fallback still applies
     });
   }
+  it('either 042 column missing counts as "not applied" (fallback and cache)', async () => {
+    const { client, selects } = shopClient('card_checkout_failed_at', { code: '42703', message: 'column ab_shops.card_checkout_failed_at does not exist' });
+    expect(await supabaseBookingRepo(client).shopBySlug('x')).toEqual({ id: 'shop-1' });
+    expect(selects[0]).toContain('card_checkout_failed_at');
+    expect(selects[1]).not.toContain('card_checkout_failed_at');
+    expect(selects[1]).not.toContain('require_card');
+  });
+
+  it('markCardCheckoutFailed updates only that shop and throws on error', async () => {
+    const ok = fakeClient({ data: null, error: null });
+    await supabaseBookingRepo(ok.client).markCardCheckoutFailed!('shop-1', '2026-11-02T12:00:00.000Z');
+    expect(ok.calls).toEqual(expect.arrayContaining([['update', [{ card_checkout_failed_at: '2026-11-02T12:00:00.000Z' }]], ['eq', ['id', 'shop-1']]]));
+    const bad = fakeClient({ data: null, error: { code: '42703', message: 'column does not exist' } });
+    await expect(supabaseBookingRepo(bad.client).markCardCheckoutFailed!('s', 'x')).rejects.toThrow('column does not exist');
+  });
+
   it('an unrelated error still throws (no silent retry)', async () => {
     const { client, selects } = shopClient('require_card', { code: '42501', message: 'permission denied for table ab_shops' });
     await expect(supabaseBookingRepo(client).shopByOwner('u')).rejects.toThrow('permission denied');

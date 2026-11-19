@@ -49,6 +49,7 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
     shopBySlug: async (slug) => clone(state.shops.find((s) => s.slug === slug) ?? null),
     shopByOwner: async (id) => clone(state.shops.find((s) => s.owner_id === id) ?? null),
     shopById: async (id) => clone(state.shops.find((s) => s.id === id) ?? null),
+    markCardCheckoutFailed: async (id, at) => { const s = state.shops.find((x) => x.id === id); if (s) s.card_checkout_failed_at = at; },
     purchase: async (otid) => clone(state.purchases[otid] ?? null),
     services: async (shopId) => clone(state.services.filter((s) => s.shop_id === shopId).sort((a, b) => a.sort - b.sort)),
     members: async (shopId) => clone(state.members.filter((m) => m.shop_id === shopId).sort((a, b) => a.sort - b.sort)),

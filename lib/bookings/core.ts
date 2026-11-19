@@ -149,8 +149,18 @@ export const cardEnabled = (shop: ShopRow) => !!shop.stripe_charges_enabled && !
  * were switched off. Used by both /api/book/shop (pay.inShop) and the booking create, so the
  * booking page and the server always agree.
  */
-export const inShopAllowed = (shop: ShopRow) =>
-  !!shop.pay_in_shop || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0);
+export const inShopAllowed = (shop: ShopRow, nowMs?: number) =>
+  !!shop.pay_in_shop || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0) || (nowMs != null && cardCheckoutRecentlyFailed(shop, nowMs));
+
+/** How long a failed card checkout (Stripe still reporting cards on) opens a require_card shop's other pay options. */
+export const CARD_FAILURE_WINDOW_MS = 10 * 60_000;
+
+/** A require_card shop whose card checkout failed within the window: its other ways to pay are open so it is never unbookable. */
+export function cardCheckoutRecentlyFailed(shop: ShopRow, nowMs: number): boolean {
+  if (!shop.require_card || !shop.card_checkout_failed_at) return false;
+  const at = Date.parse(shop.card_checkout_failed_at);
+  return Number.isFinite(at) && nowMs - at >= 0 && nowMs - at < CARD_FAILURE_WINDOW_MS;
+}
 
 // ---------------------------------------------------------------------------
 // Bookings gate
@@ -265,11 +275,13 @@ export const STRIPE_MIN_CENTS = 50;
 /**
  * Is this service card-only for the shop? Only when the shop turned on `require_card` (042), card payments are live, and the
  * card charge (the deposit, else the price) reaches Stripe's minimum. Unpriced services and anything under the minimum keep
- * today's options, and with cards off the setting does nothing, so a shop never becomes unbookable. `price` is the price the
+ * today's options, and with cards off the setting does nothing, so a shop never becomes unbookable. For CARD_FAILURE_WINDOW_MS after a
+ * card checkout failed (cards still reported on) it is also false, so the other options reopen. `price` is the price the
  * booking will use (a barber's own price when there is one).
  */
-export function cardRequired(shop: ShopRow, service: ServiceRow, price: number | null): boolean {
+export function cardRequired(shop: ShopRow, service: ServiceRow, price: number | null, nowMs: number = Date.now()): boolean {
   if (!shop.require_card || !cardEnabled(shop)) return false;
+  if (cardCheckoutRecentlyFailed(shop, nowMs)) return false;
   const dep = serviceDeposit(service, price);
   return (dep > 0 ? dep : price ?? 0) >= STRIPE_MIN_CENTS;
 }
