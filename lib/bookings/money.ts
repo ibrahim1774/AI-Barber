@@ -80,7 +80,7 @@ export interface PaymentSummary {
 /**
  * What has been paid and what is left, from the amounts STORED on the appointment (never the service's current price).
  * - deposit (with a price): "$22.50 deposit", plus "$22.50 due at the shop" while booked and price minus paid > 0
- * - paid: "$30" (as before) / refunded: "Refunded $22.50" / partially refunded: "$45 · $10 refunded", due only while booked
+ * - paid: "$30" (as before) / refunded: "Refunded $22.50" / partially refunded: "$45 · $10 refunded" (a due amount is shown for deposits ONLY)
  * - none / awaiting, or no price: exactly as before (a Paid row only when something was paid)
  */
 export function paymentSummary(i: PaymentSummaryInput): PaymentSummary {
@@ -106,10 +106,21 @@ export function paymentSummary(i: PaymentSummaryInput): PaymentSummary {
       break;
     case 'partially_refunded':
       if (paid > 0 && refunded > 0) {
-        const due = dueRowFor(Math.max(0, paid - refunded));
-        return { kind: 'partial', paidRow: ['Paid', `${dollars(paid)} · ${dollars(refunded)} refunded`], dueRow: due.row, dueCents: due.cents };
+        // Never a due amount: a partial refund is the shop giving money back, not the customer owing it.
+        return { kind: 'partial', paidRow: ['Paid', `${dollars(paid)} · ${dollars(refunded)} refunded`], dueRow: null, dueCents: 0 };
       }
       break;
   }
   return { kind: 'other', paidRow: paid > 0 ? ['Paid', dollars(paid)] : null, dueRow: null, dueCents: 0 };
+}
+
+/** One line for the owner: "Deposit paid $22.50 · $22.50 due" / "Deposit paid $22.50" / "Paid $30" / "Refunded $22.50" / "Paid $45 · $10 refunded" / "" (nothing paid). */
+export function paymentLine(i: PaymentSummaryInput): string {
+  const sum = paymentSummary(i);
+  if (!sum.paidRow) return '';
+  if (sum.kind === 'deposit') {
+    const dep = sum.paidRow[1].replace(/ deposit$/, '');
+    return sum.dueCents > 0 ? `Deposit paid ${dep} · ${dollars(sum.dueCents)} due` : `Deposit paid ${dep}`;
+  }
+  return `${sum.paidRow[0]} ${sum.paidRow[1]}`;
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { supabaseBookingRepo } from '../../lib/bookings/repo.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { supabaseBookingRepo, resetRequireCardProbe, REQUIRE_CARD_MISSING_TTL_MS } from '../../lib/bookings/repo.js';
 
 /** Minimal chainable stand-in for supabase-js: every call is recorded, awaiting resolves `result`. */
 function fakeClient(result: { data: unknown; error: unknown }) {
@@ -108,6 +108,29 @@ describe('supabaseBookingRepo', () => {
 });
 
 describe('shop reads and the require_card column (migration 042)', () => {
+  beforeEach(() => { resetRequireCardProbe(); vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('remembers "column missing" for 60 seconds, then probes again and picks the column up', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-19T12:00:00Z'));
+    const missingErr = { code: '42703', message: 'column ab_shops.require_card does not exist' };
+    const m = shopClient('require_card', missingErr);
+    const repo = supabaseBookingRepo(m.client);
+    await repo.shopById('a');                      // probe fails, retried without
+    expect(m.selects).toHaveLength(2);
+    await repo.shopById('a'); await repo.shopBySlug('s');
+    expect(m.selects).toHaveLength(4);             // cached: one query each, none naming require_card
+    expect(m.selects.slice(2).every((c) => !c.includes('require_card'))).toBe(true);
+    vi.setSystemTime(new Date(Date.now() + REQUIRE_CARD_MISSING_TTL_MS - 1));
+    await repo.shopById('a');
+    expect(m.selects).toHaveLength(5);             // still cached just before the minute
+    vi.setSystemTime(new Date(Date.now() + 2));
+    const ok = shopClient(null, null);             // 042 applied now
+    const row = await supabaseBookingRepo(ok.client).shopById('a');
+    expect(ok.selects[0]).toContain('require_card'); // probes again after the minute
+    expect(row).toMatchObject({ require_card: true });
+  });
+
   /** A client whose select() fails with the given error while the column list names `bad`, else returns the row. */
   function shopClient(bad: string | null, error: unknown) {
     const selects: string[] = [];

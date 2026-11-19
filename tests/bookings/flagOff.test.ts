@@ -12,7 +12,8 @@ const golden = JSON.parse(fs.readFileSync(new URL('./fixtures/flagOffEmails.json
 const T10 = '2026-11-03T15:00:00.000Z';
 const customer = { name: 'Sam Lee', phone: '(555) 123-4567', email: 'sam@example.com' };
 const cardShop = { stripe_account_id: 'acct_1', stripe_charges_enabled: true, manual_handles: { cashapp: '$fresh' } };
-const strip = (services: any[]) => services.map(({ cardOnly: _c, ...s }) => s);
+// cardOnly and uniformPrice are the additive per-service fields.
+const strip = (services: any[]) => services.map(({ cardOnly: _c, uniformPrice: _u, ...s }) => s);
 
 describe('customer emails for unpaid and paid-in-full bookings are unchanged', () => {
   for (const [name, over] of Object.entries(CASES)) {
@@ -60,7 +61,7 @@ describe('booking flow with require_card false or missing', () => {
       const b = (await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any;
       expect(b.shop.pay).toEqual({ inShop: true, card: true, manual: { cashapp: '$fresh' } });
       expect(strip(b.services)).toEqual([{ id: w.ids.cut, name: 'Haircut', priceCents: 3000, durationMin: 30, description: null, photoUrl: null, depositCents: 1500 }]);
-      expect(b.services.every((s: any) => s.cardOnly === false)).toBe(true);
+      expect(b.services.every((s: any) => s.cardOnly === false && s.uniformPrice === true && !('cardOnlyMemberIds' in s))).toBe(true);
       expect(Object.keys(b.shop).sort()).toEqual(['accent', 'address', 'cancelCutoffMin', 'name', 'pay', 'phone', 'slug', 'timezone']);
     });
     it(`${flag}: pay shop and manual still book, card still books`, async () => {

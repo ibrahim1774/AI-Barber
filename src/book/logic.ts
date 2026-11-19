@@ -314,12 +314,13 @@ export function serviceLabel(s: Service, cardOn = true): string {
 
 /**
  * Price (or "Price at shop" only when there is no price), the deposit due now and what is left for the shop, e.g.
- * "$45 · $22.50 deposit now · $22.50 at the shop". Uses the service's base price: the page does not know a barber's own
- * price before the booking exists (the server charges that one), so a barber with a different price can differ slightly here.
+ * "$45 · $22.50 deposit now · $22.50 at the shop". The "at the shop" part appears only when `uniformPrice` is true (no barber
+ * overrides the price); otherwise the base price may not be what the chosen barber charges, so no balance is claimed.
  */
-export function priceWithDeposit(s: Pick<Service, 'priceCents' | 'depositCents'>, cardOn = true): string {
+export function priceWithDeposit(s: Pick<Service, 'priceCents' | 'depositCents' | 'uniformPrice'>, cardOn = true): string {
   const dep = shownDeposit(s, cardOn);
-  const left = dep > 0 && s.priceCents != null ? s.priceCents - dep : 0;
+  // The balance is only claimed when it is certain: no barber has their own price for this service.
+  const left = dep > 0 && s.priceCents != null && s.uniformPrice === true ? s.priceCents - dep : 0;
   return [
     formatMoney(s.priceCents) || 'Price at shop',
     dep ? `${formatMoney(dep)} deposit now` : '',
@@ -332,6 +333,15 @@ export function cardRowDetail(s: Pick<Service, 'priceCents' | 'depositCents'>, c
   const dep = shownDeposit(s, cardOn);
   return `${dep > 0 ? `${formatMoney(dep)} deposit now` : 'Card or Apple Pay'}, secure checkout`;
 }
+
+/** Is this service card-only for the chosen barber? ('any' relies on `cardOnly`, i.e. every barber is card-required.) */
+export function cardOnlyFor(s: Pick<Service, 'cardOnly' | 'cardOnlyMemberIds'>, memberId: string, forced = false): boolean {
+  if (forced || s.cardOnly) return true;
+  return memberId !== 'any' && !!s.cardOnlyMemberIds?.includes(memberId);
+}
+
+/** The key a server-forced card-only decision is remembered under: the service AND the chosen barber. */
+export const forcedKey = (serviceId: string, memberId: string) => `${serviceId}:${memberId}`;
 
 export const CARD_REQUIRED_NOTE = 'Booking this service needs card payment.';
 export const CARD_REQUIRED_ERROR = 'This booking needs card payment. Please pay online by card.';
@@ -360,7 +370,7 @@ export function paymentRows(i: ManagePaymentInput): [string, string][] {
   if (i.paymentStatus === 'deposit' && price != null && paid > 0) return [['Paid', `${formatMoney(paid)} deposit`], ...due(paid)];
   if (i.paymentStatus === 'refunded' && refunded > 0) return [['Refunded', formatMoney(refunded)]];
   if (i.paymentStatus === 'partially_refunded' && paid > 0 && refunded > 0) {
-    return [['Paid', `${formatMoney(paid)} · ${formatMoney(refunded)} refunded`], ...due(Math.max(0, paid - refunded))];
+    return [['Paid', `${formatMoney(paid)} · ${formatMoney(refunded)} refunded`]]; // never a due row: a refund is not a balance
   }
   return paid > 0 ? [['Paid', formatMoney(paid)]] : [];
 }

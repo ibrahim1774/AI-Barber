@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, cardRowDetail, paymentRows, CARD_REQUIRED_NOTE, cancelNote, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, cardRowDetail, paymentRows, CARD_REQUIRED_NOTE, cardOnlyFor, forcedKey, cancelNote, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -45,7 +45,7 @@ type Loaded = Extract<ShopResponse, { paused: false }>;
 function BookPage({ api, slug, loadSlug, search }: { api: Api; slug: string | null; loadSlug: () => Promise<string | null>; search: string }) {
   const [data, setData] = useState<ShopResponse | null>(null);
   const [error, setError] = useState<'not-found' | 'failed' | null>(null);
-  useEffect(() => {
+  const load = (quiet = false) => {
     // On the barber's own site (/book) the slug comes from the site's config.
     (slug ? Promise.resolve(slug) : loadSlug()).then((s) => {
       if (!s) { setError('not-found'); return; }
@@ -54,16 +54,17 @@ function BookPage({ api, slug, loadSlug, search }: { api: Api; slug: string | nu
         applySite(d.site, d.paused ? null : (d as Loaded).shop.accent, 'book');
         if (!d.paused) document.title = `Book at ${(d as Loaded).shop.name}`;
       });
-    }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
-  }, [slug]);
+    }).catch((e) => { if (!quiet) setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'); });
+  };
+  useEffect(() => { load(); }, [slug]);
   if (error === 'not-found') return <Shell><Message title="Shop not found" body="This booking link isn't active." /></Shell>;
   if (error) return <Shell><Message title="Something went wrong" body="Please refresh and try again." /></Shell>;
   if (!data) return <Shell><Spinner /></Shell>;
   if (data.paused) return <Shell><Message title={data.shop.name} body="Bookings are paused for now — call the shop." /></Shell>;
-  return <Shell><Flow api={api} d={data as Loaded} search={search} /></Shell>;
+  return <Shell><Flow api={api} d={data as Loaded} search={search} reload={() => load(true)} /></Shell>;
 }
 
-function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string }) {
+function Flow({ api, d, search = '', reload = () => {} }: { api: Api; d: Loaded; search?: string; reload?: () => void }) {
   const { shop, services, members } = d;
   // ?barber=<uuid> from a team card: only a member of this shop counts, else 'any'.
   const preferred = useMemo(() => barberFromSearch(search, members), [search, members]);
@@ -81,10 +82,10 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
   const [done, setDone] = useState<{ appt: BookedAppointment; method: ManualMethod | null } | null>(null);
 
   const elig = eligibleMembers(members, service?.id ?? null);
-  // A card-required refusal from the server (e.g. a barber's own price made the charge reach the minimum) marks the
-  // service card-only for the rest of this visit, so the customer is never stuck on options the server will refuse.
+  // A card-required refusal from the server marks this service + barber card-only for the rest of the visit, so the
+  // customer is never stuck on options the server will refuse. Keyed by service AND barber (another barber may differ).
   const [forcedCard, setForcedCard] = useState<string[]>([]);
-  const cardOnly = !!service && (!!service.cardOnly || forcedCard.includes(service.id));
+  const cardOnly = !!service && cardOnlyFor(service, memberId, forcedCard.includes(forcedKey(service.id, memberId)));
   const options = payOptions(shop.pay, service ? { ...service, cardOnly } : service);
   // One payment row per manual method, so a shop with several handles always reaches the payment step.
   // Card-only services hide the manual rows (options then has no 'manual').
@@ -114,9 +115,22 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
         setProblem('Sorry, that time was just taken.'); setAlts(e.alternatives);
         if (!e.alternatives.length) setStep('time');
       } else {
-        setProblem(bookingErrorMessage(e, { cardOnly }));
-        if (e.code === 'card-required') { setForcedCard((f) => [...f, service.id]); setStep('payment'); }
-        else if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
+        const cardOff = e.status === 502 && e.body?.cardOff === true;
+        // cardOff: the server found card payments switched off at Stripe: the other ways to pay are open again.
+        setProblem(bookingErrorMessage(e, { cardOnly: cardOnly && !cardOff }));
+        const key = forcedKey(service.id, memberId);
+        if (e.code === 'card-required') {
+          setForcedCard((f) => (f.includes(key) ? f : [...f, key]));
+          if (!shop.pay.card) reload(); // stale payload (card is off now): fetch the current options
+          setStep('payment');
+        } else if (cardOff) {
+          reload(); setStep('payment');
+        } else if (e.status === 400 && e.field === 'pay') {
+          // The server refused this way to pay for this barber (e.g. their own price is under the card minimum): start the
+          // payment step over with everything the payload allows.
+          setForcedCard((f) => f.filter((k) => k !== key));
+          setStep('payment');
+        } else if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
       }
     } finally { setBusy(false); }
   }

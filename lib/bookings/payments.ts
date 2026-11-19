@@ -467,6 +467,22 @@ export async function fetchAccountStatus(accountId: string, opts: StripeOpts = {
   }
 }
 
+/**
+ * For a shop that requires card: one GET of its connected account after a checkout failure, storing charges_enabled the same
+ * way the account.updated webhook does when it differs. Read-only on Stripe. null = Stripe did not say (no account, access
+ * revoked 403/404 which reads as not connected: never change anything then); throws when Stripe is unreachable.
+ */
+export async function refreshChargesEnabled(shop: { id: string; stripe_account_id: string | null; stripe_charges_enabled: boolean }, db: SupabaseClient = serviceDb(), opts: StripeOpts = {}): Promise<boolean | null> {
+  if (!shop.stripe_account_id) return null;
+  const s = await fetchAccountStatus(shop.stripe_account_id, opts);
+  if (!s.connected) return null;
+  if (s.chargesEnabled !== shop.stripe_charges_enabled) {
+    const { error } = await db.from('ab_shops').update({ stripe_charges_enabled: s.chargesEnabled }).eq('stripe_account_id', shop.stripe_account_id);
+    if (error) dbFail('refreshChargesEnabled', error);
+  }
+  return s.chargesEnabled;
+}
+
 // ---------------------------------------------------------------------------
 // Owner endpoints (POST /api/shop/stripe/onboard, GET /api/shop/stripe/status)
 // ---------------------------------------------------------------------------

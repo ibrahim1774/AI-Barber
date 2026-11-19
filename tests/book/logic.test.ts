@@ -3,7 +3,7 @@ import { DateTime } from 'luxon';
 import {
   buildIcs, cashAppLink, formatTime, formatWhen, manualAmountCents, manualLink, monthGrid, nextStep, onAccent,
   parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, barberFromSearch, preferredFor, priceWithDeposit, serviceLabel, shownDeposit, cancelNote, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
-  paymentRows, cardRowDetail, CARD_REQUIRED_ERROR, CARD_ONLY_UNAVAILABLE,
+  paymentRows, cardRowDetail, cardOnlyFor, forcedKey, CARD_REQUIRED_ERROR, CARD_ONLY_UNAVAILABLE,
 } from '../../src/book/logic';
 import { PAYMENT_CASES } from '../bookings/paymentCases';
 
@@ -245,9 +245,12 @@ describe('?barber= preselect', () => {
 });
 
 describe('price and deposit line', () => {
-  const svc = (priceCents: number | null, depositCents: number) => ({ id: 's', name: 'Cut', priceCents, durationMin: 30, description: null, photoUrl: null, depositCents });
+  const svc = (priceCents: number | null, depositCents: number, uniformPrice = true) => ({ id: 's', name: 'Cut', priceCents, durationMin: 30, description: null, photoUrl: null, depositCents, uniformPrice });
   it('price and deposit when card is on', () => {
     expect(priceWithDeposit(svc(3000, 1000))).toBe('$30 · $10 deposit now · $20 at the shop');
+    // a barber has their own price (or the payload does not say): no balance claim
+    expect(priceWithDeposit(svc(3000, 1000, false))).toBe('$30 · $10 deposit now');
+    expect(priceWithDeposit({ priceCents: 3000, depositCents: 1000 })).toBe('$30 · $10 deposit now');
     expect(serviceLabel(svc(3000, 1000))).toBe('$30 · 30 min · $10 deposit');
   });
   it('"Price at shop" only when there is no price', () => {
@@ -300,7 +303,8 @@ describe('require card (card-only services)', () => {
 
 describe('deposit and balance wording', () => {
   it('pay step lines', () => {
-    expect(priceWithDeposit({ priceCents: 4500, depositCents: 2250 })).toBe('$45 · $22.50 deposit now · $22.50 at the shop');
+    expect(priceWithDeposit({ priceCents: 4500, depositCents: 2250, uniformPrice: true })).toBe('$45 · $22.50 deposit now · $22.50 at the shop');
+    expect(priceWithDeposit({ priceCents: 4500, depositCents: 2250, uniformPrice: false })).toBe('$45 · $22.50 deposit now');
     expect(priceWithDeposit({ priceCents: 3000, depositCents: 0 })).toBe('$30');
     expect(cardRowDetail({ priceCents: 4500, depositCents: 2250 })).toBe('$22.50 deposit now, secure checkout');
     expect(cardRowDetail({ priceCents: 3000, depositCents: 0 })).toBe('Card or Apple Pay, secure checkout');
@@ -310,4 +314,32 @@ describe('deposit and balance wording', () => {
       expect(paymentRows(c.input)).toEqual(c.rows);
     });
   }
+});
+
+describe('card-only for the chosen barber', () => {
+  const base = { cardOnly: false as boolean | undefined, cardOnlyMemberIds: undefined as string[] | undefined };
+  it('cardOnly applies to everyone, including "any"', () => {
+    expect(cardOnlyFor({ ...base, cardOnly: true }, 'any')).toBe(true);
+    expect(cardOnlyFor({ ...base, cardOnly: true }, 'jay')).toBe(true);
+  });
+  it('only some barbers: card-only just for those once chosen; "any" keeps pay-in-shop (the server tries the next barber)', () => {
+    const s = { ...base, cardOnlyMemberIds: ['mike'] };
+    expect(cardOnlyFor(s, 'mike')).toBe(true);
+    expect(cardOnlyFor(s, 'jay')).toBe(false);
+    expect(cardOnlyFor(s, 'any')).toBe(false);
+  });
+  it('nothing in the payload: not card-only; a server refusal forces it', () => {
+    expect(cardOnlyFor(base, 'jay')).toBe(false);
+    expect(cardOnlyFor(base, 'jay', true)).toBe(true);
+  });
+  it('the forced key is service + barber', () => {
+    expect(forcedKey('s1', 'jay')).not.toBe(forcedKey('s1', 'mike'));
+    expect(forcedKey('s1', 'jay')).not.toBe(forcedKey('s2', 'jay'));
+  });
+  it('payOptions follows the per-barber decision', () => {
+    const pay = { inShop: true, card: true, manual: {} };
+    const s = { priceCents: 3000, depositCents: 0, cardOnlyMemberIds: ['mike'] };
+    expect(payOptions(pay, { ...s, cardOnly: cardOnlyFor(s, 'mike') })).toEqual(['card']);
+    expect(payOptions(pay, { ...s, cardOnly: cardOnlyFor(s, 'jay') })).toEqual(['shop', 'card']);
+  });
 });

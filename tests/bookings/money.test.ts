@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { platformFeeCents, depositCents, refundOnCancel, paymentSummary, dollars } from '../../lib/bookings/money.js';
+import { platformFeeCents, depositCents, refundOnCancel, paymentSummary, paymentLine, dollars } from '../../lib/bookings/money.js';
 import { PAYMENT_CASES } from './paymentCases.js';
 
 describe('platformFeeCents', () => {
@@ -89,6 +89,7 @@ describe('paymentSummary (shared case table)', () => {
     it(c.name, () => {
       const sum = paymentSummary(c.input);
       expect([sum.paidRow, sum.dueRow].filter(Boolean)).toEqual(c.rows);
+      expect(paymentLine(c.input)).toBe(c.line);
     });
   }
   it('dollars prints whole dollars bare and cents with two places', () => {

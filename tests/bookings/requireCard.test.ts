@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createAppointment, getShop, getManage } from '../../lib/bookings/publicFlow.js';
 import { cardRequired, STRIPE_MIN_CENTS } from '../../lib/bookings/core.js';
 import { makeShop, makeService, world } from './fakeRepo.js';
@@ -88,10 +88,133 @@ describe('require_card on', () => {
     expect((await book(w, { memberId: w.ids.mike })).status).toBe(201);
   });
 
-  it('a card checkout failure on a card-only service is still the 502 payment-unavailable', async () => {
-    const w = mk();
-    w.payments.createCardCheckout.mockRejectedValueOnce(new Error('stripe down'));
-    expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+  describe('card checkout failure (stale charges_enabled must not lock the shop out)', () => {
+    const refreshable = (w: ReturnType<typeof world>, result: boolean | null | Error) => {
+      (w.payments as any).refreshChargesEnabled = vi.fn(async (shop: { id: string }) => {
+        if (result instanceof Error) throw result;
+        if (result === false) { const s = w.state.shops.find((x) => x.id === shop.id)!; s.stripe_charges_enabled = false; }
+        return result;
+      });
+      return (w.payments as any).refreshChargesEnabled as ReturnType<typeof vi.fn>;
+    };
+
+    it('Stripe says cards are off: stored status is updated, 502 carries cardOff, and the next attempt may pay in shop', async () => {
+      const w = mk();
+      const refresh = refreshable(w, false);
+      w.payments.createCardCheckout.mockRejectedValueOnce(new Error('stripe restricted'));
+      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable', cardOff: true } });
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(w.state.appointments).toHaveLength(0);
+      expect(await cardOnlyOf(w)).toBe(false);
+      expect((await book(w)).status).toBe(201);
+    });
+
+    it('Stripe unreachable: plain 502 (no hint), nothing changed', async () => {
+      const w = mk();
+      refreshable(w, new Error('stripe unreachable'));
+      w.payments.createCardCheckout.mockRejectedValueOnce(new Error('stripe down'));
+      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+      expect(w.state.shops[0].stripe_charges_enabled).toBe(true);
+      expect((await book(w)).body).toEqual({ error: 'card-required', field: 'pay' });
+    });
+
+    it('Stripe says cards are still on, or says nothing: plain 502', async () => {
+      for (const result of [true, null]) {
+        const w = mk();
+        refreshable(w, result);
+        w.payments.createCardCheckout.mockRejectedValueOnce(new Error('transient'));
+        expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+      }
+    });
+
+    it('no Stripe call on the success path, and none for a shop without require_card', async () => {
+      const w = mk();
+      const refresh = refreshable(w, false);
+      expect((await book(w, { pay: 'card' })).status).toBe(201);
+      expect(refresh).not.toHaveBeenCalled();
+      const w2 = mk({ require_card: false });
+      const refresh2 = refreshable(w2, false);
+      w2.payments.createCardCheckout.mockRejectedValueOnce(new Error('stripe down'));
+      expect(await book(w2, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+      expect(refresh2).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("per-barber prices (Jay's own price differs from the base)", () => {
+    // base $30 (card-required), Jay charges $0 (free: not card-required, and card is impossible for him)
+    const jayFree = () => {
+      const w = mk({}, { deposit_type: 'none' });
+      w.state.links.push({ service_id: w.ids.cut, member_id: w.ids.jay, price_override_cents: 0 });
+      return w;
+    };
+    const svcOf = async (w: ReturnType<typeof world>) => ((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).services[0];
+
+    it('payload: cardOnly only when EVERY offering barber is card-required; cardOnlyMemberIds names the ones who are; uniformPrice false', async () => {
+      const w = jayFree();
+      const s = await svcOf(w);
+      expect(s.cardOnly).toBe(false);
+      expect(s.cardOnlyMemberIds).toEqual([w.ids.mike]);
+      expect(s.uniformPrice).toBe(false);
+    });
+
+    it('payload: all barbers card-required -> cardOnly true and no member list', async () => {
+      const w = mk({}, { deposit_type: 'none' });
+      const s = await svcOf(w);
+      expect(s).toMatchObject({ cardOnly: true, uniformPrice: true });
+      expect('cardOnlyMemberIds' in s).toBe(false);
+    });
+
+    it('payload: a barber who does not offer the service is ignored', async () => {
+      const w = jayFree();
+      const kids = crypto.randomUUID();
+      w.state.services.push(makeService({ id: kids, shop_id: w.ids.shopId, name: 'Kids', sort: 1 }));
+      w.state.links.push({ service_id: kids, member_id: w.ids.mike, price_override_cents: null });
+      const b = (await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any;
+      const k = b.services.find((x: any) => x.id === kids);
+      expect(k).toMatchObject({ cardOnly: true, uniformPrice: true });
+    });
+
+    it('pay in shop with "any": a card-required first barber is skipped, the next free barber books', async () => {
+      const w = jayFree();
+      const r = await book(w);
+      expect(r.status).toBe(201);
+      expect((r.body as any).appointment.memberName).toBe('Jay');
+      expect(w.state.appointments[0].member_id).toBe(w.ids.jay);
+    });
+
+    it('pay in shop with a specific card-required barber is card-required; the barber who is not required books', async () => {
+      const w = jayFree();
+      expect((await book(w, { memberId: w.ids.mike })).body).toEqual({ error: 'card-required', field: 'pay' });
+      expect((await book(w, { memberId: w.ids.jay })).status).toBe(201);
+    });
+
+    it('pay in shop with "any" when every free barber is card-required: card-required (not slot-taken)', async () => {
+      const w = mk({}, { deposit_type: 'none' });
+      expect(await book(w)).toEqual({ status: 400, body: { error: 'card-required', field: 'pay' } });
+    });
+
+    it('card with "any": a first barber whose charge is under the minimum is skipped for the next (no more dead end)', async () => {
+      const w = jayFree();
+      w.state.links.push({ service_id: w.ids.cut, member_id: w.ids.mike, price_override_cents: 3000 });
+      // Jay ($0) is first in "free" order here only if Mike is busy; make Jay first by sorting members
+      w.state.members.find((m) => m.id === w.ids.jay)!.sort = -1;
+      const r = await book(w, { pay: 'card' });
+      expect(r.status).toBe(201);
+      expect((r.body as any).appointment.memberName).toBe('Mike');
+      expect(w.payments.createCardCheckout.mock.calls[0][2]).toBe(3000);
+    });
+
+    it('card with Jay chosen (charge $0): invalid pay, so the page can go back and offer shop', async () => {
+      const w = jayFree();
+      expect((await book(w, { pay: 'card', memberId: w.ids.jay })).body).toEqual({ error: 'invalid', field: 'pay' });
+    });
+
+    it('when the barber who does not need card is busy, only the card-required one is free: card-required', async () => {
+      const w = jayFree();
+      // Mike is card-required (skipped for shop); Jay is taken by another customer at that time.
+      await book(w, { memberId: w.ids.jay, customer: { ...customer, phone: '5550009999' } });
+      expect(await book(w)).toEqual({ status: 400, body: { error: 'card-required', field: 'pay' } });
+    });
   });
 
   it('manage view carries amountRefundedCents', async () => {

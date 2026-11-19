@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail as liveSendEmail, escapeHtml, type EmailMessage, type EmailResult } from './email.js';
 import { pushToUsers, type PushMessage, type PushTokenStore } from './push.js';
 import { customerAppointmentIcs } from './ics.js';
-import { dollars, paymentSummary } from './money.js';
+import { dollars, paymentLine, paymentSummary } from './money.js';
 import { manageUrl, bookingPageUrl, serviceDb } from './payments.js';
 import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
@@ -143,10 +143,11 @@ const summaryOf = (appt: NotifyContext['appt']) =>
 
 /** The owner email's Payment line for a deposit booking ("Deposit paid $22.50 · $22.50 due"); undefined for everything else, so those events (and emails) stay exactly as they were. */
 function ownerPaidLine(appt: NotifyContext['appt']): string | undefined {
-  const sum = summaryOf(appt);
-  if (sum.kind !== 'deposit' || !sum.paidRow) return undefined;
-  const dep = sum.paidRow[1].replace(/ deposit$/, '');
-  return sum.dueCents > 0 ? `Deposit paid ${dep} · ${dollars(sum.dueCents)} due` : `Deposit paid ${dep}`;
+  if (summaryOf(appt).kind !== 'deposit') return undefined;
+  return paymentLine({
+    status: appt.status, paymentStatus: appt.payment_status, priceCents: appt.price_cents,
+    amountPaidCents: appt.amount_paid_cents, amountRefundedCents: appt.amount_refunded_cents,
+  }) || undefined;
 }
 
 /** `showDue` is false for the cancellation email: a cancelled booking owes nothing. */

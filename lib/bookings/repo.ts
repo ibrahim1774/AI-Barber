@@ -330,9 +330,20 @@ export function isMissingRequireCard(e: PgError): boolean {
   const text = `${e.message ?? ''} ${e.details ?? ''}`;
   return (e.code === '42703' || e.code === 'PGRST204' || e.code === 'PGRST200') && text.includes(REQUIRE_CARD_COL);
 }
+// Until 042 is applied every shop read would fail once before the retry: remember "missing" per process for a minute (then probe
+// again, so the column is picked up within a minute of the migration).
+export const REQUIRE_CARD_MISSING_TTL_MS = 60_000;
+let requireCardMissingUntil = 0;
+/** Test hook: forget the cached "column missing" answer and the one-time warning. */
+export function resetRequireCardProbe(): void {
+  requireCardMissingUntil = 0;
+  requireCardWarned = false;
+}
 async function withRequireCard<R extends { error: PgError }>(run: (cols: string) => PromiseLike<R>): Promise<R> {
+  if (Date.now() < requireCardMissingUntil) return withSiteCols(SHOP_COLS, run);
   const first = await withSiteCols(`${SHOP_COLS}, ${REQUIRE_CARD_COL}`, run);
   if (!isMissingRequireCard(first.error)) return first;
+  requireCardMissingUntil = Date.now() + REQUIRE_CARD_MISSING_TTL_MS;
   if (!requireCardWarned) {
     requireCardWarned = true;
     console.warn('[ab_shops] require_card missing (migration 042 not applied); reading shops without it');
