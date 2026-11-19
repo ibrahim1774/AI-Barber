@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, shownDeposit, cancelNote, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, cardRowDetail, paymentRows, CARD_REQUIRED_NOTE, cancelNote, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -81,9 +81,14 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
   const [done, setDone] = useState<{ appt: BookedAppointment; method: ManualMethod | null } | null>(null);
 
   const elig = eligibleMembers(members, service?.id ?? null);
-  const options = payOptions(shop.pay, service);
+  // A card-required refusal from the server (e.g. a barber's own price made the charge reach the minimum) marks the
+  // service card-only for the rest of this visit, so the customer is never stuck on options the server will refuse.
+  const [forcedCard, setForcedCard] = useState<string[]>([]);
+  const cardOnly = !!service && (!!service.cardOnly || forcedCard.includes(service.id));
+  const options = payOptions(shop.pay, service ? { ...service, cardOnly } : service);
   // One payment row per manual method, so a shop with several handles always reaches the payment step.
-  const mm = manualMethods(shop.pay.manual);
+  // Card-only services hide the manual rows (options then has no 'manual').
+  const mm = options.includes('manual') ? manualMethods(shop.pay.manual) : [];
   const rowCount = options.filter((o) => o !== 'manual').length + mm.length;
   const ctx = { barberCount: elig.length, payOptionCount: rowCount };
   const go = (s: Step) => { setProblem(null); setAlts([]); setStep(s); };
@@ -109,8 +114,9 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
         setProblem('Sorry, that time was just taken.'); setAlts(e.alternatives);
         if (!e.alternatives.length) setStep('time');
       } else {
-        setProblem(bookingErrorMessage(e));
-        if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
+        setProblem(bookingErrorMessage(e, { cardOnly }));
+        if (e.code === 'card-required') { setForcedCard((f) => [...f, service.id]); setStep('payment'); }
+        else if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
       }
     } finally { setBusy(false); }
   }
@@ -183,6 +189,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
       {step === 'details' && service && slot && <>
         <h2>Your details</h2>
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
+        {cardOnly && options.includes('card') && <p className="note" role="status">{CARD_REQUIRED_NOTE}</p>}
         {options.length > 0 && <DetailsForm cust={cust} setCust={setCust} busy={busy}
           submitLabel={ctx.payOptionCount > 1 ? 'Continue' : options[0] === 'card' ? 'Continue to payment' : 'Book'}
           onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0], options[0] === 'manual' ? mm[0] : undefined); }} />}
@@ -192,7 +199,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
         <h2>How would you like to pay?</h2>
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
         {options.includes('shop') && <button className="row" disabled={busy} onClick={() => submit('shop')}><span className="grow"><div className="t">Pay in shop</div><div className="m">Settle up at your appointment</div></span></button>}
-        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{shownDeposit(service, shop.pay.card) > 0 ? `${formatMoney(shownDeposit(service, shop.pay.card))} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
+        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{cardRowDetail(service, shop.pay.card)}</div></span></button>}
         {options.includes('manual') && manualMethods(shop.pay.manual).map((m) => <button key={m} className="row" disabled={busy} onClick={() => submit('manual', m)}><span className="grow"><div className="t">{METHOD_LABEL[m]}</div><div className="m">Book now, then send payment</div></span></button>)}
         {busy && <Spinner />}
         {altsBlock}
@@ -347,7 +354,8 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
           <div><span>When</span><span>{formatWhen(a.start, tz)}</span></div>
           <div><span>Barber</span><span>{a.memberName}</span></div>
           {a.priceCents != null && <div><span>Price</span><span>{formatMoney(a.priceCents)}</span></div>}
-          {a.amountPaidCents > 0 && <div><span>Paid</span><span>{formatMoney(a.amountPaidCents)}</span></div>}
+          {paymentRows({ status: mode === 'cancelled' ? 'cancelled' : a.status, paymentStatus: a.paymentStatus, priceCents: a.priceCents, amountPaidCents: a.amountPaidCents, amountRefundedCents: a.amountRefundedCents })
+            .map(([k, v]) => <div key={k}><span>{k}</span><span>{v}</span></div>)}
           {a.shop.address && <div><span>Where</span><span>{a.shop.address}</span></div>}
         </div>
         {mode === 'view' && live && <>

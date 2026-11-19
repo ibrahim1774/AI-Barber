@@ -3,7 +3,9 @@ import { DateTime } from 'luxon';
 import {
   buildIcs, cashAppLink, formatTime, formatWhen, manualAmountCents, manualLink, monthGrid, nextStep, onAccent,
   parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, barberFromSearch, preferredFor, priceWithDeposit, serviceLabel, shownDeposit, cancelNote, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
+  paymentRows, cardRowDetail, CARD_REQUIRED_ERROR, CARD_ONLY_UNAVAILABLE,
 } from '../../src/book/logic';
+import { PAYMENT_CASES } from '../bookings/paymentCases';
 
 describe('shop-timezone formatting', () => {
   // 2026-07-10T18:00Z = 2:00 PM New York (EDT), 11:00 AM Los Angeles
@@ -245,7 +247,7 @@ describe('?barber= preselect', () => {
 describe('price and deposit line', () => {
   const svc = (priceCents: number | null, depositCents: number) => ({ id: 's', name: 'Cut', priceCents, durationMin: 30, description: null, photoUrl: null, depositCents });
   it('price and deposit when card is on', () => {
-    expect(priceWithDeposit(svc(3000, 1000))).toBe('$30 · $10 deposit due now');
+    expect(priceWithDeposit(svc(3000, 1000))).toBe('$30 · $10 deposit now · $20 at the shop');
     expect(serviceLabel(svc(3000, 1000))).toBe('$30 · 30 min · $10 deposit');
   });
   it('"Price at shop" only when there is no price', () => {
@@ -259,7 +261,7 @@ describe('price and deposit line', () => {
     expect(shownDeposit(svc(3000, 1000), false)).toBe(0);
   });
   it('a stale deposit above the price never prints nonsense', () => {
-    expect(priceWithDeposit(svc(600, 1000))).toBe('$6 · $6 deposit due now');
+    expect(priceWithDeposit(svc(600, 1000))).toBe('$6 · $6 deposit now');
     expect(shownDeposit(svc(600, 1000))).toBe(600);
     expect(shownDeposit(svc(null, 1000))).toBe(0);
     expect(manualAmountCents(600, 1000)).toBe(600);
@@ -271,4 +273,41 @@ describe('cancel dialog note', () => {
   it('refund line when a refund is due', () => expect(cancelNote(2500, 2500)).toBe("You'll be refunded $25."));
   it('"No payment will be refunded." only when a payment was captured', () => expect(cancelNote(0, 1000)).toBe('No payment will be refunded.'));
   it('nothing paid: no refund line at all', () => expect(cancelNote(0, 0)).toBeNull());
+});
+
+describe('require card (card-only services)', () => {
+  const pay = { inShop: true, card: true, manual: { cashapp: '$x', venmo: 'y' } };
+  const svc = { priceCents: 4500, depositCents: 2250 };
+  it('payOptions is unchanged without cardOnly', () => {
+    expect(payOptions(pay, svc)).toEqual(['shop', 'card', 'manual']);
+    expect(payOptions(pay, { ...svc, cardOnly: false })).toEqual(['shop', 'card', 'manual']);
+  });
+  it('cardOnly leaves only card', () => {
+    expect(payOptions(pay, { ...svc, cardOnly: true })).toEqual(['card']);
+  });
+  it('cardOnly never invents card when card is off (a shop is never unbookable)', () => {
+    expect(payOptions({ ...pay, card: false }, { ...svc, cardOnly: true })).toEqual(['shop', 'manual']);
+  });
+  it('the error messages', () => {
+    expect(bookingErrorMessage({ status: 400, code: 'card-required', field: 'pay' })).toBe(CARD_REQUIRED_ERROR);
+    expect(CARD_REQUIRED_ERROR).toBe('This booking needs card payment. Please pay online by card.');
+    expect(bookingErrorMessage({ status: 400, code: 'invalid', field: 'pay' })).toBe('Please check your pay.');
+    expect(bookingErrorMessage({ status: 502, code: 'payment-unavailable' })).toBe("Card payments aren't available right now. Please choose another way to pay.");
+    expect(bookingErrorMessage({ status: 502, code: 'payment-unavailable' }, { cardOnly: true })).toBe(CARD_ONLY_UNAVAILABLE);
+    expect(CARD_ONLY_UNAVAILABLE).toBe("Card payments aren't available right now. Please try again in a few minutes or call the shop.");
+  });
+});
+
+describe('deposit and balance wording', () => {
+  it('pay step lines', () => {
+    expect(priceWithDeposit({ priceCents: 4500, depositCents: 2250 })).toBe('$45 · $22.50 deposit now · $22.50 at the shop');
+    expect(priceWithDeposit({ priceCents: 3000, depositCents: 0 })).toBe('$30');
+    expect(cardRowDetail({ priceCents: 4500, depositCents: 2250 })).toBe('$22.50 deposit now, secure checkout');
+    expect(cardRowDetail({ priceCents: 3000, depositCents: 0 })).toBe('Card or Apple Pay, secure checkout');
+  });
+  for (const c of PAYMENT_CASES) {
+    it(`paymentRows: ${c.name}`, () => {
+      expect(paymentRows(c.input)).toEqual(c.rows);
+    });
+  }
 });

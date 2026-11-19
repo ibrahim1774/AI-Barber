@@ -53,3 +53,63 @@ export function refundOnCancel({ by, cutoffMin, startAt, now, amountPaidCents }:
   const cutoff = start - (Number.isFinite(cutoffMin) ? Math.max(0, cutoffMin) : 0) * 60_000;
   return at <= cutoff ? paid : 0;
 }
+
+/** "$30" for whole dollars, "$22.50" otherwise. The one formatter the emails and the owner line share. */
+export const dollars = (cents: number) =>
+  cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+
+export interface PaymentSummaryInput {
+  /** Appointment status ('booked' | 'cancelled' | ...). A balance is only "due" while it is 'booked'. */
+  status: string;
+  paymentStatus: string;
+  priceCents: number | null;
+  amountPaidCents: number;
+  amountRefundedCents: number;
+}
+
+export interface PaymentSummary {
+  kind: 'deposit' | 'paid' | 'refunded' | 'partial' | 'other';
+  /** Row after "Price": ['Paid', '$22.50 deposit'] / ['Paid', '$30'] / ['Refunded', '$22.50'] / ['Paid', '$45 · $10 refunded'], or null (nothing paid). */
+  paidRow: [string, string] | null;
+  /** ['Due at the shop', '$22.50'] only while the appointment is booked and a balance remains. */
+  dueRow: [string, string] | null;
+  /** Cents still to pay at the shop (0 when none or not booked). */
+  dueCents: number;
+}
+
+/**
+ * What has been paid and what is left, from the amounts STORED on the appointment (never the service's current price).
+ * - deposit (with a price): "$22.50 deposit", plus "$22.50 due at the shop" while booked and price minus paid > 0
+ * - paid: "$30" (as before) / refunded: "Refunded $22.50" / partially refunded: "$45 · $10 refunded", due only while booked
+ * - none / awaiting, or no price: exactly as before (a Paid row only when something was paid)
+ */
+export function paymentSummary(i: PaymentSummaryInput): PaymentSummary {
+  const paid = nonNegInt(i.amountPaidCents);
+  const refunded = nonNegInt(i.amountRefundedCents);
+  const price = i.priceCents == null ? null : nonNegInt(i.priceCents);
+  const dueRowFor = (netPaid: number): { row: [string, string] | null; cents: number } => {
+    const left = price == null ? 0 : price - netPaid;
+    return i.status === 'booked' && left > 0 ? { row: ['Due at the shop', dollars(left)], cents: left } : { row: null, cents: 0 };
+  };
+  switch (i.paymentStatus) {
+    case 'deposit':
+      if (price != null && paid > 0) {
+        const due = dueRowFor(paid);
+        return { kind: 'deposit', paidRow: ['Paid', `${dollars(paid)} deposit`], dueRow: due.row, dueCents: due.cents };
+      }
+      break;
+    case 'paid':
+      if (paid > 0) return { kind: 'paid', paidRow: ['Paid', dollars(paid)], dueRow: null, dueCents: 0 };
+      break;
+    case 'refunded':
+      if (refunded > 0) return { kind: 'refunded', paidRow: ['Refunded', dollars(refunded)], dueRow: null, dueCents: 0 };
+      break;
+    case 'partially_refunded':
+      if (paid > 0 && refunded > 0) {
+        const due = dueRowFor(Math.max(0, paid - refunded));
+        return { kind: 'partial', paidRow: ['Paid', `${dollars(paid)} · ${dollars(refunded)} refunded`], dueRow: due.row, dueCents: due.cents };
+      }
+      break;
+  }
+  return { kind: 'other', paidRow: paid > 0 ? ['Paid', dollars(paid)] : null, dueRow: null, dueCents: 0 };
+}

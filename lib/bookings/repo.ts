@@ -37,6 +37,8 @@ export interface ShopRow {
   phone: string | null;
   accent: string | null;
   daily_summary: boolean;
+  /** Migration 042: card is the only way to book a service whose card charge is at least 50 cents (needs live card). Absent before 042 is applied; read as false. */
+  require_card?: boolean;
   /** The shop's own site origin and look (011, server-written after a site deploy). */
   site_base_url?: string | null;
   site_look?: unknown;
@@ -317,6 +319,26 @@ const SHOP_COLS =
   'slot_step_min, pay_in_shop, manual_handles, stripe_account_id, stripe_charges_enabled, platform_fee_bps, ' +
   'bookings_enabled, ios_otid, address, phone, accent, daily_summary';
 // + site_base_url, site_look (011) through withSiteCols, so code deployed before the migration still reads shops.
+/**
+ * Read a shop with `require_card` (042); if the column is missing (042 not applied yet), read it again without it.
+ * The column then reads as absent, which every caller treats as false. `run` must be a read (it may be called twice).
+ */
+const REQUIRE_CARD_COL = 'require_card';
+let requireCardWarned = false;
+export function isMissingRequireCard(e: PgError): boolean {
+  if (!e) return false;
+  const text = `${e.message ?? ''} ${e.details ?? ''}`;
+  return (e.code === '42703' || e.code === 'PGRST204' || e.code === 'PGRST200') && text.includes(REQUIRE_CARD_COL);
+}
+async function withRequireCard<R extends { error: PgError }>(run: (cols: string) => PromiseLike<R>): Promise<R> {
+  const first = await withSiteCols(`${SHOP_COLS}, ${REQUIRE_CARD_COL}`, run);
+  if (!isMissingRequireCard(first.error)) return first;
+  if (!requireCardWarned) {
+    requireCardWarned = true;
+    console.warn('[ab_shops] require_card missing (migration 042 not applied); reading shops without it');
+  }
+  return withSiteCols(SHOP_COLS, run);
+}
 const MEMBER_COLS = 'id, shop_id, user_id, role, display_name, photo_url, bio, sort, active, ics_token';
 const SERVICE_COLS =
   'id, shop_id, name, price_cents, duration_min, description, photo_url, bookable, show_on_site, deposit_type, deposit_value, sort, active';
@@ -355,9 +377,9 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
   };
 
   return {
-    shopBySlug: (slug) => one('shopBySlug', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('slug', slug).maybeSingle())),
-    shopByOwner: (userId) => one('shopByOwner', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('owner_id', userId).maybeSingle())),
-    shopById: (id) => one('shopById', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('id', id).maybeSingle())),
+    shopBySlug: (slug) => one('shopBySlug', withRequireCard((c) => db().from('ab_shops').select(c).eq('slug', slug).maybeSingle())),
+    shopByOwner: (userId) => one('shopByOwner', withRequireCard((c) => db().from('ab_shops').select(c).eq('owner_id', userId).maybeSingle())),
+    shopById: (id) => one('shopById', withRequireCard((c) => db().from('ab_shops').select(c).eq('id', id).maybeSingle())),
     purchase: (otid) =>
       one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),

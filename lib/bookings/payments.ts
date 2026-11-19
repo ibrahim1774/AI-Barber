@@ -434,10 +434,12 @@ export interface AccountStatus {
   pendingVerification: number;
   /** Additive: requirements.disabled_reason (e.g. requirements.pending_verification, requirements.past_due, under_review, rejected.fraud), or null. */
   disabledReason: string | null;
+  /** Additive: the account's payout schedule (settings.payouts.schedule.interval: 'manual' | 'daily' | 'weekly' | 'monthly'), or null when Stripe did not say. Read only, never written. */
+  payoutInterval: string | null;
 }
 
 export const NO_ACCOUNT_STATUS: AccountStatus = {
-  connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null,
+  connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null,
 };
 
 const reqCount = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -454,6 +456,8 @@ export async function fetchAccountStatus(accountId: string, opts: StripeOpts = {
       currentlyDue: new Set([...reqCount(r?.currently_due), ...reqCount(r?.past_due)]).size,
       pendingVerification: reqCount(r?.pending_verification).length,
       disabledReason: typeof r?.disabled_reason === 'string' && r.disabled_reason ? r.disabled_reason : null,
+      // Standard accounts expose settings.payouts.schedule on the same GET; read it defensively (the shape is not guaranteed).
+      payoutInterval: typeof a?.settings?.payouts?.schedule?.interval === 'string' && a.settings.payouts.schedule.interval ? a.settings.payouts.schedule.interval : null,
     };
   } catch (e) {
     if (e instanceof StripeApiError && (e.status === 403 || e.status === 404)) {

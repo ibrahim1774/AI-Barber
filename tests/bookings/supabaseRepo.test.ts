@@ -106,3 +106,43 @@ describe('supabaseBookingRepo', () => {
     expect(await supabaseBookingRepo(client).siteDeployedUrl('site', 'me')).toBe('foreign');
   });
 });
+
+describe('shop reads and the require_card column (migration 042)', () => {
+  /** A client whose select() fails with the given error while the column list names `bad`, else returns the row. */
+  function shopClient(bad: string | null, error: unknown) {
+    const selects: string[] = [];
+    let cols = '';
+    const chain: any = new Proxy({}, {
+      get(_t, prop: string) {
+        if (prop === 'then') return undefined;
+        if (prop === 'select') return (c: string) => { selects.push(c); cols = c; return chain; };
+        if (prop === 'maybeSingle') return () => Promise.resolve(bad && cols.includes(bad) ? { data: null, error } : { data: { id: 'shop-1', ...(cols.includes('require_card') ? { require_card: true } : {}) }, error: null });
+        return () => chain;
+      },
+    });
+    return { client: { from: () => chain } as any, selects };
+  }
+  const missing = (code: string) => ({ code, message: code === 'PGRST204' ? "Could not find the 'require_card' column of 'ab_shops' in the schema cache" : 'column ab_shops.require_card does not exist' });
+
+  it('reads require_card when the column exists', async () => {
+    const { client, selects } = shopClient(null, null);
+    expect(await supabaseBookingRepo(client).shopBySlug('x')).toEqual({ id: 'shop-1', require_card: true });
+    expect(selects).toHaveLength(1);
+    expect(selects[0]).toContain('require_card');
+  });
+  for (const code of ['42703', 'PGRST204']) {
+    it(`reads the shop without it when the column is missing (${code}): require_card is absent, i.e. false`, async () => {
+      const { client, selects } = shopClient('require_card', missing(code));
+      const row = await supabaseBookingRepo(client).shopById('id');
+      expect(row).toEqual({ id: 'shop-1' });
+      expect(selects).toHaveLength(2);
+      expect(selects[1]).not.toContain('require_card');
+      expect(selects[1]).toContain('site_look'); // the 011 fallback still applies
+    });
+  }
+  it('an unrelated error still throws (no silent retry)', async () => {
+    const { client, selects } = shopClient('require_card', { code: '42501', message: 'permission denied for table ab_shops' });
+    await expect(supabaseBookingRepo(client).shopByOwner('u')).rejects.toThrow('permission denied');
+    expect(selects).toHaveLength(1);
+  });
+});

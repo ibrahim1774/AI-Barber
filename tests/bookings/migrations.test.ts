@@ -31,3 +31,23 @@ describe('005_bookings_foundation.sql', () => {
     expect(sql('005_bookings_foundation.sql')).toMatch(/re-run 006, 007, 008 and 009 after it/);
   });
 });
+
+describe('042_require_card.sql', () => {
+  const raw = sql('042_require_card.sql');
+  const s = code(raw);
+  it('says do not apply until the owner says so', () => {
+    expect(raw).toMatch(/do not apply until the owner says so/);
+  });
+  it('is additive: one new column, default false, not null', () => {
+    expect(s).toMatch(/alter table public\.ab_shops add column if not exists require_card bool not null default false;/);
+    expect(s).not.toMatch(/\b(drop|delete|truncate|rename)\b/i);
+    expect((s.match(/\balter table\b/gi) ?? []).length).toBe(1);
+  });
+  it('lets owners write it through a column grant only', () => {
+    expect(s).toMatch(/grant update \(require_card\) on public\.ab_shops to authenticated;/);
+    expect(s).not.toMatch(/grant (all|insert|delete)/i);
+  });
+  it('runs in one transaction with a lock timeout', () => {
+    expect(s).toMatch(/begin;[\s\S]*set local lock_timeout[\s\S]*commit;/);
+  });
+});

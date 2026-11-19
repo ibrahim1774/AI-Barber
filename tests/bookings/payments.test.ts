@@ -286,10 +286,10 @@ describe('onboard / status', () => {
   });
 
   it('status: not connected without an account; refreshed + synced from Stripe', async () => {
-    expect(await stripeStatus('Bearer good', mkDeps())).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null } });
+    expect(await stripeStatus('Bearer good', mkDeps())).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null } });
     const { f, calls } = fakeFetch({ body: { id: 'acct_1', charges_enabled: true, details_submitted: true } });
     const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1' })) }, f);
-    expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: true, chargesEnabled: true, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: null } });
+    expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: true, chargesEnabled: true, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null } });
     expect(calls[0].url).toBe('https://api.stripe.com/v1/accounts/acct_1');
     expect(calls[0].init.method).toBe('GET');
     expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
@@ -299,7 +299,7 @@ describe('onboard / status', () => {
     for (const status of [403, 404]) {
       const { f, calls } = fakeFetch({ status, body: { error: { type: 'invalid_request_error', message: 'no access' } } });
       const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1', stripe_charges_enabled: true })) }, f);
-      expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null } });
+      expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null } });
       expect(deps.audit).not.toHaveBeenCalled();
       expect(deps.setChargesEnabled).not.toHaveBeenCalled();
       expect(deps.saveAccountId).not.toHaveBeenCalled();
@@ -320,7 +320,7 @@ describe('onboard / status', () => {
         charges_enabled: false, details_submitted: false,
         requirements: { currently_due: ['tos_acceptance.date', 'tos_acceptance.ip'], past_due: ['tos_acceptance.date'], pending_verification: [], disabled_reason: 'requirements.past_due' },
       });
-      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 2, pendingVerification: 0, disabledReason: 'requirements.past_due' });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 2, pendingVerification: 0, disabledReason: 'requirements.past_due', payoutInterval: null });
     });
 
     it('just submitted: verifying, nothing due, no action needed', async () => {
@@ -328,7 +328,21 @@ describe('onboard / status', () => {
         charges_enabled: false, details_submitted: true,
         requirements: { currently_due: [], past_due: [], pending_verification: ['individual.address.city', 'individual.address.line1', 'individual.id_number'], disabled_reason: 'requirements.pending_verification' },
       });
-      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 3, disabledReason: 'requirements.pending_verification' });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 3, disabledReason: 'requirements.pending_verification', payoutInterval: null });
+    });
+
+    it('payoutInterval: reads the schedule interval from the same GET', async () => {
+      for (const interval of ['manual', 'daily', 'weekly', 'monthly']) {
+        const { r } = await run({ charges_enabled: true, details_submitted: true, settings: { payouts: { schedule: { interval } } } });
+        expect((r.body as any).payoutInterval).toBe(interval);
+      }
+    });
+
+    it('payoutInterval: null when settings, payouts, schedule or interval are missing or odd', async () => {
+      for (const settings of [undefined, {}, { payouts: {} }, { payouts: { schedule: {} } }, { payouts: { schedule: { interval: 5 } } }, { payouts: { schedule: { interval: '' } } }, null]) {
+        const { r } = await run({ charges_enabled: true, details_submitted: true, ...(settings === undefined ? {} : { settings }) });
+        expect((r.body as any).payoutInterval).toBeNull();
+      }
     });
 
     it('enabled: all clear', async () => {
@@ -336,7 +350,7 @@ describe('onboard / status', () => {
         charges_enabled: true, details_submitted: true,
         requirements: { currently_due: [], past_due: [], pending_verification: [], disabled_reason: null },
       });
-      expect(r.body).toEqual({ connected: true, chargesEnabled: true, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: null });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: true, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null });
       expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
     });
 
@@ -345,18 +359,18 @@ describe('onboard / status', () => {
         charges_enabled: false, details_submitted: true,
         requirements: { currently_due: ['individual.verification.document'], past_due: ['individual.verification.document'], pending_verification: [], disabled_reason: 'requirements.past_due' },
       });
-      expect(r.body).toMatchObject({ detailsSubmitted: true, currentlyDue: 1, disabledReason: 'requirements.past_due' });
+      expect(r.body).toMatchObject({ detailsSubmitted: true, currentlyDue: 1, disabledReason: 'requirements.past_due', payoutInterval: null });
     });
 
     it('under_review and rejected reasons pass through', async () => {
       expect((await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: 'under_review' } })).r.body).toMatchObject({ disabledReason: 'under_review', currentlyDue: 0 });
-      expect((await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: 'rejected.fraud' } })).r.body).toMatchObject({ disabledReason: 'rejected.fraud' });
+      expect((await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: 'rejected.fraud' } })).r.body).toMatchObject({ disabledReason: 'rejected.fraud', payoutInterval: null });
     });
 
     it('unknown reasons (platform_paused, other, action_required.*) pass through unchanged and carry no requirement names', async () => {
       for (const reason of ['platform_paused', 'other', 'action_required.requested_capabilities', 'paused.inactivity']) {
         const { r } = await run({ charges_enabled: false, details_submitted: true, requirements: { disabled_reason: reason, currently_due: [] } });
-        expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: reason });
+        expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: true, currentlyDue: 0, pendingVerification: 0, disabledReason: reason, payoutInterval: null });
       }
     });
 
@@ -370,7 +384,7 @@ describe('onboard / status', () => {
 
     it('missing requirements object reads as zeros', async () => {
       const { r } = await run({ charges_enabled: false, details_submitted: false });
-      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null });
+      expect(r.body).toEqual({ connected: true, chargesEnabled: false, detailsSubmitted: false, currentlyDue: 0, pendingVerification: 0, disabledReason: null, payoutInterval: null });
     });
 
     it('never exposes requirement field names', async () => {

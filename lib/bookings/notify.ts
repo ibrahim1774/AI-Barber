@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail as liveSendEmail, escapeHtml, type EmailMessage, type EmailResult } from './email.js';
 import { pushToUsers, type PushMessage, type PushTokenStore } from './push.js';
 import { customerAppointmentIcs } from './ics.js';
+import { dollars, paymentSummary } from './money.js';
 import { manageUrl, bookingPageUrl, serviceDb } from './payments.js';
 import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
@@ -103,8 +104,7 @@ export const shortWhen = (iso: string, tz: string) => zoned(iso, tz).toFormat('c
 /** "Friday, October 24 at 2:00 PM" (email copy). */
 export const longWhen = (iso: string, tz: string) => zoned(iso, tz).toFormat("cccc, LLLL d 'at' h:mm a");
 
-export const dollars = (cents: number) =>
-  cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+export { dollars };
 
 const METHOD_LABEL: Record<ManualMethod, string> = { cashapp: 'Cash App', venmo: 'Venmo', zelle: 'Zelle', paypal: 'PayPal' };
 
@@ -135,7 +135,22 @@ ${paras}${btn}
 </div></body></html>`;
 }
 
-function detailRows(ctx: NotifyContext): [string, string][] {
+const summaryOf = (appt: NotifyContext['appt']) =>
+  paymentSummary({
+    status: appt.status, paymentStatus: appt.payment_status, priceCents: appt.price_cents,
+    amountPaidCents: appt.amount_paid_cents, amountRefundedCents: appt.amount_refunded_cents,
+  });
+
+/** The owner email's Payment line for a deposit booking ("Deposit paid $22.50 · $22.50 due"); undefined for everything else, so those events (and emails) stay exactly as they were. */
+function ownerPaidLine(appt: NotifyContext['appt']): string | undefined {
+  const sum = summaryOf(appt);
+  if (sum.kind !== 'deposit' || !sum.paidRow) return undefined;
+  const dep = sum.paidRow[1].replace(/ deposit$/, '');
+  return sum.dueCents > 0 ? `Deposit paid ${dep} · ${dollars(sum.dueCents)} due` : `Deposit paid ${dep}`;
+}
+
+/** `showDue` is false for the cancellation email: a cancelled booking owes nothing. */
+function detailRows(ctx: NotifyContext, showDue = true): [string, string][] {
   const { appt, shop } = ctx;
   const rows: [string, string][] = [
     ['When', longWhen(appt.start_at, shop.timezone)],
@@ -144,7 +159,9 @@ function detailRows(ctx: NotifyContext): [string, string][] {
   if (ctx.memberName) rows.push(['Barber', ctx.memberName]);
   if (shop.address) rows.push(['Where', shop.address]);
   if (appt.price_cents != null) rows.push(['Price', dollars(appt.price_cents)]);
-  if (appt.amount_paid_cents > 0) rows.push(['Paid', dollars(appt.amount_paid_cents)]);
+  const sum = summaryOf(appt);
+  if (sum.paidRow) rows.push(sum.paidRow);
+  if (showDue && sum.dueRow) rows.push(sum.dueRow);
   return rows;
 }
 
@@ -207,7 +224,7 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
     fromName: fromName(shop),
     replyTo: ctx.ownerEmail,
     subject: `Cancelled: ${appt.service_name} at ${shop.name}, ${longWhen(appt.start_at, shop.timezone)}`,
-    html: emailLayout(shop, 'Booking cancelled', detailRows(ctx), paras, rebook),
+    html: emailLayout(shop, 'Booking cancelled', detailRows(ctx, false), paras, rebook),
     text: `${paras.join('\n')}\n${appt.service_name}, ${longWhen(appt.start_at, shop.timezone)}.${rebook ? `\nBook again: ${rebook.href}` : ''}`,
     // STATUS:CANCELLED with the same UID removes it from the customer's calendar
     attachments: [icsAttachment(ctx, now, true)],
@@ -256,6 +273,8 @@ const ownerEvent = (kind: 'booking_created' | 'booking_cancelled' | 'booking_res
   service: ctx.appt.service_name,
   whenShort: shortWhen(ctx.appt.start_at, ctx.shop.timezone),
   whenLong: longWhen(ctx.appt.start_at, ctx.shop.timezone),
+  // Only a deposit booking carries a payment line; every other event is exactly as it was.
+  ...(kind === 'booking_created' && ownerPaidLine(ctx.appt) ? { paid: ownerPaidLine(ctx.appt) } : {}),
 }) as OwnerEvent;
 
 const pushRecipients = (ctx: NotifyContext) => [ctx.shop.owner_id, ctx.memberUserId].filter(Boolean) as string[];

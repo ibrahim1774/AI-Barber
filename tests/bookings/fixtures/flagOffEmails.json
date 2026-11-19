@@ -1,0 +1,283 @@
+{
+ "unpaidShop": {
+  "confirmation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "You're booked at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">You&#39;re booked</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">The calendar file attached adds this to your calendar.</p><p style=\"margin:12px 0;color:#333;line-height:1.5\">Need to change or cancel? Use the link below.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "You're booked at Fade Factory.\nFade, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "cancellation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Cancelled: Fade at Fade Factory, Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Booking cancelled</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Your appointment has been cancelled.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/fade-factory\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Book another time</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your appointment has been cancelled.\nFade, Friday, October 23 at 2:00 PM.\nBook again: https://www.aibarber.org/book/fade-factory",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reschedule": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "New time at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Your booking has moved</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Open the attached calendar file to update your calendar.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your booking at Fade Factory is now Friday, October 23 at 2:00 PM (Fade).\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reminder": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Reminder: Fade at Fade Factory on Friday at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">See you soon</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Can&#39;t make it? Please cancel or reschedule so someone else can have the time.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Reminder: Fade at Fade Factory, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc"
+  }
+ },
+ "awaitingManual": {
+  "confirmation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "You're booked at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">You&#39;re booked</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">The calendar file attached adds this to your calendar.</p><p style=\"margin:12px 0;color:#333;line-height:1.5\">Need to change or cancel? Use the link below.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "You're booked at Fade Factory.\nFade, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "cancellation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Cancelled: Fade at Fade Factory, Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Booking cancelled</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Your appointment has been cancelled.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/fade-factory\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Book another time</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your appointment has been cancelled.\nFade, Friday, October 23 at 2:00 PM.\nBook again: https://www.aibarber.org/book/fade-factory",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reschedule": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "New time at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Your booking has moved</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Open the attached calendar file to update your calendar.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your booking at Fade Factory is now Friday, October 23 at 2:00 PM (Fade).\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reminder": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Reminder: Fade at Fade Factory on Friday at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">See you soon</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Can&#39;t make it? Please cancel or reschedule so someone else can have the time.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Reminder: Fade at Fade Factory, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc"
+  }
+ },
+ "paidInFull": {
+  "confirmation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "You're booked at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">You&#39;re booked</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">The calendar file attached adds this to your calendar.</p><p style=\"margin:12px 0;color:#333;line-height:1.5\">Need to change or cancel? Use the link below.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "You're booked at Fade Factory.\nFade, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "cancellation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Cancelled: Fade at Fade Factory, Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Booking cancelled</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Your appointment has been cancelled.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/fade-factory\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Book another time</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your appointment has been cancelled.\nFade, Friday, October 23 at 2:00 PM.\nBook again: https://www.aibarber.org/book/fade-factory",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reschedule": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "New time at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Your booking has moved</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Open the attached calendar file to update your calendar.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your booking at Fade Factory is now Friday, October 23 at 2:00 PM (Fade).\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reminder": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Reminder: Fade at Fade Factory on Friday at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">See you soon</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Can&#39;t make it? Please cancel or reschedule so someone else can have the time.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Reminder: Fade at Fade Factory, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc"
+  }
+ },
+ "paidManual": {
+  "confirmation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "You're booked at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">You&#39;re booked</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">The calendar file attached adds this to your calendar.</p><p style=\"margin:12px 0;color:#333;line-height:1.5\">Need to change or cancel? Use the link below.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "You're booked at Fade Factory.\nFade, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "cancellation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Cancelled: Fade at Fade Factory, Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Booking cancelled</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Your appointment has been cancelled.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/fade-factory\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Book another time</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your appointment has been cancelled.\nFade, Friday, October 23 at 2:00 PM.\nBook again: https://www.aibarber.org/book/fade-factory",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reschedule": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "New time at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Your booking has moved</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Open the attached calendar file to update your calendar.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your booking at Fade Factory is now Friday, October 23 at 2:00 PM (Fade).\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reminder": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Reminder: Fade at Fade Factory on Friday at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">See you soon</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Price</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Paid</td><td style=\"padding:4px 0;color:#111\"><strong>$30</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Can&#39;t make it? Please cancel or reschedule so someone else can have the time.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Reminder: Fade at Fade Factory, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc"
+  }
+ },
+ "noPrice": {
+  "confirmation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "You're booked at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">You&#39;re booked</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">The calendar file attached adds this to your calendar.</p><p style=\"margin:12px 0;color:#333;line-height:1.5\">Need to change or cancel? Use the link below.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "You're booked at Fade Factory.\nFade, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "cancellation": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Cancelled: Fade at Fade Factory, Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Booking cancelled</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Your appointment has been cancelled.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/fade-factory\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Book another time</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your appointment has been cancelled.\nFade, Friday, October 23 at 2:00 PM.\nBook again: https://www.aibarber.org/book/fade-factory",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reschedule": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "New time at Fade Factory: Friday, October 23 at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">Your booking has moved</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Open the attached calendar file to update your calendar.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Your booking at Fade Factory is now Friday, October 23 at 2:00 PM (Fade).\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc",
+   "attachments": [
+    {
+     "filename": "booking.ics",
+     "contentType": "text/calendar; charset=utf-8; method=PUBLISH",
+     "content": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Prime Barber//Bookings//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:appt-1@aibarber.org\r\nDTSTAMP:19700101T000000Z\r\nDTSTART:20261023T180000Z\r\nDTEND:20261023T183000Z\r\nSUMMARY:Fade at Fade Factory\r\nLOCATION:1 Main St\r\nDESCRIPTION:With Mike\\nManage or cancel: https://www.aibarber.org/book/mana\r\n ge/tok_abc\r\nURL:https://www.aibarber.org/book/manage/tok_abc\r\nSEQUENCE:0\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    }
+   ]
+  },
+  "reminder": {
+   "to": "sam@example.com",
+   "fromName": "Fade Factory via Prime Barber",
+   "replyTo": "owner@example.com",
+   "subject": "Reminder: Fade at Fade Factory on Friday at 2:00 PM",
+   "html": "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif\">\n<div style=\"max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:24px\">\n<p style=\"margin:0 0 4px;color:#111111;font-weight:700\">Fade Factory</p>\n<h1 style=\"margin:0 0 16px;font-size:22px;color:#111\">See you soon</h1>\n<table style=\"border-collapse:collapse;font-size:15px\"><tr><td style=\"padding:4px 12px 4px 0;color:#666\">When</td><td style=\"padding:4px 0;color:#111\"><strong>Friday, October 23 at 2:00 PM</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Service</td><td style=\"padding:4px 0;color:#111\"><strong>Fade</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Barber</td><td style=\"padding:4px 0;color:#111\"><strong>Mike</strong></td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#666\">Where</td><td style=\"padding:4px 0;color:#111\"><strong>1 Main St</strong></td></tr></table>\n<p style=\"margin:12px 0;color:#333;line-height:1.5\">Can&#39;t make it? Please cancel or reschedule so someone else can have the time.</p><p style=\"margin:20px 0\"><a href=\"https://www.aibarber.org/book/manage/tok_abc\" style=\"display:inline-block;background:#111111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600\">Manage booking</a></p>\n<p style=\"margin:24px 0 0;color:#999;font-size:12px\">Sent by Prime Barber for Fade Factory. Reply to this email to reach the shop.</p>\n</div></body></html>",
+   "text": "Reminder: Fade at Fade Factory, Friday, October 23 at 2:00 PM.\nManage or cancel: https://www.aibarber.org/book/manage/tok_abc"
+  }
+ },
+ "owner": {
+  "subject": "New booking: Jake Lee, Sat Oct 24, 3:00 PM",
+  "html": "<!doctype html><html><body style=\"margin:0;padding:16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111\">\n<p style=\"margin:0 0 12px;font-size:16px;font-weight:600\">New booking</p>\n<p style=\"margin:0 0 12px;font-size:15px;line-height:22px\">Hi Ibrahim, Jake Lee booked Fade.</p>\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 16px\"><tr><td style=\"padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top\">Who</td><td style=\"padding:4px 0;color:#111;font-size:14px\">Jake Lee</td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top\">What</td><td style=\"padding:4px 0;color:#111;font-size:14px\">Fade</td></tr><tr><td style=\"padding:4px 12px 4px 0;color:#555;font-size:14px;vertical-align:top\">When</td><td style=\"padding:4px 0;color:#111;font-size:14px\">Saturday, October 24 at 3:00 PM</td></tr></table>\n<p style=\"margin:0 0 16px;font-size:15px\"><a href=\"https://www.aibarber.org/app\" style=\"color:#0b57d0\">Open Prime Barber</a></p>\n<p style=\"margin:0;font-size:12px;line-height:18px;color:#666\">You are getting this because you own a shop on Prime Barber. Questions? Reply to this email.</p>\n</body></html>",
+  "text": "New booking\n\nHi Ibrahim, Jake Lee booked Fade.\n\nWho: Jake Lee\nWhat: Fade\nWhen: Saturday, October 24 at 3:00 PM\n\nOpen Prime Barber: https://www.aibarber.org/app\n\nYou are getting this because you own a shop on Prime Barber. Questions? Reply to this email.",
+  "replyTo": "support@davoxa.com"
+ }
+}

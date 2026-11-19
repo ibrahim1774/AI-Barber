@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { platformFeeCents, depositCents, refundOnCancel } from '../../lib/bookings/money.js';
+import { platformFeeCents, depositCents, refundOnCancel, paymentSummary, dollars } from '../../lib/bookings/money.js';
+import { PAYMENT_CASES } from './paymentCases.js';
 
 describe('platformFeeCents', () => {
   it('2% of common amounts', () => {
@@ -80,5 +81,19 @@ describe('refundOnCancel', () => {
 
   it('nothing paid -> nothing refunded; accepts Date inputs', () => {
     expect(refundOnCancel({ by: 'shop', cutoffMin: 120, startAt: new Date(startAt), now: new Date(), amountPaidCents: 0 })).toBe(0);
+  });
+});
+
+describe('paymentSummary (shared case table)', () => {
+  for (const c of PAYMENT_CASES) {
+    it(c.name, () => {
+      const sum = paymentSummary(c.input);
+      expect([sum.paidRow, sum.dueRow].filter(Boolean)).toEqual(c.rows);
+    });
+  }
+  it('dollars prints whole dollars bare and cents with two places', () => {
+    expect(dollars(3000)).toBe('$30');
+    expect(dollars(2250)).toBe('$22.50');
+    expect(dollars(5)).toBe('$0.05');
   });
 });

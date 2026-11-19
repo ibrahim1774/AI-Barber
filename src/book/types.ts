@@ -19,6 +19,8 @@ export type Service = {
   description: string | null;
   photoUrl: string | null;
   depositCents: number;
+  /** The shop requires card payment for this service (absent from an older server). */
+  cardOnly?: boolean;
 };
 export type Member = {
   id: string;
@@ -61,6 +63,8 @@ export type ManageAppointment = {
   memberName: string;
   priceCents: number | null;
   amountPaidCents: number;
+  /** Absent from an older server. */
+  amountRefundedCents?: number;
   paymentStatus: string;
   shop: { name: string; slug: string; address: string | null; phone: string | null; timezone: string };
 };

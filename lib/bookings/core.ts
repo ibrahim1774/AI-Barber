@@ -259,6 +259,21 @@ export const serviceDeposit = (service: ServiceRow, price: number | null) =>
 export const effectiveDeposit = (shop: ShopRow, service: ServiceRow, price: number | null) =>
   cardEnabled(shop) ? serviceDeposit(service, price) : 0;
 
+/** Stripe's minimum card charge. */
+export const STRIPE_MIN_CENTS = 50;
+
+/**
+ * Is this service card-only for the shop? Only when the shop turned on `require_card` (042), card payments are live, and the
+ * card charge (the deposit, else the price) reaches Stripe's minimum. Unpriced services and anything under the minimum keep
+ * today's options, and with cards off the setting does nothing, so a shop never becomes unbookable. `price` is the price the
+ * booking will use (a barber's own price when there is one).
+ */
+export function cardRequired(shop: ShopRow, service: ServiceRow, price: number | null): boolean {
+  if (!shop.require_card || !cardEnabled(shop)) return false;
+  const dep = serviceDeposit(service, price);
+  return (dep > 0 ? dep : price ?? 0) >= STRIPE_MIN_CENTS;
+}
+
 /** Each member's availability, time off and busy times overlapping [fromMs, toMs). */
 export async function loadSchedules(
   repo: BookingRepo,
@@ -395,6 +410,7 @@ export function manageView(appt: AppointmentRow, memberName: string, shop: ShopR
     memberName,
     priceCents: appt.price_cents,
     amountPaidCents: appt.amount_paid_cents,
+    amountRefundedCents: appt.amount_refunded_cents,
     paymentStatus: appt.payment_status,
     shop: { name: shop.name, slug: shop.slug, address: shop.address, phone: shop.phone, timezone: shop.timezone },
   };

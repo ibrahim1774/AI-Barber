@@ -9,7 +9,7 @@ import { APP_ORIGIN, webAppEntitlementsOn, sbRest } from './webAppServer.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 
 export type OwnerEvent =
-  | { kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled'; customerName: string | null; service: string; whenShort: string; whenLong: string }
+  | { kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled'; customerName: string | null; service: string; whenShort: string; whenLong: string; /** booking_created only: "Deposit paid $22.50 · $22.50 due". Absent = no Payment row (as before). */ paid?: string }
   | { kind: 'customer_says_paid'; customerName: string | null; service: string; whenShort: string; whenLong: string; method: string; amountCents: number | null }
   | { kind: 'order_created'; customerName: string | null; itemCount: number; totalCents: number; fulfilment: string; orderLabel: string; /** One-line shipping address (shipping orders, once known). */ shipTo?: string | null }
   | { kind: 'order_says_paid'; customerName: string | null; totalCents: number; method: string; orderLabel: string };
@@ -155,6 +155,7 @@ export function ownerEmailFor(e: OwnerEvent, first: string | null, origin = APP_
       headline = 'New booking';
       leadText = `${name} booked ${clean(e.service)}.`;
       facts = [['Who', name], ['What', clean(e.service)], ['When', e.whenLong]];
+      if (e.paid) facts.push(['Payment', clean(e.paid)]);
       break;
     case 'booking_cancelled':
       subject = `Cancelled: ${who(e.customerName)}, ${e.whenShort}`;

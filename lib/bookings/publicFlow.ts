@@ -38,6 +38,8 @@ import {
   refundIfCancelled,
   safeNotify,
   effectiveDeposit,
+  cardRequired,
+  STRIPE_MIN_CENTS,
   text,
   validEmail,
   validZone,
@@ -60,8 +62,6 @@ import {
 } from './repo.js';
 
 type Params = Record<string, unknown>;
-
-const STRIPE_MIN_CENTS = 50;
 
 async function shopForSlug(deps: FlowDeps, slug: unknown): Promise<ShopRow | null> {
   if (!isSlugParam(slug)) return null;
@@ -101,6 +101,8 @@ export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResul
       description: s.description ?? null,
       photoUrl: s.photo_url ?? null,
       depositCents: effectiveDeposit(shop, s, s.price_cents),
+      // Card is the only way to book this service (the shop's require_card switch). Additive: pay.inShop is unchanged.
+      cardOnly: cardRequired(shop, s, s.price_cents),
     })),
     members: members.map((m) => {
       const ids = services.filter((s) => offers(cat, s.id, m.id)).map((s) => s.id);
@@ -244,6 +246,8 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   for (const m of free) {
     const price = priceFor(cat, service, m.id);
     const deposit = effectiveDeposit(shop, service, price);
+    // The shop requires card for this service (checked with THIS barber's price): pay in shop and manual are refused.
+    if (pay !== 'card' && cardRequired(shop, service, price)) return err(400, 'card-required', { field: 'pay' });
     let chargeCents = 0;
     if (pay === 'card') {
       chargeCents = deposit > 0 ? deposit : price ?? 0;
