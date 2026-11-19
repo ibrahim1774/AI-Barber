@@ -131,6 +131,23 @@ describe('liveFreeGrantDeps against a mocked sbRest', () => {
   });
 });
 
+describe('liveFreeGrantDeps refusals from mocked database rows', () => {
+  const client: any = { auth: { admin: { listUsers: async () => ({ data: { users: [{ id: A, email: 'barber@example.com', email_confirmed_at: '2026-01-01' }] }, error: null }) } }, from: () => ({ insert: async () => ({ error: null }) }) };
+  const purchase = (o: object) => ({ original_transaction_id: 'T1', product_id: 'com.ibrahim1774.aibarber.hosting.monthly', environment: 'Production', expires_at: '2099-01-01T00:00:00Z', revoked_at: null, taken_down_at: null, site_slug: null, published_at: null, removed_at: null, user_id: A, ...o });
+  const run = async (tables: Record<string, any[]>) => {
+    rest.calls.length = 0; rest.tables = tables;
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_live_x');
+    try { return await setFreeGroup('grant-free', 'barber@example.com', liveFreeGrantDeps(client)); } finally { vi.unstubAllEnvs(); }
+  };
+  it('apple-address, apple-account and has-paid-plan come from the real readers, and nothing is written', async () => {
+    expect(await run({ ios_purchases: [purchase({ site_slug: 'a', published_at: 'x' })] })).toMatchObject({ ok: false, error: 'apple-address' });
+    expect(await run({ ios_purchases: [purchase({})] })).toMatchObject({ ok: false, error: 'apple-account' });
+    expect(await run({ web_app_entitlements: [{ stripe_subscription_id: 'sub_1', status: 'active', tier: 'bookings' }] })).toMatchObject({ ok: false, error: 'has-paid-plan' });
+    expect(rest.calls.some((c) => c.init.method === 'POST')).toBe(false);
+    expect(await run({})).toMatchObject({ ok: true, group: 'free' });
+  });
+});
+
 describe('/api/admin/sites grant-free and revoke-free', () => {
   const handler = (core: unknown) => makeAdminSitesHandler({
     emailOf: () => async (t: string) => (t === 'admin' ? ADMIN_EMAIL : t === 'user' ? 'x@example.com' : null),

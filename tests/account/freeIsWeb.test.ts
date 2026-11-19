@@ -58,6 +58,7 @@ vi.mock('../../lib/ios/domainsRepo.js', async (orig) => ({ ...(await orig<typeof
 import { accountKind, accountKindReading, freeIsWebOn, loadKindFacts, readKind, type AccountKind, type ApplePurchaseFact, type EntitlementFact, type KindDeps, type KindFacts, type WebSiteFact } from '../../lib/account/kind.js';
 import { accountPlan, loadPlanFacts, type PlanDeps } from '../../lib/account/plan.js';
 import { nativeModeGate, oldRouteGate, siteModeOf } from '../../lib/account/siteMode.js';
+import { liveTransferDeps } from '../../lib/ios/transferLive.js';
 import { checkTie, mayTakePurchase, type MayTakeDeps } from '../../lib/account/mayTake.js';
 import { getPlan } from '../../lib/ios/planFlow.js';
 import { guardMode } from '../../lib/account/sites.js';
@@ -303,5 +304,43 @@ describe('routes for a Free account with no site (ACCOUNT_PLAN_V2=1, FREE_IS_WEB
     expect(r.code).toBe(404);
     expect(r.body).toMatchObject({ error: 'no-site' });
     expect([w.log.offline, w.log.content]).toEqual([[], []]);
+  });
+});
+
+describe('Move and the old-route gate: Free alone is not a web account where a purchase is tied', () => {
+  const gateEnv = () => { for (const [k, v] of Object.entries({ ...ENGINE, ACCOUNT_DRAFTS_IOS: 'all', ACCOUNT_PLAN_V2: '1' })) vi.stubEnv(k, v); };
+  const h = { 'x-pb-build': '57', authorization: 'Bearer t' };
+  const userOf = async () => ({ id: 'u1' });
+  it('Move (kindOf): Free no-site is not web (switch on), Free + published site and Free + card plan still are; switch off reads no price group', async () => {
+    vi.stubEnv('FREE_IS_WEB', '1');
+    const k = liveTransferDeps().kindOf!;
+    expect((await k('u1', 'Production')).kind).toBe('neither');
+    expect(w.reads).toEqual([]);
+    w.webSite = true; expect((await k('u1', 'Production')).kind).toBe('web');
+    w.webSite = false; w.card = true; expect((await k('u1', 'Production')).kind).toBe('web');
+    vi.stubEnv('FREE_IS_WEB', ''); w.card = false;
+    expect((await k('u1', 'Production')).kind).toBe('neither');
+    expect(w.reads).toEqual([]);
+  });
+  it('old route, Free no-site: a transaction id reaches the tie logic (null); no transaction id is 409 use-account-publish as before', async () => {
+    gateEnv(); vi.stubEnv('FREE_IS_WEB', '1');
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, { transactionId: '2000000123' })).toBeNull();
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, { transactionId: '  ' })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, {})).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+    expect(await oldRouteGate({ headers: h }, userOf)).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+  });
+  it('old route, a real web account with a transaction id (published site, or card plan) is still 409', async () => {
+    gateEnv(); vi.stubEnv('FREE_IS_WEB', '1');
+    w.webSite = true;
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, { transactionId: '2000000123' })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+    w.webSite = false; w.card = true;
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, { transactionId: '2000000123' })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+  });
+  it('old route, switch off: unchanged (Free no-site is device, a real web account is 409, no price-group read)', async () => {
+    gateEnv(); vi.stubEnv('FREE_IS_WEB', '');
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, { transactionId: '2000000123' })).toBeNull();
+    w.card = true;
+    expect(await oldRouteGate({ headers: h }, userOf, undefined, { transactionId: '2000000123' })).toEqual({ status: 409, body: { error: 'use-account-publish' } });
+    expect(w.reads).toEqual([]);
   });
 });

@@ -17,7 +17,7 @@
 // Flows receive it as an optional dep (`tie`); absent = today's behaviour. liveTie() is the live wiring.
 import { sbRest } from '../webApp/webAppServer.js';
 import { isFreeOrUnknown } from './planLive.js';
-import { loadKindFacts, liveKindDeps, readKind, countedApplePurchases, type AccountKind, type KindDeps, type KindEnv } from './kind.js';
+import { withoutFree, loadKindFacts, liveKindDeps, readKind, countedApplePurchases, type AccountKind, type KindDeps, type KindEnv } from './kind.js';
 import { defaultKindEnv } from './plan.js';
 import { guardMode, tableMissing, type AddressRow, type GuardMode } from './sites.js';
 import { reportBlocked, type BlockReason, type BlockedInfo } from './blocked.js';
@@ -49,7 +49,7 @@ export async function mayTakePurchase(uid: string, otid: string, deps: MayTakeDe
   const env: KindEnv = environment ?? deps.env();
   // Free alone never refuses a purchase: the decision reads the real web facts only (published address, card plan), so isFree is left out here.
   // A Free account with no site ties an Apple purchase exactly as before FREE_IS_WEB (it then becomes an Apple account).
-  const facts = await loadKindFacts(uid, env, { ...deps.kindDeps, isFree: undefined });
+  const facts = await loadKindFacts(uid, env, withoutFree(deps.kindDeps));
   const reading = readKind(facts);
   const row = await deps.address(uid, env);
   const webSlug = facts.webSites.find((s) => !!s.published_at)?.slug ?? (row?.holder === 'web' && row.published_once ? row.slug : null);

@@ -118,6 +118,9 @@ export interface KindDeps {
   isFree?(uid: string): Promise<boolean>;
 }
 
+/** The same deps with the Free read left out: for decisions where Free alone must never make a web account (Apple purchase ties, Move, the old-route gate with a transaction). */
+export const withoutFree = (d: KindDeps): KindDeps => ({ ...d, isFree: undefined });
+
 export async function loadKindFacts(uid: string, env: KindEnv, deps: KindDeps, procEnv: Record<string, string | undefined> = process.env): Promise<KindFacts> {
   const mode = stripeModeOf(env);
   const readFree = freeIsWebOn(procEnv) && deps.isFree ? deps.isFree(uid) : undefined;
