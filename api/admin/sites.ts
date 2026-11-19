@@ -4,6 +4,7 @@ import { adminSupabase, liveAdminDeps } from '../../lib/admin/live.js';
 import {
   domainBuyRelease, domainTransferred, findSites, listAccountDomains, getSite, republish, republishAll, rollback, updateSite, type AdminSitesDeps,
 } from '../../lib/admin/sites.js';
+import { setFreeGroup } from '../../lib/admin/freeGrant.js';
 import { getWebOwner, setWebOwner } from '../../lib/siteOwners.js';
 import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } from '../../lib/bookings/rateLimit.js';
 
@@ -30,6 +31,9 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *   set-web-owner{ slug, email }     → { ok, slug, owner }   set / replace it (comped sites); an
  *                                       email with no account yet is claimed at that person's first
  *                                       sign-in with a confirmed email. Refuses app (iOS) slugs.
+ *   grant-free   { email }           → { ok, userId, group }  put a confirmed account in the Free price group (web account for the iOS app
+ *                                       when FREE_IS_WEB=1). Refuses an Apple-address account. Production key only.
+ *   revoke-free  { email }           → { ok, userId, group }  back to 'base'. Does not take a site offline.
  */
 
 // Edits and republish deploy (and may redeploy a newer copy once); vercel.json also sets 300 s.
@@ -142,6 +146,12 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
           if (!core.webOwners) return res.status(503).json({ ok: false, error: 'temporarily-unavailable' });
           const w = body.action === 'web-owner' ? await getWebOwner(slug, core.webOwners) : await setWebOwner(slug, body.email, core.webOwners, by);
           return res.status(w.ok ? 200 : w.error === 'app-site' ? 409 : 400).json(w);
+        }
+        case 'grant-free':
+        case 'revoke-free': {
+          if (!core.freeGrant) return res.status(503).json({ ok: false, error: 'temporarily-unavailable' });
+          const f = await setFreeGroup(body.action, body.email, core.freeGrant, by);
+          return res.status(f.ok ? 200 : f.error === 'not-found' ? 404 : f.error === 'bad-request' ? 400 : 409).json(f);
         }
         case 'republish-all': {
           const dryRun = body.dryRun !== false;

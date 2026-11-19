@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     // A native caller (X-PB-Build) in account mode must use the account publish. No header: nothing is read here.
-    const old = await oldRouteGate(req as any, liveUserOf);
+    const old = await oldRouteGate(req as any, liveUserOf, undefined, body);
     if (old) return res.status(old.status).json(old.body);
     const r = await runIosPublish(body as any, liveDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);

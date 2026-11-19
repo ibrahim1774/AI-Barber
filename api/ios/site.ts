@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const transactionId = body && typeof body.transactionId === 'string' ? body.transactionId.trim() : '';
     if (!transactionId) return res.status(400).json({ error: 'bad-request' });
-    const old = await oldRouteGate(req as any, liveUserOf);
+    const old = await oldRouteGate(req as any, liveUserOf, undefined, body);
     if (old) return res.status(old.status).json(old.body);
     const r = await runIosSiteLookup(transactionId, liveDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);

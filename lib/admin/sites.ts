@@ -28,7 +28,7 @@ import type { DomainRow } from '../ios/domainsRepo.js';
 import type { AccountDomain } from '../ios/vercelDomains.js';
 import { publicState } from '../ios/domainFlow.js';
 import type { WebOwnerAdminDeps } from '../siteOwners.js';
-
+import type { FreeGrantDeps } from './freeGrant.js';
 // ─── deps ───
 
 export interface HistoryEntry {
@@ -107,6 +107,8 @@ export interface AdminSitesDeps {
   vercelDomains?(): Promise<AccountDomain[]>;
   /** Web site owner list (013 site_owners): the web-owner / set-web-owner actions. Absent: 503. */
   webOwners?: WebOwnerAdminDeps;
+  /** Free price group grant / revoke (lib/admin/freeGrant.ts): the grant-free / revoke-free actions. Absent: 503. */
+  freeGrant?: FreeGrantDeps;
 }
 
 // ─── shared helpers ───

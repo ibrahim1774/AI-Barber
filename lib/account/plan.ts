@@ -30,7 +30,7 @@ import { sbRest } from '../webApp/webAppServer.js';
 import type { Interval, Tier as WebTier } from '../webApp/stripeCore.js';
 import { keyMode } from '../webApp/stripeCore.js';
 import {
-  countedApplePurchases, isCardPlan, liveKindDeps, loadKindFacts, readKind, stripeModeOf,
+  countedApplePurchases, freeIsWebOn, isCardPlan, liveKindDeps, loadKindFacts, readKind, stripeModeOf,
   type AccountKind, type ApplePurchaseFact, type EntitlementFact, type KindDeps, type KindEnv, type KindFacts, type KindReading, type WebSiteFact,
 } from './kind.js';
 
@@ -182,9 +182,10 @@ export function planFromFacts(f: PlanFacts): AccountPlan {
 /** The plan entitlements an Apple-sourced plan grants (same rule as the gates). Handy for callers; not used by the answer. */
 export const appleGrants = (p: ApplePurchaseFact, ent: 'hosting' | 'bookings' | 'store', now = Date.now()) => entitlementActive(p, ent, now);
 
-export async function loadPlanFacts(uid: string, env: KindEnv, deps: PlanDeps): Promise<PlanFacts> {
-  const [base, free, legacy] = await Promise.all([loadKindFacts(uid, env, deps), deps.isFree(uid), deps.legacyOwner(uid)]);
-  return { ...base, mode: stripeModeOf(env), free, legacy };
+export async function loadPlanFacts(uid: string, env: KindEnv, deps: PlanDeps, procEnv: Record<string, string | undefined> = process.env): Promise<PlanFacts> {
+  // The Free read below is the only price-group read of a plan answer: kind loading gets it from there (no second read).
+  const [base, free, legacy] = await Promise.all([loadKindFacts(uid, env, { ...deps, isFree: undefined }, procEnv), deps.isFree(uid), deps.legacyOwner(uid)]);
+  return { ...base, ...(freeIsWebOn(procEnv) ? { freeIsWeb: free } : {}), mode: stripeModeOf(env), free, legacy };
 }
 
 /** The account's plan answer. `env` defaults to this deployment's Stripe mode (live = Production). */

@@ -4,7 +4,10 @@
 //  - web     : holds a web address published at least once (web_app_sites.published_at not null, removed or not), or pays a card plan
 //              (active / trialing / past_due) and holds no Apple address.
 //  - mixed   : holds both a web address and an Apple address.
-//  - neither : none of the above. Free alone never makes a web account (Free is never read here, and never counts as Stripe).
+//  - neither : none of the above. Free alone does NOT make a web account, unless FREE_IS_WEB=1 (freeIsWebOn): then a Free account
+//              (web_app_price_groups.price_group = 'free') with no Apple address is a web account even with no published site, so the iOS app
+//              shows it no Apple paywall. Apple still wins. Free never counts as Stripe (no card plan, no appleAlsoPaysCard). Switch unset:
+//              Free is never read here and the kind is exactly as before.
 // Never use entitlementOrFree for this test. Read-only: nothing here changes how a purchase is tied to an account.
 //
 // TWO READINGS, do not mix them up:
@@ -61,7 +64,15 @@ export interface KindFacts {
   applePurchases: ApplePurchaseFact[];
   entitlements: EntitlementFact[];
   now: number;
+  /**
+   * The account is in the Free price group. Set ONLY when FREE_IS_WEB=1 (loadKindFacts / loadPlanFacts), otherwise undefined.
+   * Not named `free`: PlanFacts has its own `free` and planFromFacts passes those facts here, which would change the kind with the switch off.
+   */
+  freeIsWeb?: boolean;
 }
+
+/** FREE_IS_WEB=1: a Free account with no Apple address is a web account (default off). */
+export const freeIsWebOn = (env: Record<string, string | undefined> = process.env): boolean => env.FREE_IS_WEB === '1';
 
 /** Why the kind is what it is. `appleAlsoPaysCard` is the alert case (A9): never untied, never emailed, settled by hand. */
 export interface KindReading {
@@ -93,7 +104,7 @@ export function readKind(f: KindFacts): KindReading {
   if (holdsWebAddress && holdsAppleAddress) kind = 'mixed';
   // A live Apple purchase with no address only decides when nothing else does: a card plan with no address on either side makes a web account.
   else if (holdsAppleAddress || (liveApplePurchase && !holdsWebAddress && !cardPlan)) kind = 'apple';
-  else if (holdsWebAddress || cardPlan) kind = 'web';
+  else if (holdsWebAddress || cardPlan || f.freeIsWeb === true) kind = 'web';
   return { kind, holdsWebAddress, holdsAppleAddress, liveApplePurchase, cardPlan, appleAlsoPaysCard: kind === 'apple' && cardPlan };
 }
 
@@ -103,12 +114,20 @@ export interface KindDeps {
   applePurchases(uid: string): Promise<ApplePurchaseFact[]>;
   entitlements(uid: string, mode: StripeMode): Promise<EntitlementFact[]>;
   now?(): number;
+  /** In the Free price group? Called only when FREE_IS_WEB=1. Throws on a lookup error (fails closed). */
+  isFree?(uid: string): Promise<boolean>;
 }
 
-export async function loadKindFacts(uid: string, env: KindEnv, deps: KindDeps): Promise<KindFacts> {
+/** The same deps with the Free read left out: for decisions where Free alone must never make a web account (Apple purchase ties, Move, the old-route gate with a transaction). */
+export const withoutFree = (d: KindDeps): KindDeps => ({ ...d, isFree: undefined });
+
+export async function loadKindFacts(uid: string, env: KindEnv, deps: KindDeps, procEnv: Record<string, string | undefined> = process.env): Promise<KindFacts> {
   const mode = stripeModeOf(env);
-  const [webSites, applePurchases, entitlements] = await Promise.all([deps.webSites(uid, mode), deps.applePurchases(uid), deps.entitlements(uid, mode)]);
-  return { env, webSites, applePurchases, entitlements, now: (deps.now ?? Date.now)() };
+  const readFree = freeIsWebOn(procEnv) && deps.isFree ? deps.isFree(uid) : undefined;
+  const [webSites, applePurchases, entitlements, freeIsWeb] = await Promise.all([deps.webSites(uid, mode), deps.applePurchases(uid), deps.entitlements(uid, mode), readFree]);
+  const facts: KindFacts = { env, webSites, applePurchases, entitlements, now: (deps.now ?? Date.now)() };
+  if (readFree) facts.freeIsWeb = freeIsWeb;
+  return facts;
 }
 
 export async function accountKindReading(uid: string, env: KindEnv, deps: KindDeps = liveKindDeps()): Promise<KindReading> {
@@ -130,5 +149,7 @@ export function liveKindDeps(): KindDeps {
     applePurchases: (uid) => rest(`ios_purchases?user_id=eq.${enc(uid)}&select=original_transaction_id,product_id,environment,expires_at,revoked_at,taken_down_at,site_slug,published_at,removed_at,last_notification,user_id&limit=50`),
     entitlements: (uid, mode) => rest(`web_app_entitlements?user_id=eq.${enc(uid)}&environment=eq.${mode}&select=stripe_subscription_id,tier,billing_interval,status,current_period_end,created_at,updated_at&order=created_at.desc&limit=50`),
     now: Date.now,
+    // Only reached with FREE_IS_WEB=1. No row = not Free; any other error throws so the kind fails closed.
+    isFree: async (uid) => (((await sbRest(`web_app_price_groups?user_id=eq.${enc(uid)}&select=price_group&limit=1`)) ?? [])[0]?.price_group === 'free'),
   };
 }

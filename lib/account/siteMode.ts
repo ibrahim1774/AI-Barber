@@ -73,11 +73,12 @@ export async function nativeDeleteGate(req: { headers?: Record<string, unknown> 
 }
 
 /** The account kind for the OLD iOS routes: an undecidable environment (missing or unknown Stripe key) reads as 'neither' (device), logged; never a 503 for an Apple-only caller. */
-export async function oldRouteKind(uid: string): Promise<AccountKind> {
-  const [{ accountKind }, { defaultKindEnv }] = await Promise.all([import('./kind.js'), import('./plan.js')]);
+export async function oldRouteKind(uid: string, opts: { ignoreFree?: boolean } = {}): Promise<AccountKind> {
+  const [{ accountKind, freeIsWebOn, liveKindDeps, withoutFree }, { defaultKindEnv }] = await Promise.all([import('./kind.js'), import('./plan.js')]);
   let env;
   try { env = defaultKindEnv(); } catch (e: any) { console.error('[site mode] environment unknown, treating the caller as device on the old route:', e?.message || e); return 'neither'; }
-  return accountKind(uid, env);
+  // ignoreFree (the request names a transaction): Free alone is not a web account here; only a published address or a card plan is. Switch off: the call is exactly as before.
+  return opts.ignoreFree && freeIsWebOn() ? accountKind(uid, env, withoutFree(liveKindDeps())) : accountKind(uid, env);
 }
 
 /** The 1.2 app's single-route mode: ACCOUNT_PLAN_V2=1 AND X-PB-Build. Anything else keeps today's behaviour exactly (no new fields, no new reads). */
@@ -89,7 +90,7 @@ export type OldRouteGate = { status: 409 | 503; body: { error: string } };
  * use-account-publish). No header: null at once, nothing read (builds 55 and 1.1 send none). No or invalid token: null (the flow answers 401).
  * A lookup failure for a native caller: 503.
  */
-export async function oldRouteGate(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, deps?: Parameters<typeof siteModeOf>[1]): Promise<OldRouteGate | null> {
+export async function oldRouteGate(req: { headers?: Record<string, unknown> }, userOf: (token: string) => Promise<{ id: string } | null>, deps?: Parameters<typeof siteModeOf>[1], body?: unknown): Promise<OldRouteGate | null> {
   if (!nativeBuild(req)) return null;
   // Active ONLY with ACCOUNT_PLAN_V2=1, the switch that makes the plan answer carry siteMode: the 1.2 app always sends the header, and with the switch
   // off it believes it is in device mode, so these routes must answer exactly as they do for a header-less call (no kind read, no refusal, no 503).
@@ -104,7 +105,10 @@ export async function oldRouteGate(req: { headers?: Record<string, unknown> }, u
     // Both 'account' and 'web-only' come from kind web: a web account never uses the old route.
     // The kind is decided WITHOUT defaultKindEnv() being able to 503 an Apple-only caller: a missing or unknown Stripe key makes the environment
     // undecidable, and then the caller is treated as device on these OLD routes only (logged). Any other failed read is still a 503.
-    const kind = deps?.kind ?? oldRouteKind;
+    // A request that names a transaction (publish, restore) may be the first call that ties a fresh purchase: a Free account with no site must reach the tie logic (as on
+    // origin/main), not be refused after paying. Free alone is ignored for it (FREE_IS_WEB only); a real web account (address or card plan) is still refused.
+    const named = typeof (body as { transactionId?: unknown } | null)?.transactionId === 'string' && !!(body as { transactionId: string }).transactionId.trim();
+    const kind = deps?.kind ?? ((uid: string) => oldRouteKind(uid, { ignoreFree: named }));
     return (await siteModeOf(user.id, { ...deps, kind })) !== 'device' ? { status: 409, body: { error: 'use-account-publish' } } : null;
   } catch (e: any) {
     console.error('[site mode] lookup failed for a native caller on the old route (refusing):', e?.message || e);

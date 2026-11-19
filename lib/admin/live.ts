@@ -13,6 +13,7 @@ import {
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
 import { liveWebOwnerAdminDeps } from '../siteOwners.js';
+import { liveFreeGrantDeps } from './freeGrant.js';
 
 const HISTORY = 'pending-sites-history';
 const RUNS = 'admin-republish-runs';
@@ -175,6 +176,9 @@ export function liveAdminDeps(): AdminSitesDeps {
       const v = liveVercelDomains();
       if (!v) throw new Error('VERCEL_TOKEN not set');
       return v.listDomains();
+    },
+    get freeGrant() {
+      return liveFreeGrantDeps(db());
     },
     get webOwners() {
       return liveWebOwnerAdminDeps(db(), async (slug) => {

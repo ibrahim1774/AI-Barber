@@ -90,7 +90,8 @@ export function liveTransferDeps(): TransferDeps {
     siteUrlFor: stampedSiteUrl,
     allow: (callerId) => transferLimiter.allow(callerId, 'write'),
     now: () => Date.now(),
-    kindOf: async (uid, env) => (await import('../account/kind.js')).accountKindReading(uid, env),
+    // Free alone never blocks a Move (same rule as mayTakePurchase): only a published web address or a card plan does.
+    kindOf: async (uid, env) => { const k = await import('../account/kind.js'); return k.accountKindReading(uid, env, k.withoutFree(k.liveKindDeps())); },
     async shopSummary(otid) {
       const { data, error } = await admin().from('ab_shops').select('id').eq('ios_otid', otid).maybeSingle();
       if (error) throw new Error(`ab_shops lookup failed: ${error.message}`);

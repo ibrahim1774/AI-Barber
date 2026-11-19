@@ -117,6 +117,21 @@ const WebOwnerPanel: React.FC = () => {
       setBusy(false);
     }
   };
+  const runFree = async (action: 'grant-free' | 'revoke-free') => {
+    if (!email.trim()) return;
+    if (action === 'grant-free' && !window.confirm(`Put ${email.trim()} in the Free group? Their iOS app will treat them as a web account (no Apple paywall) once FREE_IS_WEB is on.`)) return;
+    if (action === 'revoke-free' && !window.confirm(`Take ${email.trim()} out of the Free group? Their published site (if any) stays up.`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api('POST', '', { action, email: email.trim() });
+      setMsg({ kind: 'ok', text: `${r.email}: ${r.group === 'free' ? 'now in the Free group (a web account for the iOS app once FREE_IS_WEB is on)' : 'back to the standard group'}.` });
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.message || 'Failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
   const color = msg?.kind === 'err' ? BAD : msg?.kind === 'ok' ? OK : MUTED;
   return (
     <details style={{ ...panel, padding: 14 }}>
@@ -130,6 +145,8 @@ const WebOwnerPanel: React.FC = () => {
         </label>
         <button style={ghostBtn} onClick={() => run('web-owner')} disabled={busy}>Look up</button>
         <button style={primaryBtn} onClick={() => run('set-web-owner')} disabled={busy || !email.trim()}>Set owner</button>
+        <button style={ghostBtn} onClick={() => runFree('grant-free')} disabled={busy || !email.trim()}>Grant Free</button>
+        <button style={ghostBtn} onClick={() => runFree('revoke-free')} disabled={busy || !email.trim()}>Revoke Free</button>
       </div>
       {msg && <div style={{ fontSize: 12.5, color, marginTop: 8 }}>{msg.text}</div>}
     </details>
