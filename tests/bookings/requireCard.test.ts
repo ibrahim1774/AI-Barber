@@ -305,6 +305,23 @@ describe('failed card checkout with cards still on: a short window for the other
     }
   });
 
+  it('abuse: error.param customer_email (message without the word email) never opens the window; another param does', async () => {
+    const e = (param: string) => Object.assign(new Error('Invalid value'), { name: 'StripeApiError', status: 400, param });
+    const w = mk(); stripeOn(w, true); fail(w, e('customer_email'));
+    expect((await book(w, { pay: 'card' })).body).toEqual({ error: 'payment-unavailable' });
+    expect(stamp(w)).toBeUndefined();
+    const w2 = mk(); stripeOn(w2, true); fail(w2, e('line_items[0][price_data][unit_amount]'));
+    expect((await book(w2, { pay: 'card' })).body).toEqual({ error: 'payment-unavailable', payOtherWay: true });
+  });
+
+  it('window + pay in shop OFF + a Cash App handle: manual accepted, pay in shop refused, payload inShop false', async () => {
+    const w = mk({ pay_in_shop: false }); stripeOn(w, true); fail(w);
+    await book(w, { pay: 'card' });
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).shop.pay.inShop).toBe(false);
+    expect((await book(w, { pay: 'shop' })).body).toEqual({ error: 'invalid', field: 'pay' });
+    expect((await book(w, { pay: 'manual', method: 'cashapp' })).status).toBe(201);
+  });
+
   it('flag off: never touches the column, behaviour as before', async () => {
     const w = mk({ require_card: false });
     expect(cardCheckoutRecentlyFailed({ ...w.state.shops[0], card_checkout_failed_at: '2026-11-02T12:00:00Z' }, Date.parse('2026-11-02T12:01:00Z'))).toBe(false);

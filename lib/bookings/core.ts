@@ -150,7 +150,11 @@ export const cardEnabled = (shop: ShopRow) => !!shop.stripe_charges_enabled && !
  * booking page and the server always agree.
  */
 export const inShopAllowed = (shop: ShopRow, nowMs?: number) =>
-  !!shop.pay_in_shop || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0) || (nowMs != null && cardCheckoutRecentlyFailed(shop, nowMs));
+  !!shop.pay_in_shop
+  || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0)
+  // Inside the failed-checkout window pay in shop opens only when the shop has no other non-card way (the same rule as above);
+  // with manual handles those reopen instead (cardRequired is false) and pay in shop stays as the owner set it.
+  || (nowMs != null && cardCheckoutRecentlyFailed(shop, nowMs) && Object.keys(manualHandles(shop)).length === 0);
 
 /** How long a failed card checkout (Stripe still reporting cards on) opens a require_card shop's other pay options. */
 export const CARD_FAILURE_WINDOW_MS = 10 * 60_000;

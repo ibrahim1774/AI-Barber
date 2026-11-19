@@ -386,6 +386,8 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
 export function customerCausedCheckoutFailure(e: any): boolean {
   const status = Number(e?.status);
   if (!(status >= 400 && status < 500)) return false;
+  // Stripe names the offending request field in error.param (primary signal); the message check is a fallback.
+  if (typeof e?.param === 'string' && e.param.startsWith('customer_email')) return true;
   return /e-?mail/i.test(`${e?.message ?? ''} ${e?.code ?? ''} ${e?.param ?? ''}`);
 }
 

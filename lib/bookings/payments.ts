@@ -80,7 +80,7 @@ export interface StripeOpts {
 }
 
 export class StripeApiError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string, readonly type?: string) {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly type?: string, readonly param?: string) {
     super(message);
     this.name = 'StripeApiError';
   }
@@ -136,7 +136,7 @@ export async function stripeRequest(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = json?.error ?? {};
-    throw new StripeApiError(err.message || `Stripe ${method} ${path} failed`, res.status, err.code, err.type);
+    throw new StripeApiError(err.message || `Stripe ${method} ${path} failed`, res.status, err.code, err.type, typeof err.param === 'string' ? err.param : undefined);
   }
   return json;
 }
