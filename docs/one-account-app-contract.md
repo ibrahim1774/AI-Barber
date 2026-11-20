@@ -168,6 +168,26 @@ What happens, in this order, and what a failure leaves behind:
 
 A 1.2 app in device mode, with every switch off, gets exactly today's answers from every route it uses.
 
+## 6e. Web view-only for Apple accounts
+
+Switch `WEB_APPLE_VIEW_ONLY` (read as `=== '1'`, default off). Off: every web route answers exactly as before and reads nothing extra. On, only for an account of kind `apple` (`lib/account/kind.ts`; `mixed`, `web` and `neither` are never view-only; on Production a Sandbox Apple row is not counted, on a Sandbox deployment it is). It affects the web routes only, never the phone's routes. Old aibarber.org customers are not looked at.
+
+`GET /api/web-app/me` gains `viewOnly` (the key is left out entirely with the switch off):
+
+```
+viewOnly?: { reason: 'apple'; site: { slug: string; url: string } | null; planActive: boolean;
+             tier: 'website' | 'bookings' | 'store' | null; cardPlan: boolean; oldDraft: boolean } | null
+```
+
+`null` = not an Apple account. `planActive` is false when the purchase holding the Apple address has ended. `cardPlan` is true when the Apple account also pays a card plan. `oldDraft` is true when a `web_app_drafts` row exists for the account in this Stripe mode. If the lookup fails the field is left out (logged) and the web behaves as today.
+
+Two refusals, both 403 `{ "error": "app-store-account" }`:
+- `PUT /api/web-app/draft` from a browser (no `X-PB-Build`), nothing written. `GET` is unchanged, and a native caller keeps `nativeModeGate`.
+- Web publish (`runWebPublish`, so the endpoint and the publish job), before the entitlement check, even when the account is entitled (Apple plus a card plan).
+- Also `POST /api/web-app/domain` `buy` and `checkout` (the site-owner check passes for an Apple site's owner).
+
+Fail-open rule: if the kind cannot be read, the draft PUT and the domain actions go ahead as today (a database blip must not lock web payers out); `/me` leaves `viewOnly` out; web publish answers its existing 503.
+
 ## 7. Plan check and shop setup
 
 - `POST /api/shop/plan` `{ transactionId }`: 200 with the current plan when this Apple purchase may not be used by the signed-in account (nothing is linked; the answer is the plan as it was). When `ONE_SITE_GUARD=1` the 200 also has `blockedPurchase: { reason, accountEmail?, planLive? }` (`reason` is `web-account`, `other-apple-id` or `mixed`; `accountEmail` is the caller's own email). `GET /api/shop/plan` carries the same `blockedPurchase` (with the guard at `1`), plus `originalTransactionId`, for as long as the account has a refused Production purchase that is still live at Apple and not tied to the account. Key "shown once" by `originalTransactionId`. `blockedPurchaseChecked: true` appears whenever the server actually looked and got an answer (the guard at `1`): on the GET whether or not it found a refused purchase, and on a POST refusal. It is absent when the lookup failed or the guard is not `1`. Clear the Settings row ONLY on `blockedPurchaseChecked: true` with no `blockedPurchase`; if the field is absent keep what you showed. It is independent of `ACCOUNT_PLAN_V2`. It is gone once that purchase expires, is refunded, or is used by any account or shop. `planLive` always comes from one rule (a live card plan or Free), whether `ACCOUNT_PLAN_V2` is on or not; if it cannot be read it is `true`. The POST answer carries `originalTransactionId` too. Only Production purchases ever produce it. It is absent when the purchase was tied, when the guard is not `1`, and for old builds' answers, so it is the clear signal that this Apple purchase was not used. Only Production purchases carry this field and the email (a Sandbox purchase never does). Show by `reason`:
@@ -197,6 +217,7 @@ All default to off. With every switch off the server behaves exactly as before.
 7. `DRAFT_PUT_KEEPS_LIVE_URL=1`: a save no longer writes an old live address back. Turn it on before account mode goes wide.
 7a. `FREE_IS_WEB=1` (after `ACCOUNT_DRAFTS_IOS` and `DRAFT_PUT_KEEPS_LIVE_URL`, before step 10): a Free account with no published site counts as a web account for the app, so it sees no Apple paywall. Legacy comped customers get there through the admin action `grant-free` (email; refuses an account that holds an Apple address); `revoke-free` (only for an account whose group is exactly `free`) undoes it. It never takes a published site offline, and the lapse sweep skips Free sites (`lib/webApp/lapse.ts`), so after revoking a published comp an admin must take the site offline by hand; a republish then gets 402. `grant-free` also refuses (409) a price-test group (`has-price-group`), a card-plan payer (`has-paid-plan`), and a live Apple purchase or shop link (`apple-account`). Free alone never refuses an Apple purchase tie: an older phone (1.1, ignores `siteMode`) can still buy and tie an Apple purchase on a Free account with no site, which then becomes an Apple account by the existing rule; a published address or card plan still refuses as today. One extra price-group read per kind answer only while the switch is on; a failed read fails closed (plan answer `siteMode: "unknown"`, native gates 503).
 8. `GATE_ANY_SOURCE=1`: Move and checkout follow the account kind.
+8a. `WEB_APPLE_VIEW_ONLY=1`: only after step 4 (`ACCOUNT_PLAN_V2`), step 5 (`ONE_SITE_GUARD=1`) and step 8 (`GATE_ANY_SOURCE=1`, which closes checkout for lapsed holders), with a re-count first, and only after the web build that understands `viewOnly` is live (6e). It does not depend on step 10: Apple accounts edit in any app build.
 9. Delete and take offline from the app (6a) work in ANY switch order: each is one route that does the right thing for the account, so there is no window where an account has no working delete. They need only `ACCOUNT_PLAN_V2=1` (and the header) for the new fields. **Keep `APP_DELETE_CANCELS_WEB=1` on through any `ACCOUNT_PLAN_V2` rollback**: after a rollback a web payer on 1.2 sees the 1.1 Apple wording until the plan answer carries a mode again, and that is harmless while `APP_DELETE_CANCELS_WEB` is on: a web account deleted through the Apple route still has its card plan cancelled.
 10. **1.2 is live in the App Store.** The steps below depend on it: the app's single routes, its `expect` field and its wording from `outcome` exist only in 1.2. (Older phones keep working with every step above: without the header, answers are as before.)
 11. `SAFE_TAKE_OFFLINE=1`, after 10 and after `ACCOUNT_PLAN_V2`: "take my website offline" keeps the stored copy and photos instead of deleting them. For the app this means an Apple take offline no longer needs `confirm-purge` (nothing would be purged, `contentKept` is true), a web site's `domainReattachesOnPublish` becomes true, and `lib/publishSite.ts` stops sweeps and old checkout paths from re-publishing a removed site (only the owner's own publish brings it back). Turn it on only when the app words its messages from `outcome`.

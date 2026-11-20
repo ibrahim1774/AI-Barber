@@ -57,8 +57,16 @@ export default async function handler(req: any, res: any) {
         v2 = { kind, source };
       } catch (e: any) { console.error('[web-app me] account plan lookup failed:', e?.message || e); }
     }
+    // WEB_APPLE_VIEW_ONLY (default off): add `viewOnly` (object for an Apple account, else null). Off: no extra read, the answer is unchanged. Fails soft: the field is then left out.
+    let viewOnly: { viewOnly: unknown } | null = null;
+    if (process.env.WEB_APPLE_VIEW_ONLY === '1') {
+      try {
+        const { viewOnlyOf } = await import('../../lib/account/webViewOnly.js');
+        viewOnly = { viewOnly: await viewOnlyOf(caller.id, mode === 'live' ? 'Production' : 'Sandbox') };
+      } catch (e: any) { console.error('[web-app me] view-only lookup failed:', e?.message || e); }
+    }
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : floorTier(row?.tier, priceGroup === 'free' && !!live) ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null, ...(v2 ?? {}) });
+    return res.status(200).json({ priceGroup, phone, needsPhone: needs, phoneGate: flag, appStore, entitled: !!live || free, plan: free ? 'free' : live ? 'paid' : null, tier: free ? 'bookings' : floorTier(row?.tier, priceGroup === 'free' && !!live) ?? null, interval: free ? null : row?.billing_interval ?? null, status: free ? 'active' : row?.status ?? null, subscriptionId: free ? null : row?.stripe_subscription_id ?? null, cancelAtPeriodEnd: !!row?.cancel_at_period_end, currentPeriodEnd: row?.current_period_end ?? null, ...(v2 ?? {}), ...(viewOnly ?? {}) });
   } catch (e: any) {
     if (authOutage(res, e)) return;
     console.error('[web-app me]', e.message);
