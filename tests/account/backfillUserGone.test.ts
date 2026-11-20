@@ -81,12 +81,51 @@ describe('liveBackfillDeps', () => {
     process.env.SUPABASE_URL = 'https://x.supabase.co'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'k';
     const urls: string[] = [];
     const mk = (n: number, off: number) => Array.from({ length: n }, (_, i) => ({ id: `u${off + i}` }));
-    const f: any = async (u: string) => { urls.push(u); const page = Number(/page=(\d+)/.exec(u)![1]); return { ok: true, status: 200, json: async () => ({ users: page === 1 ? mk(1000, 0) : mk(5, 1000) }) }; };
+    const f: any = async (u: string) => { urls.push(u); const page = Number(/page=(\d+)/.exec(u)![1]); return { ok: true, status: 200, json: async () => ({ users: page === 1 ? mk(1000, 0) : page === 2 ? mk(5, 1000) : [] }) }; };
     const ids = await (await liveBackfillDeps(async () => [], f)).users!();
-    expect(ids.size).toBe(1005); expect(urls).toHaveLength(2);
+    expect(ids.size).toBe(1005); expect(urls).toHaveLength(3); // stops on the empty page, not the short one
     const empty: any = async () => ({ ok: true, status: 200, json: async () => ({ users: [] }) });
     await expect((await liveBackfillDeps(async () => [], empty)).users!()).rejects.toThrow(/empty/);
     const bad: any = async () => ({ ok: false, status: 500, json: async () => ({}) });
     await expect((await liveBackfillDeps(async () => [], bad)).users!()).rejects.toThrow('500');
+  });
+  it('users() keeps paging when the server caps per_page (50 returned for 1000 asked)', async () => {
+    process.env.SUPABASE_URL = 'https://x.supabase.co'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'k';
+    const mk = (n: number, off: number) => Array.from({ length: n }, (_, i) => ({ id: `u${off + i}` }));
+    const f: any = async (u: string) => { const page = Number(/page=(\d+)/.exec(u)![1]); return { ok: true, status: 200, headers: new Headers({ 'x-total-count': '120' }), json: async () => ({ users: page === 1 ? mk(50, 0) : page === 2 ? mk(50, 50) : page === 3 ? mk(20, 100) : [] }) }; };
+    expect((await (await liveBackfillDeps(async () => [], f)).users!()).size).toBe(120);
+  });
+  it('users() throws when x-total-count is higher than what was collected', async () => {
+    process.env.SUPABASE_URL = 'https://x.supabase.co'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'k';
+    const f: any = async (u: string) => { const page = Number(/page=(\d+)/.exec(u)![1]); return { ok: true, status: 200, headers: new Headers({ 'x-total-count': '500' }), json: async () => ({ users: page === 1 ? [{ id: 'a' }, { id: 'b' }] : [] }) }; };
+    await expect((await liveBackfillDeps(async () => [], f)).users!()).rejects.toThrow(/incomplete/);
+  });
+  it('users() throws on a body without users', async () => {
+    process.env.SUPABASE_URL = 'https://x.supabase.co'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'k';
+    const f: any = async () => ({ ok: true, status: 200, json: async () => ({}) });
+    await expect((await liveBackfillDeps(async () => [], f)).users!()).rejects.toThrow(/unreadable/);
+  });
+});
+
+describe('one living user, same Apple slug in Production and Sandbox', () => {
+  const apple = [{ user_id: LIVE, site_slug: 'dual', environment: 'Sandbox', published_at: 'x' }, { user_id: LIVE, site_slug: 'dual', environment: 'Production', published_at: 'x' }];
+  it('plans one insert (Production) and lists Sandbox as slug-held at plan time', () => {
+    const p = planBackfill([], apple, [], new Set([LIVE]));
+    expect(p.toInsert.map((r) => [r.environment, r.slug])).toEqual([['Production', 'dual']]);
+    expect(p.listed).toEqual([{ user_id: LIVE, environment: 'Sandbox', reason: 'slug-held', slugs: ['dual'] }]);
+  });
+  it('when Production is already stored, Sandbox is slug-held too', () => {
+    const p = planBackfill([], apple, [{ user_id: LIVE, environment: 'Production', slug: 'dual', holder: 'apple' }], new Set([LIVE]));
+    expect(p.toInsert).toEqual([]); expect(p.alreadyThere).toBe(1);
+    expect(p.listed.map((l) => [l.environment, l.reason])).toEqual([['Sandbox', 'slug-held']]);
+  });
+  it('a second plan after apply reports wouldInsert 0', async () => {
+    const table: any[] = [];
+    const deps: BackfillDeps = { webSites: async () => [], apple: async () => apple, existing: async () => table.map((r) => ({ ...r })), remove: async () => false, users: async () => new Set([LIVE]), insert: async (row) => { table.push(row); return true; } };
+    const first = await runBackfill(deps, { apply: true });
+    expect(first.inserted).toBe(1); expect(first.insertSkipped).toEqual([]);
+    const second = await runBackfill(deps, { apply: false });
+    expect(second.plan.toInsert).toHaveLength(0);
+    expect(second.plan.listed.map((l) => l.reason)).toEqual(['slug-held']);
   });
 });

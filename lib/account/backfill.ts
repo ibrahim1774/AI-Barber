@@ -72,8 +72,8 @@ export function planBackfill(web: WebSiteSource[], apple: AppleSource[], existin
       else list('differs', [have.slug, slug]);
       continue;
     }
-    const owner = heldSlugs.get(slug) ?? claimedSlugs.get(slug);
-    if (owner && owner !== v.uid) { list('slug-held', [slug]); continue; }
+    // account_sites.slug is unique across BOTH environments, so a slug already held or claimed by anyone, the same account in the other environment included, is listed (Production sorts first and keeps it).
+    if (heldSlugs.has(slug) || claimedSlugs.has(slug)) { list('slug-held', [slug]); continue; }
     claimedSlugs.set(slug, v.uid);
     out.toInsert.push({ user_id: v.uid, environment: v.env, slug, holder, published_once: holder === 'web' ? true : !!v.apple.get(slug) });
   }
@@ -131,14 +131,21 @@ export async function liveBackfillDeps(rest?: (path: string, init?: any) => Prom
       const url = process.env.SUPABASE_URL, k = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (!url || !k) throw new Error('supabase not configured');
       const ids = new Set<string>();
+      let total: number | null = null;
+      let emptyEnd = false;
+      // Page until an EMPTY page, never a short one: a server that silently caps per_page returns short pages that are not the last.
       for (let page = 1; page <= 1000; page++) {
         const r = await fetchImpl(`${url}/auth/v1/admin/users?page=${page}&per_page=1000`, { headers: { apikey: k, Authorization: `Bearer ${k}` }, signal: AbortSignal.timeout(30_000) });
         if (!r.ok) throw new Error(`auth user list ${r.status}`);
         const j: any = await r.json().catch(() => null);
         if (!Array.isArray(j?.users)) throw new Error('auth user list unreadable');
+        const t = Number(r.headers?.get?.('x-total-count'));
+        if (Number.isFinite(t) && r.headers?.get?.('x-total-count') !== null && t >= 0) total = t;
+        if (j.users.length === 0) { emptyEnd = true; break; }
         for (const u of j.users) if (typeof u?.id === 'string') ids.add(u.id);
-        if (j.users.length < 1000) break;
       }
+      if (!emptyEnd) throw new Error('auth user list did not end (page limit reached)');
+      if (total !== null && ids.size < total) throw new Error(`auth user list incomplete: got ${ids.size} of ${total}`);
       if (ids.size === 0) throw new Error('auth user list empty: refusing to treat every account as gone');
       return ids;
     },
