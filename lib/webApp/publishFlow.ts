@@ -31,7 +31,7 @@ import { savedPhoneState } from './contactPhoneLive.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, tryTouch, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
-import { kindEnvOf } from '../account/kind.js';
+import { accountKind, kindEnvOf, liveKindDeps, withoutFree, type AccountKind } from '../account/kind.js';
 import { reportBlocked } from '../account/blocked.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
@@ -59,6 +59,8 @@ export interface WebPublishDeps {
   entitlementOf(userId: string): Promise<EntitlementRow | null>;
   /** Read-only: is this (not web-entitled) caller an App Store subscriber? Only asked when the caller is not entitled; an error falls back to 402. */
   appStoreState?(userId: string): Promise<AppStoreState>;
+  /** WEB_APPLE_VIEW_ONLY: the caller's account kind (lib/account/kind.ts). Only asked with the switch on; absent = no check. Throws on a lookup error. */
+  webKind?(userId: string): Promise<AccountKind>;
   /** Free accounts (in-memory 'free:<uid>' entitlement) must have a saved phone before they can publish. Omitted = no check. */
   phoneOnFile?(userId: string): Promise<boolean>;
   /** ONE_SITE_GUARD (tests): the mode. Absent: read from the environment. */
@@ -210,6 +212,12 @@ export async function runWebPublish(
     try { caller = await deps.userOf(ctx.authorization); } catch { return unavailable; }
     if (!caller) return { status: 401, body: { error: 'unauthorized' } };
 
+    // 1b. WEB_APPLE_VIEW_ONLY (default off, nothing read when off): an Apple account never publishes on the web, even when it also pays a card plan.
+    if (process.env.WEB_APPLE_VIEW_ONLY === '1' && deps.webKind) {
+      let k: AccountKind;
+      try { k = await deps.webKind(caller.id); } catch { return unavailable; }
+      if (k === 'apple') return { status: 403, body: { error: 'app-store-account' } };
+    }
     // 2. A paid web subscription in this environment.
     const ent = await deps.entitlementOf(caller.id);
     if (!ent || !isEntitledStatus(ent.status) || ent.environment !== deps.environment) {
@@ -463,6 +471,8 @@ export function liveWebPublishDeps(): WebPublishDeps {
     userOf: callerFrom,
     entitlementOf: (uid) => liveEntitlementOf(uid, environment),
     appStoreState: (uid) => appStoreStateOf(uid, environment),
+    // Free never decides 'apple', so the guard's lookup leaves the Free read out (FREE_IS_WEB=1 adds no read and no failure point).
+    webKind: (uid) => accountKind(uid, kindEnvOf(environment), withoutFree(liveKindDeps())),
     // Contacts unreadable (migration 032 missing): skip the check, otherwise free publish would 403 forever.
     phoneOnFile: async (uid) => { const s = await savedPhoneState(uid); return !!s.phone || !s.contactsOk; },
     sites,

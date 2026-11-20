@@ -40,6 +40,17 @@ export default async function handler(req: any, res: any) {
       const caller = await callerFrom(auth);
       if (caller && (await isFree(caller.id)) && !(await webPlanOf(caller.id))) return res.status(403).json({ error: 'free_plan', plan: 'free' });
     }
+    // WEB_APPLE_VIEW_ONLY (default off): authorizeSiteOwner passes for an Apple site's owner (an ios_purchases row with their user_id), so an Apple
+    // account is refused here for buy and checkout. Fails open on a kind lookup error (as the draft guard does).
+    if (process.env.WEB_APPLE_VIEW_ONLY === '1' && (body.action === 'buy' || body.action === 'checkout')) {
+      const caller = await callerFrom(auth);
+      if (caller) {
+        let kind: string | null = null;
+        try { const { webKindOf } = await import('../../lib/account/webViewOnly.js'); kind = await webKindOf(caller.id); }
+        catch (e: any) { console.error('[web-app/domain] view-only kind lookup failed, continuing as today:', e?.message || e); }
+        if (kind === 'apple') return res.status(403).json({ error: 'app-store-account' });
+      }
+    }
     let r: { status: number; body: unknown };
     switch (body.action) {
       case 'card': r = await oneClickCard(body, auth, liveOneClickDeps(authorize)); break;

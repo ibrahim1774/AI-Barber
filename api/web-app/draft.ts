@@ -38,6 +38,14 @@ export default async function handler(req: any, res: any) {
     // A native caller (X-PB-Build) must be in account mode. A browser (no header) is not asked anything.
     const gate = await nativeModeGate(req, user.id);
     if (gate) return res.status(gate.status).json(gate.body);
+    // WEB_APPLE_VIEW_ONLY (default off): a browser PUT from an Apple account is refused, nothing written (the site is managed in the iPhone app).
+    // Browser only: a native caller (X-PB-Build) keeps nativeModeGate. Fails open: a kind lookup error lets the save go ahead as today.
+    if (process.env.WEB_APPLE_VIEW_ONLY === '1' && req.method === 'PUT' && !nativeBuild(req)) {
+      let kind: string | null = null;
+      try { const { webKindOf } = await import('../../lib/account/webViewOnly.js'); kind = await webKindOf(user.id); }
+      catch (e: any) { console.error('[web draft] view-only kind lookup failed, saving as today:', e?.message || e); }
+      if (kind === 'apple') return res.status(403).json({ error: 'app-store-account' });
+    }
     if (req.method === 'PUT' && jsonBytes(req.body) > MAX_DRAFT_BYTES) return res.status(413).json({ error: 'draft_too_large', maxBytes: MAX_DRAFT_BYTES });
     const previous = await readDraft(user.id);
     // A NATIVE caller never sees a stale live address: when the account's web site is offline the draft is reported with no live address or binding, whatever the draft row still holds.
