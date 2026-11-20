@@ -23,7 +23,12 @@ export async function sbRest(path: string, init: { method?: string; body?: unkno
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     ...(init.timeoutMs ? { signal: AbortSignal.timeout(init.timeoutMs) } : {}),
   });
-  if (!r.ok) throw Object.assign(new Error(`supabase ${r.status}`), { status: r.status });
+  if (!r.ok) {
+    // Additive: PostgREST's error body (Postgres `code`, `details`) rides on the error for callers that care; the message and `status` are unchanged.
+    let pg: any = null;
+    try { pg = JSON.parse(await r.text()); } catch { /* no body */ }
+    throw Object.assign(new Error(`supabase ${r.status}`), { status: r.status }, pg && typeof pg === 'object' ? { code: typeof pg.code === 'string' ? pg.code : undefined, pgDetails: [pg.message, pg.details].filter((x: unknown) => typeof x === 'string').join(' ') } : {});
+  }
   const t = await r.text();
   return t ? JSON.parse(t) : null;
 }
