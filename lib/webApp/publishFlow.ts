@@ -31,7 +31,7 @@ import { savedPhoneState } from './contactPhoneLive.js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 import { guardMode, tryMarkPublishedOnce, tryRelease, tryTake, tryTouch, withAddressTaken, type GuardMode, type SitesDeps } from '../account/sites.js';
-import { accountKind, kindEnvOf, type AccountKind } from '../account/kind.js';
+import { accountKind, kindEnvOf, liveKindDeps, withoutFree, type AccountKind } from '../account/kind.js';
 import { reportBlocked } from '../account/blocked.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
@@ -471,7 +471,8 @@ export function liveWebPublishDeps(): WebPublishDeps {
     userOf: callerFrom,
     entitlementOf: (uid) => liveEntitlementOf(uid, environment),
     appStoreState: (uid) => appStoreStateOf(uid, environment),
-    webKind: (uid) => accountKind(uid, kindEnvOf(environment)),
+    // Free never decides 'apple', so the guard's lookup leaves the Free read out (FREE_IS_WEB=1 adds no read and no failure point).
+    webKind: (uid) => accountKind(uid, kindEnvOf(environment), withoutFree(liveKindDeps())),
     // Contacts unreadable (migration 032 missing): skip the check, otherwise free publish would 403 forever.
     phoneOnFile: async (uid) => { const s = await savedPhoneState(uid); return !!s.phone || !s.contactsOk; },
     sites,

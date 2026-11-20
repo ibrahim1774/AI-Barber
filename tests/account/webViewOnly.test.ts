@@ -27,7 +27,7 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
 import me from '../../api/web-app/me.js';
 import draft from '../../api/web-app/draft.js';
 import { viewOnlyOf, webKindOf, webViewOnlyOn, type ViewOnlyDeps } from '../../lib/account/webViewOnly.js';
-import { runWebPublish, type WebPublishDeps } from '../../lib/webApp/publishFlow.js';
+import { liveWebPublishDeps, runWebPublish, type WebPublishDeps } from '../../lib/webApp/publishFlow.js';
 
 const NOW = Date.parse('2026-11-19T12:00:00Z');
 const DAY = 86_400_000;
@@ -178,16 +178,20 @@ describe('switch on', () => {
     expect((await getMe()).body.viewOnly).toMatchObject({ reason: 'apple' });
     expect((await run('PUT', {}, put())).code).toBe(403);
   });
-  it('a native caller (X-PB-Build) is unchanged: the kind is not read for the guard', async () => {
+  it('a native caller (X-PB-Build) is left to nativeModeGate: the view-only guard adds no kind read for it', async () => {
+    // An Apple account from the phone is refused by nativeModeGate (not-account-mode), never by the view-only guard.
     db.ios = [apple()];
-    db.calls = [];
-    await run('PUT', { 'x-pb-build': '57' }, put());
-    expect(touchedKind()).toBe(true); // nativeModeGate reads it only when ACCOUNT_PLAN_V2 / mode needs; compare with the switch off:
-    const withOn = db.calls.filter((c) => c.includes('ios_purchases?') || c.includes('web_app_sites?')).length;
+    const a = await run('PUT', { 'x-pb-build': '57' }, put());
+    expect(a.code).toBe(403); expect(a.body).toEqual({ error: 'not-account-mode' });
+    // A web account in account mode saves from the phone. The gate reads the kind once; with the switch on the draft guard must not read it again
+    // (removing `!nativeBuild(req)` from api/web-app/draft.ts makes this 2 reads, and the next line fails).
+    vi.stubEnv('ACCOUNT_DRAFTS_IOS', 'all');
+    db.ios = []; db.sites = [webSite()]; db.ent = [card()];
+    const reads = async () => { db.calls = []; const r = await run('PUT', { 'x-pb-build': '57' }, put()); expect(r.code).toBe(200); return db.calls.filter((c) => c.startsWith('GET ios_purchases?')).length; };
+    const withOn = await reads();
     vi.stubEnv('WEB_APPLE_VIEW_ONLY', '');
-    db.calls = [];
-    await run('PUT', { 'x-pb-build': '57' }, put());
-    const withOff = db.calls.filter((c) => c.includes('ios_purchases?') || c.includes('web_app_sites?')).length;
+    const withOff = await reads();
+    expect(withOff).toBe(1);
     expect(withOn).toBe(withOff);
   });
   it('kind lookup throws: PUT proceeds, /me has no viewOnly field', async () => {
@@ -240,5 +244,35 @@ describe('publish (runWebPublish)', () => {
     const jobDeps = mk('apple').deps; // publishJobs.publish = runWebPublish(snapshot, liveWebPublishDeps() with userOf replaced, { draftId })
     const r = await runWebPublish({ siteData: sd, baseVersion: null }, jobDeps, { draftId: 'd1' });
     expect(r).toEqual({ status: 403, body: { error: 'app-store-account' } });
+  });
+});
+
+describe('live wiring of the kind guard', () => {
+  beforeEach(() => { vi.stubEnv('WEB_APPLE_VIEW_ONLY', '1'); db.draft = null; });
+  it('liveWebPublishDeps wires webKind (the publish job and the endpoint both run on these deps)', async () => {
+    const deps = liveWebPublishDeps();
+    expect(typeof deps.webKind).toBe('function');
+    db.ios = [apple()];
+    expect(await deps.webKind!('u1')).toBe('apple');
+  });
+  it('FREE_IS_WEB=1: the kind lookups (guard deps and webKindOf) make no price-group read', async () => {
+    vi.stubEnv('FREE_IS_WEB', '1');
+    db.ios = [apple()];
+    db.calls = [];
+    expect(await liveWebPublishDeps().webKind!('u1')).toBe('apple');
+    expect(await webKindOf('u1', 'Production')).toBe('apple');
+    expect(db.calls.length).toBeGreaterThan(0);
+    expect(db.calls.some((c) => c.startsWith('GET web_app_price_groups?'))).toBe(false);
+    // A failing price-group table is no failure point either.
+    db.failTable = 'web_app_price_groups?';
+    expect(await webKindOf('u1', 'Production')).toBe('apple');
+  });
+  it('/me with ACCOUNT_PLAN_V2 and the switch both on reads the plan once (one ios_purchases read) and returns both fields', async () => {
+    vi.stubEnv('ACCOUNT_PLAN_V2', '1');
+    db.ios = [apple()]; db.calls = [];
+    const m = await getMe();
+    expect(m.body.viewOnly).toMatchObject({ reason: 'apple' });
+    expect(m.body.kind).toBe('apple');
+    expect(db.calls.filter((c) => c.startsWith('GET ios_purchases?')).length).toBe(1);
   });
 });

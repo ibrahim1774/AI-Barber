@@ -60,6 +60,14 @@ export default async function handler(req: any, res: any) {
         const ps = await savedPhoneState(caller.id); // contacts unreadable: skip the check rather than 403 forever
         if (!ps.phone && ps.contactsOk) return res.status(403).json({ error: 'phone-required' });
       }
+      // WEB_APPLE_VIEW_ONLY (default off): an Apple account is refused here, before any intent row or lease exists (even with a card plan too), the same 403 the publish job would give.
+      // A kind lookup error answers the existing 503, like runWebPublish. Off: nothing is read.
+      if (process.env.WEB_APPLE_VIEW_ONLY === '1') {
+        let kind: string;
+        try { const { webKindOf } = await import('../../lib/account/webViewOnly.js'); kind = await webKindOf(caller.id); }
+        catch (e: any) { console.error('[web-app/publish] view-only kind lookup failed:', e?.message || e); return res.status(503).json({ error: 'temporarily-unavailable' }); }
+        if (kind === 'apple') return res.status(403).json({ error: 'app-store-account' });
+      }
       // Native account publish: the server decides the Book/Shop links and refreshes the team cards (lib/account/nativePublish.ts). A browser's own list stays as is.
       let publication = input?.siteData;
       let nativeDraft: any;

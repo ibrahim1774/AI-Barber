@@ -170,7 +170,7 @@ A 1.2 app in device mode, with every switch off, gets exactly today's answers fr
 
 ## 6e. Web view-only for Apple accounts
 
-Switch `WEB_APPLE_VIEW_ONLY` (read as `=== '1'`, default off). Off: every web route answers exactly as before and reads nothing extra. On, only for an account of kind `apple` (`lib/account/kind.ts`; `mixed`, `web` and `neither` are never view-only; on Production a Sandbox Apple row is not counted, on a Sandbox deployment it is). It affects the web routes only, never the phone's routes. Old aibarber.org customers are not looked at.
+Switch `WEB_APPLE_VIEW_ONLY` (read as `=== '1'`, default off). Off: every web route answers exactly as before and reads nothing extra. On, only for an account of kind `apple` (`lib/account/kind.ts`; `mixed`, `web` and `neither` are never view-only; on Production a Sandbox Apple row is not counted, on a Sandbox deployment it is). It affects the web routes only, never the phone's routes. With the switch on, `/me` reads `site_owners` through the plan's legacy lookup; that never affects the view-only result.
 
 `GET /api/web-app/me` gains `viewOnly` (the key is left out entirely with the switch off):
 
@@ -181,7 +181,7 @@ viewOnly?: { reason: 'apple'; site: { slug: string; url: string } | null; planAc
 
 `null` = not an Apple account. `planActive` is false when the purchase holding the Apple address has ended. `cardPlan` is true when the Apple account also pays a card plan. `oldDraft` is true when a `web_app_drafts` row exists for the account in this Stripe mode. If the lookup fails the field is left out (logged) and the web behaves as today.
 
-Two refusals, both 403 `{ "error": "app-store-account" }`:
+Three refusals, all 403 `{ "error": "app-store-account" }`:
 - `PUT /api/web-app/draft` from a browser (no `X-PB-Build`), nothing written. `GET` is unchanged, and a native caller keeps `nativeModeGate`.
 - Web publish (`runWebPublish`, so the endpoint and the publish job), before the entitlement check, even when the account is entitled (Apple plus a card plan).
 - Also `POST /api/web-app/domain` `buy` and `checkout` (the site-owner check passes for an Apple site's owner).
