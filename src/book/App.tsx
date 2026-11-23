@@ -386,7 +386,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
         </>}
       </> : null}
       {mode === 'cancel' && <CancelConfirm api={api} token={token} refundCents={data.refundCentsIfCancelled} paidCents={data.appointment.amountPaidCents}
-        onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); load(); }}
+        onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); api.manage(token).then(setData).catch(() => {}); }}
         onTooLate={() => { setMode('view'); load(); }} />}
       {mode === 'reschedule' && <Reschedule api={api} token={token} data={data} onBack={() => setMode('view')} onDone={() => { setMode('view'); load(); }} />}
     </Shell>
