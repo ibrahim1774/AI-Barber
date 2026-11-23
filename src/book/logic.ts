@@ -381,6 +381,12 @@ export function cancelNote(refundCents: number, amountPaidCents: number): string
   return amountPaidCents > 0 ? 'No payment will be refunded.' : null;
 }
 
+/** What a cancelled booking says about the customer's money: refunded, or the server's kept sentence, or nothing. The kept rule lives on the server only. */
+export function cancelledMoneyNote(i: { amountRefundedCents: number; keptNote: string | null | undefined }): string | null {
+  if (i.amountRefundedCents > 0) return `You were refunded ${formatMoney(i.amountRefundedCents)}.`;
+  return i.keptNote || null;
+}
+
 /* ---------- card checkout return (?checkout=) ---------- */
 
 export type CheckoutReturn = 'success' | 'cancelled' | null;

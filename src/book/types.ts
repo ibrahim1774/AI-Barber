@@ -71,6 +71,8 @@ export type ManageAppointment = {
   amountRefundedCents?: number;
   paymentStatus: string;
   shop: { name: string; slug: string; address: string | null; phone: string | null; timezone: string };
+  /** Server-computed "your deposit was kept" sentence for a late cancel; absent/null = say nothing. */
+  keptNote?: string | null;
 };
 export type ManageResponse = {
   appointment: ManageAppointment;

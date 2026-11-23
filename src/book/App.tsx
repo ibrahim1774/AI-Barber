@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, cardRowDetail, paymentRows, CARD_REQUIRED_NOTE, cardOnlyFor, forcedKey, cancelNote, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, cardRowDetail, paymentRows, CARD_REQUIRED_NOTE, cardOnlyFor, forcedKey, cancelNote, cancelledMoneyNote, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -351,6 +351,8 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
   if (!data) return <Shell><Spinner /></Shell>;
   const a = data.appointment, tz = a.shop.timezone;
   const live = a.status === 'booked';
+  // Cancelled after the cutoff: the deposit was kept (or, if a refund went out, how much). Nothing paid, nothing said.
+  const movedNote = cancelledMoneyNote({ amountRefundedCents: a.amountRefundedCents ?? 0, keptNote: a.keptNote });
 
   return (
     <Shell>
@@ -362,7 +364,8 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
           : <div className="note" role="status"><strong>Payment received.</strong> Thank you!</div>)}
       {checkout === 'cancelled' && mode === 'view' && status === 'awaiting' && live &&
         <div className="note warn" role="status">Payment wasn't completed. This time is held for 30 minutes, then released.</div>}
-      {mode === 'cancelled' && <div className="note" role="status"><strong>Booking cancelled.</strong>{refund > 0 && <> {formatMoney(refund)} will be refunded to your card.</>}</div>}
+      {mode === 'cancelled' && <div className="note" role="status"><strong>Booking cancelled.</strong>{refund > 0 ? <> {formatMoney(refund)} will be refunded to your card.</> : movedNote && <> {movedNote}</>}</div>}
+      {mode !== 'cancelled' && !live && a.status === 'cancelled' && movedNote && <div className="note" role="status">{movedNote}</div>}
       {mode === 'view' || mode === 'cancelled' ? <>
         <div className="summary">
           <div><span>Status</span><span>{mode === 'cancelled' ? 'cancelled' : a.status}</span></div>
@@ -383,7 +386,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
         </>}
       </> : null}
       {mode === 'cancel' && <CancelConfirm api={api} token={token} refundCents={data.refundCentsIfCancelled} paidCents={data.appointment.amountPaidCents}
-        onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); }}
+        onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); api.manage(token).then(setData).catch(() => {}); }}
         onTooLate={() => { setMode('view'); load(); }} />}
       {mode === 'reschedule' && <Reschedule api={api} token={token} data={data} onBack={() => setMode('view')} onDone={() => { setMode('view'); load(); }} />}
     </Shell>

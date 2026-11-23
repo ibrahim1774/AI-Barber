@@ -124,3 +124,51 @@ export function paymentLine(i: PaymentSummaryInput): string {
   }
   return `${sum.paidRow[0]} ${sum.paidRow[1]}`;
 }
+
+/** The shop's cancel cutoff in plain words: 1440 -> "1 day", 120 -> "2 hours", 90 -> "90 minutes". */
+export function cutoffWords(min: number): string {
+  const m = nonNegInt(min);
+  const unit = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (m >= 1440 && m % 1440 === 0) return unit(m / 1440, 'day');
+  if (m >= 60 && m % 60 === 0) return unit(m / 60, 'hour');
+  return unit(m, 'minute');
+}
+
+export interface KeptInput {
+  cancelledBy: string | null | undefined;
+  paymentMethod: string | null | undefined;
+  paymentStatus: string;
+  shopRescheduledAt?: string | null;
+  refundDueCents?: number | null;
+  amountPaidCents: number;
+  amountRefundedCents: number;
+  startAt: string | Date;
+  cancelledAt: string | Date | null | undefined;
+  cutoffMin: number | null | undefined;
+}
+
+/**
+ * Cents the shop KEPT when a customer cancelled too late: the ONE rule behind every "kept" message (customer email, owner email, manage page).
+ * Kept only when ALL hold: the customer cancelled; it was a card payment (manual / in-shop rails never refund automatically, so "0 refunded" says nothing);
+ * the shop never moved it (a moved booking refunds as a shop cancel); no refund is still owed (a failed or pending refund is not "kept");
+ * a payment was actually recorded (not recordPaidAfterCancel's 'none'); and the cancel came after start - cutoff.
+ * Amount = paid minus what was already refunded.
+ */
+export function keptCents(i: KeptInput): number {
+  if (i.cancelledBy !== 'customer' || i.paymentMethod !== 'card' || i.shopRescheduledAt) return 0;
+  if (!['deposit', 'paid', 'partially_refunded'].includes(i.paymentStatus)) return 0;
+  if (nonNegInt(i.refundDueCents ?? 0) > nonNegInt(i.amountRefundedCents)) return 0;
+  const cutoff = i.cutoffMin;
+  if (cutoff == null || !(cutoff > 0) || !i.cancelledAt) return 0;
+  const start = new Date(i.startAt).getTime();
+  const at = new Date(i.cancelledAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(at)) return 0;
+  if (at <= start - cutoff * 60_000) return 0; // on time: refundOnCancel refunds these in full
+  return Math.max(0, nonNegInt(i.amountPaidCents) - nonNegInt(i.amountRefundedCents));
+}
+
+/** "Your $22.50 deposit was kept, because the appointment was cancelled less than 1 day before it started." A deposit unless the price was fully paid. */
+export function keptSentence(kept: number, cutoffMin: number, paymentStatus: string, priceCents: number | null, paidCents: number): string {
+  const deposit = paymentStatus === 'deposit' || (priceCents != null && paidCents < priceCents);
+  return `Your ${dollars(kept)} ${deposit ? 'deposit' : 'payment'} was kept, because the appointment was cancelled less than ${cutoffWords(cutoffMin)} before it started.`;
+}
