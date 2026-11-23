@@ -352,7 +352,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
   const a = data.appointment, tz = a.shop.timezone;
   const live = a.status === 'booked';
   // Cancelled after the cutoff: the deposit was kept (or, if a refund went out, how much). Nothing paid, nothing said.
-  const movedNote = cancelledMoneyNote({ paymentStatus: a.paymentStatus, amountPaidCents: a.amountPaidCents, amountRefundedCents: mode === 'cancelled' ? 0 : (a.amountRefundedCents ?? 0), cutoffMin: a.shop.cancelCutoffMin });
+  const movedNote = cancelledMoneyNote({ amountRefundedCents: a.amountRefundedCents ?? 0, keptNote: a.keptNote });
 
   return (
     <Shell>
@@ -386,7 +386,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
         </>}
       </> : null}
       {mode === 'cancel' && <CancelConfirm api={api} token={token} refundCents={data.refundCentsIfCancelled} paidCents={data.appointment.amountPaidCents}
-        onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); }}
+        onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); load(); }}
         onTooLate={() => { setMode('view'); load(); }} />}
       {mode === 'reschedule' && <Reschedule api={api} token={token} data={data} onBack={() => setMode('view')} onDone={() => { setMode('view'); load(); }} />}
     </Shell>

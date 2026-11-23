@@ -134,20 +134,41 @@ export function cutoffWords(min: number): string {
   return unit(m, 'minute');
 }
 
+export interface KeptInput {
+  cancelledBy: string | null | undefined;
+  paymentMethod: string | null | undefined;
+  paymentStatus: string;
+  shopRescheduledAt?: string | null;
+  refundDueCents?: number | null;
+  amountPaidCents: number;
+  amountRefundedCents: number;
+  startAt: string | Date;
+  cancelledAt: string | Date | null | undefined;
+  cutoffMin: number | null | undefined;
+}
+
 /**
- * What to tell a customer about their money after a cancellation, from the amounts stored on the appointment.
- * - refunded > 0 (full or partial): "You were refunded $Y."
- * - nothing refunded but something paid (cancelled after the cutoff): "Your $X deposit was kept, because the appointment was cancelled less than <cutoff> before it started."
- * - nothing paid: null (add nothing)
+ * Cents the shop KEPT when a customer cancelled too late: the ONE rule behind every "kept" message (customer email, owner email, manage page).
+ * Kept only when ALL hold: the customer cancelled; it was a card payment (manual / in-shop rails never refund automatically, so "0 refunded" says nothing);
+ * the shop never moved it (a moved booking refunds as a shop cancel); no refund is still owed (a failed or pending refund is not "kept");
+ * a payment was actually recorded (not recordPaidAfterCancel's 'none'); and the cancel came after start - cutoff.
+ * Amount = paid minus what was already refunded.
  */
-export function cancelMoneyNote(i: { paymentStatus: string; amountPaidCents: number; amountRefundedCents: number; cutoffMin: number | null | undefined }): string | null {
-  const paid = nonNegInt(i.amountPaidCents);
-  const refunded = nonNegInt(i.amountRefundedCents);
-  if (refunded > 0) return `You were refunded ${dollars(refunded)}.`;
-  if (paid <= 0 || i.cutoffMin == null) return null;
-  const what = i.paymentStatus === 'deposit' ? 'deposit' : 'payment';
-  const why = nonNegInt(i.cutoffMin) > 0
-    ? `the appointment was cancelled less than ${cutoffWords(i.cutoffMin)} before it started`
-    : 'the appointment was cancelled after it started';
-  return `Your ${dollars(paid)} ${what} was kept, because ${why}.`;
+export function keptCents(i: KeptInput): number {
+  if (i.cancelledBy !== 'customer' || i.paymentMethod !== 'card' || i.shopRescheduledAt) return 0;
+  if (!['deposit', 'paid', 'partially_refunded'].includes(i.paymentStatus)) return 0;
+  if (nonNegInt(i.refundDueCents ?? 0) > nonNegInt(i.amountRefundedCents)) return 0;
+  const cutoff = i.cutoffMin;
+  if (cutoff == null || !(cutoff > 0) || !i.cancelledAt) return 0;
+  const start = new Date(i.startAt).getTime();
+  const at = new Date(i.cancelledAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(at)) return 0;
+  if (at <= start - cutoff * 60_000) return 0; // on time: refundOnCancel refunds these in full
+  return Math.max(0, nonNegInt(i.amountPaidCents) - nonNegInt(i.amountRefundedCents));
+}
+
+/** "Your $22.50 deposit was kept, because the appointment was cancelled less than 1 day before it started." A deposit unless the price was fully paid. */
+export function keptSentence(kept: number, cutoffMin: number, paymentStatus: string, priceCents: number | null, paidCents: number): string {
+  const deposit = paymentStatus === 'deposit' || (priceCents != null && paidCents < priceCents);
+  return `Your ${dollars(kept)} ${deposit ? 'deposit' : 'payment'} was kept, because the appointment was cancelled less than ${cutoffWords(cutoffMin)} before it started.`;
 }

@@ -3,7 +3,7 @@
 // (customer, shop, time-off conflicts) goes through.
 import { DateTime, IANAZone } from 'luxon';
 import { freeSlotsAny, type AnySlot, type MemberSchedule } from './slots.js';
-import { depositCents, refundOnCancel } from './money.js';
+import { depositCents, keptCents, keptSentence, refundOnCancel } from './money.js';
 import { refundKey, type Notify, type Payments } from './deps.js';
 import { REFUND_5XX_EVENT, alreadyRefundedBeforeRetry, isStripe5xx, withRefundAttempt } from './payments.js';
 import { entitlementActive } from '../ios/lapse.js';
@@ -414,6 +414,17 @@ export async function alternatives(
 export const manageUrl = (baseUrl: string, token: string) =>
   `${baseUrl.replace(/\/+$/, '')}/book/manage/${encodeURIComponent(token)}`;
 
+/** The "deposit kept" sentence for a cancelled booking, or null. Same rule the emails use. */
+export function keptNoteFor(appt: AppointmentRow, shop: ShopRow): string | null {
+  const kept = keptCents({
+    cancelledBy: appt.cancelled_by, paymentMethod: appt.payment_method, paymentStatus: appt.payment_status,
+    shopRescheduledAt: appt.shop_rescheduled_at, refundDueCents: appt.refund_due_cents,
+    amountPaidCents: appt.amount_paid_cents, amountRefundedCents: appt.amount_refunded_cents,
+    startAt: appt.start_at, cancelledAt: appt.cancelled_at, cutoffMin: shop.cancel_cutoff_min,
+  });
+  return kept > 0 ? keptSentence(kept, shop.cancel_cutoff_min, appt.payment_status, appt.price_cents, appt.amount_paid_cents) : null;
+}
+
 export function manageView(appt: AppointmentRow, memberName: string, shop: ShopRow) {
   return {
     id: appt.id,
@@ -428,7 +439,9 @@ export function manageView(appt: AppointmentRow, memberName: string, shop: ShopR
     amountPaidCents: appt.amount_paid_cents,
     amountRefundedCents: appt.amount_refunded_cents,
     paymentStatus: appt.payment_status,
-    shop: { name: shop.name, slug: shop.slug, address: shop.address, phone: shop.phone, timezone: shop.timezone, cancelCutoffMin: shop.cancel_cutoff_min },
+    shop: { name: shop.name, slug: shop.slug, address: shop.address, phone: shop.phone, timezone: shop.timezone },
+    /** Cancelled too late for a refund: the one sentence to show (see keptCents). Null = say nothing. */
+    keptNote: keptNoteFor(appt, shop),
   };
 }
 

@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail as liveSendEmail, escapeHtml, type EmailMessage, type EmailResult } from './email.js';
 import { pushToUsers, type PushMessage, type PushTokenStore } from './push.js';
 import { customerAppointmentIcs } from './ics.js';
-import { cancelMoneyNote, dollars, paymentLine, paymentSummary } from './money.js';
+import { dollars, keptCents, keptSentence, paymentLine, paymentSummary } from './money.js';
 import { manageUrl, bookingPageUrl, serviceDb } from './payments.js';
 import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
@@ -46,6 +46,9 @@ export interface NotifyAppointment {
   customer_email: string | null;
   status: 'booked' | 'done' | 'no_show' | 'cancelled';
   cancelled_by: 'customer' | 'shop' | null;
+  cancelled_at?: string | null;
+  shop_rescheduled_at?: string | null;
+  refund_due_cents?: number | null;
   payment_status: string;
   payment_method: string | null;
   amount_paid_cents: number;
@@ -209,6 +212,14 @@ export function confirmationEmail(ctx: NotifyContext, now: number): EmailMessage
   };
 }
 
+/** Cents kept after a late customer cancel on this appointment (see keptCents). */
+const keptOf = (ctx: NotifyContext) => keptCents({
+  cancelledBy: ctx.appt.cancelled_by, paymentMethod: ctx.appt.payment_method, paymentStatus: ctx.appt.payment_status,
+  shopRescheduledAt: ctx.appt.shop_rescheduled_at, refundDueCents: ctx.appt.refund_due_cents,
+  amountPaidCents: ctx.appt.amount_paid_cents, amountRefundedCents: ctx.appt.amount_refunded_cents ?? 0,
+  startAt: ctx.appt.start_at, cancelledAt: ctx.appt.cancelled_at, cutoffMin: ctx.shop.cancel_cutoff_min,
+});
+
 export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', refundedCents: number, now: number = Date.now(), closed = false): EmailMessage {
   const { appt, shop } = ctx;
   const paras = [
@@ -221,9 +232,9 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
   else if (closed && appt.amount_paid_cents > 0) paras.push(`Contact ${shop.name} to confirm your refund.`);
   else if (by === 'customer' && !closed) {
-    // Cancelled after the cutoff: the deposit (or payment) is kept. Say so plainly. Nothing paid adds nothing.
-    const kept = cancelMoneyNote({ paymentStatus: appt.payment_status, amountPaidCents: appt.amount_paid_cents, amountRefundedCents: 0, cutoffMin: shop.cancel_cutoff_min });
-    if (kept) paras.push(kept);
+    // Cancelled after the cutoff: the card deposit (or payment) is kept. One rule, shared with the owner email and the manage page (keptCents).
+    const kept = keptOf(ctx);
+    if (kept > 0) paras.push(keptSentence(kept, shop.cancel_cutoff_min as number, appt.payment_status, appt.price_cents, appt.amount_paid_cents));
   }
   // A closed business has nothing to rebook.
   const rebook = shop.slug && !closed ? { label: 'Book another time', href: bookingPageUrl(shop.slug, shop) } : undefined;
@@ -285,8 +296,9 @@ function ownerCancelMoney(ctx: NotifyContext, refundedCents: number): { paid?: s
   };
   const paid = paymentLine(input) || undefined;
   let settled: [string, string] | undefined;
-  if (refunded > 0) { if (summaryOf(appt).kind !== 'refunded') settled = ['Refunded', dollars(refunded)]; }
-  else if (appt.amount_paid_cents > 0) settled = [appt.payment_status === 'deposit' ? 'Deposit kept' : 'Payment kept', dollars(appt.amount_paid_cents)];
+  const kept = keptOf(ctx);
+  if (kept > 0) settled = [appt.payment_status === 'deposit' || (appt.price_cents != null && appt.amount_paid_cents < appt.price_cents) ? 'Deposit kept' : 'Payment kept', dollars(kept)];
+  else if (refunded > 0 && summaryOf(appt).kind !== 'refunded') settled = ['Refunded', dollars(refunded)];
   return { ...(paid ? { paid } : {}), ...(settled ? { settled } : {}) };
 }
 

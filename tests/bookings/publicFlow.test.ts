@@ -454,7 +454,8 @@ describe('manage by token', () => {
         id: a.id, start: T10, end: '2026-11-03T15:30:00.000Z', status: 'booked',
         serviceId: w.ids.cut, serviceName: 'Haircut', memberId: w.ids.mike, memberName: 'Mike',
         priceCents: 3000, amountPaidCents: 0, amountRefundedCents: 0, paymentStatus: 'none',
-        shop: { name: 'Fresh Cuts', slug: 'fresh-cuts', address: '1 Main St', phone: null, timezone: 'America/New_York', cancelCutoffMin: 120 },
+        shop: { name: 'Fresh Cuts', slug: 'fresh-cuts', address: '1 Main St', phone: null, timezone: 'America/New_York' },
+        keptNote: null,
       },
       canCancel: true, canReschedule: true, refundCentsIfCancelled: 0,
     });
