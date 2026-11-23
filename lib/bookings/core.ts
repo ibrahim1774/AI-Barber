@@ -428,7 +428,7 @@ export function manageView(appt: AppointmentRow, memberName: string, shop: ShopR
     amountPaidCents: appt.amount_paid_cents,
     amountRefundedCents: appt.amount_refunded_cents,
     paymentStatus: appt.payment_status,
-    shop: { name: shop.name, slug: shop.slug, address: shop.address, phone: shop.phone, timezone: shop.timezone },
+    shop: { name: shop.name, slug: shop.slug, address: shop.address, phone: shop.phone, timezone: shop.timezone, cancelCutoffMin: shop.cancel_cutoff_min },
   };
 }
 

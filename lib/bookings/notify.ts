@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail as liveSendEmail, escapeHtml, type EmailMessage, type EmailResult } from './email.js';
 import { pushToUsers, type PushMessage, type PushTokenStore } from './push.js';
 import { customerAppointmentIcs } from './ics.js';
-import { dollars, paymentLine, paymentSummary } from './money.js';
+import { cancelMoneyNote, dollars, paymentLine, paymentSummary } from './money.js';
 import { manageUrl, bookingPageUrl, serviceDb } from './payments.js';
 import { maybeEmailOwner, ownerHasWebPlan, sendOwnerEmail, type OwnerEvent } from '../webApp/ownerNotify.js';
 
@@ -61,6 +61,8 @@ export interface NotifyShop {
   slug: string | null;
   timezone: string;
   owner_id: string;
+  /** Minutes before the start after which a customer cancel keeps the payment. Absent = unknown (no kept-deposit sentence). */
+  cancel_cutoff_min?: number | null;
   /** Set for an iOS shop; null/absent = a web-app shop (owner email notifications apply). */
   ios_otid?: string | null;
   address?: string | null;
@@ -218,6 +220,11 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
   ];
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
   else if (closed && appt.amount_paid_cents > 0) paras.push(`Contact ${shop.name} to confirm your refund.`);
+  else if (by === 'customer' && !closed) {
+    // Cancelled after the cutoff: the deposit (or payment) is kept. Say so plainly. Nothing paid adds nothing.
+    const kept = cancelMoneyNote({ paymentStatus: appt.payment_status, amountPaidCents: appt.amount_paid_cents, amountRefundedCents: 0, cutoffMin: shop.cancel_cutoff_min });
+    if (kept) paras.push(kept);
+  }
   // A closed business has nothing to rebook.
   const rebook = shop.slug && !closed ? { label: 'Book another time', href: bookingPageUrl(shop.slug, shop) } : undefined;
   return {
@@ -268,7 +275,22 @@ export function reminderEmail(ctx: NotifyContext): EmailMessage {
 // notify
 // ---------------------------------------------------------------------------
 
-const ownerEvent = (kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled' | 'customer_says_paid', ctx: NotifyContext) => ({
+/** Owner cancel email: the payment line plus "Deposit kept" / "Refunded" (a full refund is already the payment line). */
+function ownerCancelMoney(ctx: NotifyContext, refundedCents: number): { paid?: string; settled?: [string, string] } {
+  const { appt } = ctx;
+  const refunded = refundedCents > 0 ? refundedCents : (appt.amount_refunded_cents ?? 0);
+  const input = {
+    status: appt.status, paymentStatus: appt.payment_status, priceCents: appt.price_cents,
+    amountPaidCents: appt.amount_paid_cents, amountRefundedCents: refunded,
+  };
+  const paid = paymentLine(input) || undefined;
+  let settled: [string, string] | undefined;
+  if (refunded > 0) { if (summaryOf(appt).kind !== 'refunded') settled = ['Refunded', dollars(refunded)]; }
+  else if (appt.amount_paid_cents > 0) settled = [appt.payment_status === 'deposit' ? 'Deposit kept' : 'Payment kept', dollars(appt.amount_paid_cents)];
+  return { ...(paid ? { paid } : {}), ...(settled ? { settled } : {}) };
+}
+
+const ownerEvent = (kind: 'booking_created' | 'booking_cancelled' | 'booking_rescheduled' | 'customer_says_paid', ctx: NotifyContext, refundedCents = 0) => ({
   kind,
   customerName: ctx.appt.customer_name,
   service: ctx.appt.service_name,
@@ -276,6 +298,7 @@ const ownerEvent = (kind: 'booking_created' | 'booking_cancelled' | 'booking_res
   whenLong: longWhen(ctx.appt.start_at, ctx.shop.timezone),
   // Only a deposit booking carries a payment line; every other event is exactly as it was.
   ...(kind === 'booking_created' && ownerPaidLine(ctx.appt) ? { paid: ownerPaidLine(ctx.appt) } : {}),
+  ...(kind === 'booking_cancelled' ? ownerCancelMoney(ctx, refundedCents) : {}),
 }) as OwnerEvent;
 
 const pushRecipients = (ctx: NotifyContext) => [ctx.shop.owner_id, ctx.memberUserId].filter(Boolean) as string[];
@@ -318,14 +341,14 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
         break;
       }
       case 'booking_cancelled': {
+        const refunded = event.refundedCents ?? appt.amount_refunded_cents ?? 0;
         if (event.by !== 'shop') {
           jobs.push(d.push(pushRecipients(ctx), {
             body: `Cancelled: ${customerLabel(appt)}, ${shortWhen(appt.start_at, shop.timezone)}`,
             data,
           }));
-          jobs.push(emailOwner(ctx, d, ownerEvent('booking_cancelled', ctx)));
+          jobs.push(emailOwner(ctx, d, ownerEvent('booking_cancelled', ctx, refunded)));
         }
-        const refunded = event.refundedCents ?? appt.amount_refunded_cents ?? 0;
         jobs.push(emailCustomer(ctx, d, () => cancellationEmail(ctx, event.by, refunded, now, event.closed === true)));
         break;
       }

@@ -124,3 +124,30 @@ export function paymentLine(i: PaymentSummaryInput): string {
   }
   return `${sum.paidRow[0]} ${sum.paidRow[1]}`;
 }
+
+/** The shop's cancel cutoff in plain words: 1440 -> "1 day", 120 -> "2 hours", 90 -> "90 minutes". */
+export function cutoffWords(min: number): string {
+  const m = nonNegInt(min);
+  const unit = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (m >= 1440 && m % 1440 === 0) return unit(m / 1440, 'day');
+  if (m >= 60 && m % 60 === 0) return unit(m / 60, 'hour');
+  return unit(m, 'minute');
+}
+
+/**
+ * What to tell a customer about their money after a cancellation, from the amounts stored on the appointment.
+ * - refunded > 0 (full or partial): "You were refunded $Y."
+ * - nothing refunded but something paid (cancelled after the cutoff): "Your $X deposit was kept, because the appointment was cancelled less than <cutoff> before it started."
+ * - nothing paid: null (add nothing)
+ */
+export function cancelMoneyNote(i: { paymentStatus: string; amountPaidCents: number; amountRefundedCents: number; cutoffMin: number | null | undefined }): string | null {
+  const paid = nonNegInt(i.amountPaidCents);
+  const refunded = nonNegInt(i.amountRefundedCents);
+  if (refunded > 0) return `You were refunded ${dollars(refunded)}.`;
+  if (paid <= 0 || i.cutoffMin == null) return null;
+  const what = i.paymentStatus === 'deposit' ? 'deposit' : 'payment';
+  const why = nonNegInt(i.cutoffMin) > 0
+    ? `the appointment was cancelled less than ${cutoffWords(i.cutoffMin)} before it started`
+    : 'the appointment was cancelled after it started';
+  return `Your ${dollars(paid)} ${what} was kept, because ${why}.`;
+}

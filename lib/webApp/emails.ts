@@ -78,7 +78,7 @@ ${l.note ? `<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:1
     l.headline, '', l.lead.replace(/<[^>]+>/g, ''), '',
     ...l.facts.map(([k, v]) => `${k}: ${v}`), '',
     ...(l.cta ? [`${l.cta.label}: ${l.cta.href}`] : []),
-    ...(l.note ? ['', l.note.replace(/<[^>]+>/g, '')] : []),
+    ...(l.note ? ['', l.note.replace(/<br\s*\/?>\s*<br\s*\/?>/g, '\n\n').replace(/<[^>]+>/g, '')] : []),
     '', `Forgot your password? ${resetLink(l.origin)}`, 'We never email passwords.',
   ].join('\n');
   return { subject: l.subject ?? l.headline, html, text };
@@ -293,6 +293,7 @@ export function iosOverlapEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
       headline: 'You now pay for Prime Barber twice',
       lead: esc(`You have a Prime Barber plan on the web${e ? `, on the account ${e}` : ''}, and you also bought one in the iPhone app. The app subscription adds nothing, so you are paying twice.`),
       facts: [...(i.siteUrl ? facts(i).slice(0, 1) : []), ['Plan', TIER_NAME[i.tier] ?? i.tier], ...(e ? [['Account', e] as [string, string]] : [])],
+      // HTML joins the two notes with <br><br>; the text part gets a real blank line (render() strips tags for the text part, which would run them together).
       note: [
         'So that you are not charged twice, cancel the app subscription on your iPhone: Settings, your name, Subscriptions. To ask for your money back, go to reportaproblem.apple.com.',
         `To use the app with the plan you already have, open the app and sign in${e ? ` with ${e}` : ''}. If you do not remember your password, tap Email me a sign-in code and we will email you a code.`,

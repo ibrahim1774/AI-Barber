@@ -70,7 +70,7 @@ export type ManageAppointment = {
   /** Absent from an older server. */
   amountRefundedCents?: number;
   paymentStatus: string;
-  shop: { name: string; slug: string; address: string | null; phone: string | null; timezone: string };
+  shop: { name: string; slug: string; address: string | null; phone: string | null; timezone: string; /** Absent from an older server. */ cancelCutoffMin?: number };
 };
 export type ManageResponse = {
   appointment: ManageAppointment;

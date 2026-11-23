@@ -381,6 +381,24 @@ export function cancelNote(refundCents: number, amountPaidCents: number): string
   return amountPaidCents > 0 ? 'No payment will be refunded.' : null;
 }
 
+/** The shop's cancel cutoff in plain words: 1440 -> "1 day", 120 -> "2 hours", 90 -> "90 minutes". (Same wording as lib/bookings/money.ts.) */
+export function cutoffWords(min: number): string {
+  const m = Number.isFinite(min) && min > 0 ? Math.floor(min) : 0;
+  const unit = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (m >= 1440 && m % 1440 === 0) return unit(m / 1440, 'day');
+  if (m >= 60 && m % 60 === 0) return unit(m / 60, 'hour');
+  return unit(m, 'minute');
+}
+
+/** What a cancelled booking says about the customer's money: refunded, kept (cancelled after the cutoff), or nothing (nothing paid / cutoff unknown). */
+export function cancelledMoneyNote(i: { paymentStatus: string; amountPaidCents: number; amountRefundedCents: number; cutoffMin: number | undefined }): string | null {
+  if (i.amountRefundedCents > 0) return `You were refunded ${formatMoney(i.amountRefundedCents)}.`;
+  if (!(i.amountPaidCents > 0) || i.cutoffMin == null) return null;
+  const what = i.paymentStatus === 'deposit' ? 'deposit' : 'payment';
+  const why = i.cutoffMin > 0 ? `the appointment was cancelled less than ${cutoffWords(i.cutoffMin)} before it started` : 'the appointment was cancelled after it started';
+  return `Your ${formatMoney(i.amountPaidCents)} ${what} was kept, because ${why}.`;
+}
+
 /* ---------- card checkout return (?checkout=) ---------- */
 
 export type CheckoutReturn = 'success' | 'cancelled' | null;
